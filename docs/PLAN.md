@@ -57,7 +57,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 ## Phases
 
 ### Now → event (calendar time; the evidence track is the long pole)
-- [x] Repo created, CI green, collaboration rules merged (PR #1). Pending: Anush's and Ananya's handles added as collaborators; CODEOWNERS handles replaced.
+- [x] Repo created, CI green, collaboration rules merged (PR #1); Anush and Ananya are collaborators; CODEOWNERS routes reviews.
 - [x] Design doc v0.4, research report, mechanics, adapters, Devin plan, prototype, evidence protocol.
 - [ ] Keys set (OpenAI, Anthropic) for Oliver and Anush; Codex CLI and Claude Code logged in.
 - [ ] Register for the OpenAI challenge (credits only for submitters). Oliver.
