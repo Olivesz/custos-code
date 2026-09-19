@@ -85,7 +85,7 @@ Three consequences:
 `__RECEIPTS_BIN`/`__RECEIPTS_RC` to a per-call file whose path is a random name under the
 receipts directory, exported into the command's environment; `PostToolUse` reads and deletes it.
 The model then sees unmodified output, and cannot forge a marker whose filename it never saw.
-Tracked as issue #21.
+Tracked as issue #22.
 
 ### Completeness flags, set at ingest
 - `truncated`: Claude Code caps tool output shown to the model; the transcript keeps what the model saw. Codex states the original token count. Either way, keep the full text when the hook has it and a sha256 of it always.
