@@ -205,6 +205,20 @@ def _rerun_dir(session_id: str) -> Path:
     return d
 
 
+
+def _worker_argv(session_id: str, claim_id: str) -> list[str]:
+    """How to launch the detached worker without assuming `uv` or `python` is on PATH.
+
+    There is no receipts/__main__.py, so the fallback goes through the console-script entry point
+    (pyproject.toml [project.scripts]) via -c rather than -m.
+    """
+    args = ["_hook", "rerun-worker", session_id, claim_id]
+    script = shutil.which("receipts")
+    if script:
+        return [script, *args]
+    return [sys.executable, "-c", "from receipts.cli import app; app()", *args]
+
+
 def spawn_async(
     session_id: str,
     claim_id: str,
@@ -242,9 +256,11 @@ def spawn_async(
     log_path = d / f"{claim_id}.log"
     with log_path.open("wb") as log:
         subprocess.Popen(  # noqa: S603 -- argv is fixed; no shell, no untrusted input
-            # Same invocation shape as hooks/*.sh; there is no receipts/__main__.py, so this is
-            # the console-script entry point (pyproject.toml [project.scripts]), not `-m receipts`.
-            ["uv", "run", "--quiet", "receipts", "_hook", "rerun-worker", session_id, claim_id],
+            # Same reasoning as _TEST_COMMANDS above: do not assume a launcher is on PATH. `uv` is
+            # absent on plenty of machines (this one included), and a hardcoded ["uv", "run", ...]
+            # fails closed with FileNotFoundError, so the worker never starts and the Tier 3 result
+            # never appears. Prefer the installed console script, fall back to this interpreter.
+            _worker_argv(session_id, claim_id),
             cwd=repo_root,
             stdin=subprocess.DEVNULL,
             stdout=log,
