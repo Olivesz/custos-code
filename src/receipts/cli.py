@@ -5,8 +5,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from . import claims as claims_mod
+from . import verdicts as verdicts_mod
 from .adapters import claude_code
-from .models import EventKind
+from .models import EventKind, Verdict
+
+MARK = {Verdict.CONFIRMED: ("✓", "green"), Verdict.CONTRADICTED: ("✗", "red"), Verdict.UNWITNESSED: ("?", "yellow"),
+        Verdict.UNRECORDED: ("○", "bright_black"), Verdict.QUALIFIED: ("≈", "cyan")}
 
 app = typer.Typer(help="Check a coding agent's final report against what it actually did.", no_args_is_help=True)
 console = Console()
@@ -17,8 +22,9 @@ def check(
     session: str | None = typer.Argument(None, help="Path to a session transcript (Claude Code JSONL)."),
     last: bool = typer.Option(False, "--last", help="Use the most recent Claude Code session."),
     events: bool = typer.Option(False, "--events", help="Also print the ledger."),
+    repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
 ) -> None:
-    """Print the receipt for one session. (v0: ledger + report; verdicts land with rules.py.)"""
+    """Print the receipt for one session: every claim in the final report, with its verdict and evidence."""
     if last:
         session = claude_code.find_last_session()
     if not session:
@@ -43,8 +49,21 @@ def check(
         console.print(t)
     console.rule("final report")
     console.print(report or "[dim](no assistant text found)[/]")
-    console.rule()
-    console.print("[dim]verdicts: not implemented yet (rules.py, claims.py). Ledger and report are real.[/]")
+    console.rule("receipt")
+    if not report:
+        raise typer.Exit(code=0)
+    cl = claims_mod.extract(report, sess.id)
+    recs = verdicts_mod.run(cl, ledger, repo or sess.cwd)
+    by_id = {c.id: c for c in cl}
+    for r in recs:
+        c = by_id[r.claim_id]
+        mark, color = MARK[r.verdict]
+        ev = " ".join(f"#{e}" for e in r.evidence) or "—"
+        console.print(f"  [{color}]{mark} {r.verdict.value:<12}[/] {c.text[:88]}")
+        console.print(f"      [dim]tier {r.tier} · {r.method} · {ev} · {r.rationale}{(' · ' + r.qualifier) if r.qualifier else ''}[/]")
+    s = verdicts_mod.summary(recs)
+    parts = [f"{s[v.value]} {MARK[v][0]}" for v in Verdict if s[v.value]]
+    console.print(f"[bold]receipts[/] {len(recs)} claims · {' · '.join(parts) if parts else 'no claims found'} · rules only (judge not wired)")
 
 
 @app.command()
