@@ -27,6 +27,7 @@ class EventFlags(BaseModel):
     sidechain: bool = False     # sub-agent; never counts as top-level evidence
     error: bool = False         # harness marked the result as an error (Claude Code is_error; Codex success=false)
     interrupted: bool = False   # tool run was interrupted
+    timed_out: bool = False     # Tier 3 re-run hit its timeout_s budget before the command finished
 
 
 class LedgerEvent(BaseModel):

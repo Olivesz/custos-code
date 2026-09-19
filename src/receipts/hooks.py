@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from . import claims as claims_mod
-from . import feedback
+from . import feedback, parsers, rerun
 from . import verdicts as verdicts_mod
 from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
@@ -49,6 +49,23 @@ def _paths(session_id: str) -> tuple[str, str, str]:
             os.path.join(HOME, "receipts", f"{session_id}.txt"))
 
 
+# ---------- PreToolUse ----------
+def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """E5: wrap a known-runner Bash command so `on_post_tool_use` can see the real resolved
+    binary path, defeating a `./pytest` wrapper shadowing the real one. Returns the hook
+    response JSON to print, or None to leave the command untouched."""
+    if payload.get("tool_name") != "Bash":
+        return None
+    inp = payload.get("tool_input")
+    command = inp.get("command") if isinstance(inp, dict) else None
+    if not isinstance(command, str):
+        return None
+    wrapped = parsers.wrap_command_for_resolution(command)
+    if wrapped is None:
+        return None
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {"command": wrapped}}}
+
+
 # ---------- PostToolUse ----------
 def on_post_tool_use(payload: dict[str, Any]) -> None:
     sid = str(payload.get("session_id", "unknown"))
@@ -58,7 +75,13 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
     inp: dict[str, Any] = dict(raw_inp) if isinstance(raw_inp, dict) else {}
     resp = payload.get("tool_response")
     text = resp if isinstance(resp, str) else json.dumps(resp) if resp is not None else ""
+    # E5: a command `on_pre_tool_use` wrapped carries a trailer resolving its real binary path;
+    # strip it before this text is stored or handed to parsers.parse (it is not part of the
+    # runner's own output and would otherwise corrupt summary parsing / leak into the receipt).
+    text, resolved_bin, wrapped_exit_code = parsers.strip_and_parse_trailer(text)
     text = redact(text)
+    if resolved_bin is not None:
+        inp["resolved_bin"] = resolved_bin  # feeds a future rules.py trust check (E5); unused today
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     side = bool(payload.get("agent_id"))
     n = sum(1 for _ in open(live)) if os.path.exists(live) else 0
@@ -74,6 +97,7 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
     res = LedgerEvent(seq=n + 1, ts=ts, session_id=sid, kind=EventKind.RESULT, tool=tool,
                       output=text.encode()[:MAX_OUTPUT_BYTES].decode(errors="ignore"),
                       output_hash=hashlib.sha256(text.encode()).hexdigest(), cwd=cwd, flags=flags,
+                      exit_code=wrapped_exit_code,  # E9: only set when on_pre_tool_use wrapped this command
                       paths=[str(inp["file_path"])] if isinstance(inp.get("file_path"), str) else [])
     with open(live, "a", encoding="utf-8") as fh:
         fh.write(call.model_dump_json() + "\n")
@@ -167,8 +191,20 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     return {"decision": "block", "reason": reason}
 
 
-def main(event: str) -> int:
+def main(event: str, session_id: str | None = None, claim_id: str | None = None) -> int:
+    if event == "rerun-worker":
+        # E4: a detached subprocess `rerun.spawn_async` launched directly -- no hook payload,
+        # no stdin to read; its identity is these two args.
+        if not session_id or not claim_id:
+            return 2
+        rerun.run_worker(session_id, claim_id)
+        return 0
     payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
+    if event == "pre":
+        out = on_pre_tool_use(payload)
+        if out is not None:
+            print(json.dumps(out))
+        return 0
     if event == "post-tool-use":
         on_post_tool_use(payload)
         return 0

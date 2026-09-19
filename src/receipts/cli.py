@@ -1,4 +1,10 @@
-"""Typer entrypoint: check, watch, bench, eval, cost."""
+"""Typer entrypoint: check, watch, bench, eval, cost, and the internal `_hook` group.
+
+`_hook` is what hooks/*.sh invoke (and, for `rerun-worker`, what `rerun.spawn_async` invokes
+directly); it is not a user-facing command. Its subcommands either read one hook payload from
+stdin, or -- `rerun-worker` only -- take their identity as positional args since they have no
+hook payload at all. See docs/ADAPTERS.md §2 for the payload shapes.
+"""
 from __future__ import annotations
 
 import typer
@@ -68,6 +74,7 @@ def check(
 
 HOOKS_SNIPPET = {
     "hooks": {
+        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "receipts _hook pre", "timeout": 5}]}],
         "PostToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "receipts _hook post-tool-use", "timeout": 10}]}],
         "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "receipts _hook stop", "timeout": 120}]}],
     }
@@ -104,11 +111,18 @@ def watch(install: bool = typer.Option(False, "--install", help="Merge the hooks
 
 
 @app.command(name="_hook", hidden=True)
-def _hook(event: str = typer.Argument(..., help="post-tool-use | stop")) -> None:
-    """Internal: hook entrypoint; reads the Claude Code payload on stdin."""
+def _hook(
+    event: str = typer.Argument(..., help="pre | post-tool-use | stop | rerun-worker"),
+    session_id: str | None = typer.Argument(None, help="rerun-worker only: which session."),
+    claim_id: str | None = typer.Argument(None, help="rerun-worker only: which claim."),
+) -> None:
+    """Internal: hook entrypoint. `pre`/`post-tool-use`/`stop` read the Claude Code payload on
+    stdin. `rerun-worker` (E4) has no hook payload at all -- it's a detached subprocess
+    `rerun.spawn_async` launches directly, so it takes its identity as positional args instead.
+    """
     from . import hooks as _hooks
 
-    raise typer.Exit(code=_hooks.main(event))
+    raise typer.Exit(code=_hooks.main(event, session_id, claim_id))
 
 
 @app.command()
