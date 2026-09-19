@@ -59,7 +59,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 ### Now → event (calendar time; the evidence track is the long pole)
 - [x] Repo created, CI green, collaboration rules merged (PR #1); Anush and Ananya are collaborators; CODEOWNERS routes reviews.
 - [x] Design doc v0.4, research report, mechanics, adapters, Devin plan, prototype, evidence protocol.
-- [ ] Keys set (OpenAI, Anthropic) for Oliver and Anush; Codex CLI and Claude Code logged in.
+- [ ] OpenAI credits requested by all three (API key + Codex); Devin credits form submitted; Codex CLI and Claude Code logged in.
 - [ ] Register for the OpenAI challenge (credits only for submitters). Oliver.
 - [ ] Recruitment started: ask script written, first 15 messages sent, consent form drafted. Oliver (interim).
 - [x] Study metrics pre-registered in `docs/EVIDENCE_PLAN.md`.
@@ -71,6 +71,17 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [ ] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
 - [ ] Devin: booth or email for access; VERIFY list in docs/DEVIN.md. Oliver asks; work paused until then.
 - [ ] Token Company sign-in; confirm compressor API shape. Anush.
+
+### Sponsor credits to claim (before the event)
+| Credit | Why we need it | Owner |
+|---|---|---|
+| OpenAI: $50 Codex + $50 API per person (request form) | Judge/extractor backend (default) and Codex bench runs; this is the API key | All three, now |
+| Cognition: $1,000 Devin credits (form) — Cloud, CLI, Desktop | Every Devin path in docs/DEVIN.md; gate on the Cognition track | Oliver, now |
+| Warp Build plan, code HACKMIT | Demo runs in Warp; optional agent under test | Oliver |
+| Cursor Pro (SpaceXAI booth code) | Optional fourth agent under test for the bench | Anush, if time |
+| Meta $50 Muse API | Optional cheap extractor for the cost comparison | Anush, optional |
+| Not needed | Runpod, Voloridge compute, Elastic, Deepgram, Linq, Fragment, Notability, hardware | — |
+No Anthropic credits are offered; the Anthropic backend stays comparison-only unless someone has a key.
 
 ### Next five, per person (as of 19 Sep)
 **Oliver:** (1) Claude Code post-hoc adapter and golden tests; (2) claim extractor with the regex baseline; (3) recruitment messages out and consent form; (4) gold-set selection with seed; (5) E9 experiment on the PreToolUse wrapper.
