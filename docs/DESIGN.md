@@ -216,7 +216,7 @@ For teams and vendors. One number per model version, per team, per week: share o
 
 In a multi-agent pipeline, each hand-off carries a receipt. The coordinator refuses a sub-agent's report with a contradicted claim the same way a Stop hook refuses the top-level agent. This is the form that stops the compounding case (a critic reviewing a false narrative, a coordinator committing a regression with an approving verdict).
 
-### E. Receipts for Devin
+### E. Receipts for Devin (primary target; full plan in docs/DEVIN.md)
 
 Devin records a full replay timeline per session, but the public API exposes only session metadata, chat messages (`source ∈ {devin, user}`), the `pull_requests` list, and a validated `structured_output`; the command history and Issue Timeline are UI-only, and the only known action-log export is an unofficial browser extension. So the Devin adapter is: PR description + `structured_output` as the report, and the repo's CI log, git history, and filesystem as the evidence. That still settles test, edit, create, and commit claims, which are most of what a PR description asserts. Devin Review is diff analysis; the receipt is the thing it does not produce. Confirm at the Cognition booth in hour 0: credits, and whether an org-level API token comes with hackathon access.
 

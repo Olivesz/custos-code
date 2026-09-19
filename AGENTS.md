@@ -57,6 +57,7 @@ AGENTS.md                 this file
 README.md                 quickstart and status
 docs/DESIGN.md            the design document (generated from docs/design-doc.html)
 docs/MECHANICS.md         how the receipt gets made: session/turn identity, logging per harness, claim→evidence mapping, the loop
+docs/DEVIN.md             Devin is the primary target: what it exposes, three evidence paths, the loop, what to show Cognition
 docs/prototype/index.html interactive mock of the editor experience
 docs/RESEARCH.md          research report: prevalence, cost, workarounds, landscape, 40 seed cases
 docs/research/            the five research notes and the coded complaint corpus

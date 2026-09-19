@@ -34,7 +34,7 @@ Status: `open` · `decided` · `deferred (post-event)`
 | # | Question | Owner | Status | Notes |
 |---|---|---|---|---|
 | A1 | Codex rollout JSONL field mapping | Ananya | open | Format observed on this machine (MECHANICS §2): session_meta, turn_context, function_call/exec_command, exec_command_end (argv), function_call_output with "Process exited with code N", patch_apply_end, agent_message, task_complete. VERIFY exit field on exec_command_end and patch_apply_end fields on three real rollouts. |
-| A2 | Devin: does hackathon access include an org API token? | Ananya | open | Public API exposes metadata, chat messages, structured_output, PR list only. Adapter = PR + structured_output + CI log. |
+| A2 | Devin: which evidence path first? | Ananya | open | See docs/DEVIN.md. Path C (PR + structured_output + CI + git) ships first; Path A (CLI hooks in `.devin/hooks.v1.json`, `--export` ATIF) for the live demo; Path B (blueprint-planted recorder) is the Cognition showpiece and has three VERIFYs. Booth hour 0: org API token, blueprint editing on hackathon plan, send-message endpoint. |
 | A3 | Copilot session log format and stable link from a PR | Ananya | open | Documented as attached to commits; verify the export. |
 | A4 | Cursor: SpecStory export vs hooks | Ananya | deferred (post-event) | |
 | A5 | `transcript_path` lag in Claude Code hooks | Oliver | decided | Use `last_assistant_message` from Stop/SubagentStop for the report; transcript only for history. |

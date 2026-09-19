@@ -20,7 +20,7 @@ Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The bu
 
 ### Ananya — infra, integrations, and the evidence track
 - Repo hygiene, CI (`.github/workflows/ci.yml`), packaging, `uv`, Docker for the bench runner.
-- Adapters: `codex.py`, `copilot.py`, `devin.py` (PR + structured_output + CI log), `otel.py`.
+- Adapters: `devin.py` first (Path C, then the blueprint recorder and CLI hooks per `docs/DEVIN.md`), then `codex.py`, `copilot.py`, `otel.py`.
 - The PR-comment GitHub Action (product sketch B).
 - Finance reconciliation fixture and, if it fits, the cross-run `memory.md` loop (Maximor).
 - **Evidence track (parallel, starts now):** recruit testers, run the study in `docs/EVIDENCE_PLAN.md`, collect donated sessions, coordinate gold-set labelling, gather testimonials, cut the demo video.
@@ -46,7 +46,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [ ] Recruit 10–12 testers (Ananya). Get 5 donated Claude Code or Codex session logs per tester where possible.
 - [ ] Pre-register the study metrics in `docs/EVIDENCE_PLAN.md` (before any data is collected).
 - [ ] Gold set: pick 20 sessions (10 local, 10 SWE-chat), extract ~100 claims, label independently.
-- [ ] Confirm at the Cognition booth or by email: Devin credits and whether an org API token comes with hackathon access.
+- [ ] Confirm at the Cognition booth or by email: Devin credits, org API token, blueprint editing on the hackathon plan, send-message endpoint (docs/DEVIN.md VERIFY list).
 - [ ] Bench traps 1–4 specified as fixtures with oracles (piped runner, broken runner, ghost write, cancelled batch).
 
 ### Event: 24 hours (see `docs/DESIGN.md` §13 for the hour-by-hour)
