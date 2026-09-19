@@ -3,11 +3,11 @@
 # a change in someone else's area, open a small PR against it and tag them.
 
 # Shared seams: change only via PR reviewed by both other people
-/src/receipts/models.py        @Olivesz
-/AGENTS.md                     @Olivesz
-/docs/OPEN_QUESTIONS.md        @Olivesz
-/docs/adr/                     @Olivesz
-/pyproject.toml                @Olivesz
+/src/receipts/models.py        @Olivesz @anushmainali @AnanyaGuntur8
+/AGENTS.md                     @Olivesz @anushmainali @AnanyaGuntur8
+/docs/OPEN_QUESTIONS.md        @Olivesz @anushmainali @AnanyaGuntur8
+/docs/adr/                     @Olivesz @anushmainali @AnanyaGuntur8
+/pyproject.toml                @Olivesz @anushmainali @AnanyaGuntur8
 
 # Oliver: core engine, correction loop, CLI, design and pitch
 /src/receipts/ledger.py        @Olivesz
@@ -25,19 +25,19 @@
 /docs/MECHANICS.md             @Olivesz
 /docs/prototype/               @Olivesz
 
-# Anush: parsers, integrity, re-run, bench, eval, cost   (replace handle when known)
-/src/receipts/parsers.py       @Olivesz
-/src/receipts/rerun.py         @Olivesz
-/src/receipts/cost.py          @Olivesz
-/bench/                        @Olivesz
-/eval/                         @Olivesz
+# Anush: parsers, integrity, re-run, bench, eval, cost
+/src/receipts/parsers.py       @anushmainali
+/src/receipts/rerun.py         @anushmainali
+/src/receipts/cost.py          @anushmainali
+/bench/                        @anushmainali
+/eval/                         @anushmainali
 
-# Ananya: infra, adapters, Action, evidence track          (replace handle when known)
-/.github/workflows/            @Olivesz
-/src/receipts/adapters/codex.py    @Olivesz
-/src/receipts/adapters/copilot.py  @Olivesz
-/src/receipts/adapters/devin.py    @Olivesz
-/src/receipts/adapters/otel.py     @Olivesz
-/docs/ADAPTERS.md              @Olivesz
-/docs/DEVIN.md                 @Olivesz
-/docs/EVIDENCE_PLAN.md         @Olivesz
+# Ananya: infra, adapters, Action, evidence track       
+/.github/workflows/            @AnanyaGuntur8
+/src/receipts/adapters/codex.py    @AnanyaGuntur8
+/src/receipts/adapters/copilot.py  @AnanyaGuntur8
+/src/receipts/adapters/devin.py    @AnanyaGuntur8
+/src/receipts/adapters/otel.py     @AnanyaGuntur8
+/docs/ADAPTERS.md              @AnanyaGuntur8
+/docs/DEVIN.md                 @AnanyaGuntur8
+/docs/EVIDENCE_PLAN.md         @AnanyaGuntur8
