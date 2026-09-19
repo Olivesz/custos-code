@@ -23,6 +23,15 @@ Pre-build. The design, research, plan, and evidence protocol are in `docs/`. Sta
 - [docs/EVIDENCE_PLAN.md](docs/EVIDENCE_PLAN.md) — pre-registered study: accuracy, time saved, retention, usability
 - [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md) — every unresolved decision with an owner
 
+## Prototype
+
+`docs/prototype/index.html` is an interactive, non-functional mock of the editor experience: marks on the agent's message, the evidence panel, editor decorations, the auto-mode loop, and the PR receipt. It is a single self-contained file:
+
+```bash
+open docs/prototype/index.html          # macOS
+# or: python3 -m http.server -d docs/prototype 8765  →  http://localhost:8765
+```
+
 ## Quickstart (target)
 
 ```bash
