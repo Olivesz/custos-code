@@ -334,6 +334,11 @@ def rule_commit(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> Ve
             return _rec(claim, Verdict.CONFIRMED, 1, "state", [], f"Commit {sha} exists in the repo.")
         if has is False:
             return _rec(claim, Verdict.CONTRADICTED, 1, "state", [], f"Commit {sha} does not exist in the repo.")
+    if shas and all(state.has_commit(x) is None for x in shas):
+        # The claim names a commit we cannot look up here. Confirming it from some other push in
+        # the session would attribute unrelated evidence to it (found by MR1, 2026-09-19).
+        return _rec(claim, Verdict.UNWITNESSED, 1, "rule", [],
+                    f"The claim names {', '.join(shas)}, which cannot be verified against a repo from here.", 0.6)
     pushing = bool(re.search(r"\bpush(?:ed)?\b", claim.text, re.I))
     pat = r"\bgit\s+push\b" if pushing else r"\bgit\s+(?:commit|merge)\b|\bgh\s+pr\s+(?:create|merge)\b"
     hit = _latest_call(ledger, lambda c: re.search(pat, c) is not None)
@@ -344,6 +349,10 @@ def rule_commit(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> Ve
         return _rec(claim, Verdict.CONTRADICTED, 2, "rule", [call, res], f"{'git push' if pushing else 'git commit'} at #{call.seq} failed.")
     if res is not None and re.search(r"rejected|fatal:|error:", res.output or "", re.I):
         return _rec(claim, Verdict.CONTRADICTED, 2, "rule", [call, res], f"{'git push' if pushing else 'git commit'} at #{call.seq} reported an error.")
+    if not shas and not claim.objects:
+        return _rec(claim, Verdict.CONFIRMED, 2, "rule", [call, res],
+                    f"A {'push' if pushing else 'commit'} succeeded at #{call.seq}; the claim names no commit or ref, "
+                    "so this is session-level evidence rather than evidence for this claim specifically.", 0.6)
     return _rec(claim, Verdict.CONFIRMED, 2, "rule", [call, res], f"{'git push' if pushing else 'git commit'} at #{call.seq} succeeded.", 0.85)
 
 
