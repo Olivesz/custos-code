@@ -66,10 +66,49 @@ def check(
     console.print(f"[bold]receipts[/] {len(recs)} claims · {' · '.join(parts) if parts else 'no claims found'} · rules only (judge not wired)")
 
 
+HOOKS_SNIPPET = {
+    "hooks": {
+        "PostToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "receipts _hook post-tool-use", "timeout": 10}]}],
+        "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "receipts _hook stop", "timeout": 120}]}],
+    }
+}
+
+
 @app.command()
-def watch() -> None:
-    """Install the PostToolUse and Stop hooks for live sessions."""
-    raise typer.Exit(code=2)
+def watch(install: bool = typer.Option(False, "--install", help="Merge the hooks into ~/.claude/settings.json (backup kept).")) -> None:
+    """Show (or install) the Claude Code hooks that record every tool call and check each final report."""
+    import json as _json
+    import os as _os
+    import shutil as _shutil
+
+    if not install:
+        console.print(_json.dumps(HOOKS_SNIPPET, indent=2))
+        console.print("[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `receipts watch --install`.[/]")
+        return
+    path = _os.path.expanduser("~/.claude/settings.json")
+    data: dict[str, object] = {}
+    if _os.path.exists(path):
+        _shutil.copy(path, path + ".bak")
+        with open(path, encoding="utf-8") as fh:
+            data = _json.load(fh)
+    hooks = data.setdefault("hooks", {})
+    assert isinstance(hooks, dict)
+    for ev, entries in HOOKS_SNIPPET["hooks"].items():
+        existing = hooks.setdefault(ev, [])
+        assert isinstance(existing, list)
+        if not any("receipts _hook" in _json.dumps(e) for e in existing):
+            existing.extend(entries)
+    with open(path, "w", encoding="utf-8") as fh:
+        _json.dump(data, fh, indent=2)
+    console.print(f"installed into {path} (backup at {path}.bak)")
+
+
+@app.command(name="_hook", hidden=True)
+def _hook(event: str = typer.Argument(..., help="post-tool-use | stop")) -> None:
+    """Internal: hook entrypoint; reads the Claude Code payload on stdin."""
+    from . import hooks as _hooks
+
+    raise typer.Exit(code=_hooks.main(event))
 
 
 @app.command()
