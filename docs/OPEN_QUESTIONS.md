@@ -19,9 +19,9 @@ Status: `open` · `decided` · `deferred (post-event)`
 ## Engine
 | # | Question | Owner | Status | Notes |
 |---|---|---|---|---|
-| E1 | Ledger windowing for the judge: last N events plus path-matched events, or full session? | Anush | open | Measure tokens vs κ on the gold set. |
-| E2 | Which runners get parsers first? | Anush | open | Proposal: pytest, jest/vitest, go test, cargo. Others fall to `unrecorded`. |
-| E3 | Tier 3 re-run: worktree + subprocess, or Docker? | Anush | open | Worktree for the event; Docker for the bench runner. |
+| E1 | Ledger windowing for the judge: last N events plus path-matched events, or full session? | Anush | decided | Hybrid: last N (default 40) union events whose paths/command mention a claim object; sidechain events dropped first. Implemented in `judge.window`. `n` still needs tuning against κ on the gold set. |
+| E2 | Which runners get parsers first? | Anush | decided | pytest, jest, vitest, go test, cargo, in that priority order (`parsers.PARSERS`). Others fall to `unrecorded`. |
+| E3 | Tier 3 re-run: worktree + subprocess, or Docker? | Anush | decided | Worktree for the event (`rerun.rerun_tests`: HEAD worktree overlaid with the live working tree, so uncommitted edits count); Docker stays for the bench runner. |
 | E4 | Tier 3 time budget in the Stop hook (10 s hook limit) | Anush | open | Rules block synchronously; re-run async, result posted as a follow-up. |
 | E5 | How to detect a wrapper script named like a runner (`./pytest`, PATH shadowing)? | Anush | open | Resolve binary path; require it outside the repo tree or in a known venv. |
 | E6 | Claim extraction: LLM structured output vs regex for mechanical types? | Oliver | open | Measure recall on the gold set at hour 10. Regex may win for test/edit claims. |
