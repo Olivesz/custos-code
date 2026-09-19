@@ -19,7 +19,7 @@ Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The bu
 - `cost.py` and the Token Company chart (judge-everything vs ladder vs ladder+compressor, with κ on each).
 
 ### Ananya — infra, integrations, and the evidence track
-- Repo hygiene, CI (`.github/workflows/ci.yml`), packaging, `uv`, Docker for the bench runner.
+- [x] Repo hygiene, CI (`.github/workflows/ci.yml`), packaging, `uv`, Docker for the bench runner.
 - Adapters in build order (`docs/ADAPTERS.md` §6): Claude Code post-hoc (with Oliver), `codex.py` post-hoc, then the class-M recorder, then Devin Path C/A/B when access arrives, then `copilot.py`, `otel.py`.
 - The PR-comment GitHub Action (product sketch B).
 - Finance reconciliation fixture and, if it fits, the cross-run `memory.md` loop (Maximor).
