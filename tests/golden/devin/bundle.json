@@ -1,0 +1,55 @@
+{
+  "session": {
+    "session_id": "devin-3f9c11aa",
+    "status_enum": "finished",
+    "created_at": "2025-09-19T09:00:00+00:00",
+    "snapshot_id": "snapshot-7",
+    "playbook_id": "playbook-receipts",
+    "model": "devin-2",
+    "structured_output": {
+      "summary": "Added the retry wrapper and ran the unit suite.",
+      "tests": "pytest tests/unit -q: 41 passed"
+    },
+    "pull_requests": [
+      {
+        "url": "https://github.com/acme/widgets/pull/412",
+        "body": "Adds `retry()` around the flaky upload call in src/widgets/upload.py and covers it in tests/unit/test_upload.py. Ran pytest tests/unit locally, 41 passed.",
+        "head": "devin/retry-upload"
+      }
+    ],
+    "messages": [
+      {"type": "user_message", "timestamp": "2025-09-19T09:00:10+00:00", "message": "Make the upload retry on 502."},
+      {"type": "devin_message", "timestamp": "2025-09-19T09:14:02+00:00", "message": "Done: retry wrapper added, unit tests pass locally."}
+    ]
+  },
+  "git": {
+    "root": "/home/ubuntu/widgets",
+    "branch": "devin/retry-upload",
+    "commits": [
+      {
+        "sha": "9c1b7e2d4a5f6018bb33ce90aa1122334455667",
+        "subject": "feat: retry uploads on 502",
+        "ts": "2025-09-19T09:12:41+00:00",
+        "files": ["src/widgets/upload.py", "tests/unit/test_upload.py"],
+        "stat": " src/widgets/upload.py     | 18 ++++++++++++++++--\n tests/unit/test_upload.py | 24 ++++++++++++++++++++++++\n"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "ci / test",
+      "conclusion": "failure",
+      "started_at": "2025-09-19T09:13:00+00:00",
+      "completed_at": "2025-09-19T09:16:30+00:00",
+      "url": "https://github.com/acme/widgets/actions/runs/88",
+      "output": "1 failed, 40 passed in 31.2s -- tests/unit/test_upload.py::test_retry_gives_up"
+    }
+  ],
+  "checkout": {
+    "root": "/home/ubuntu/widgets",
+    "files": [
+      {"path": "src/widgets/upload.py", "exists": true, "sha256": "aa11", "bytes": 4210, "ts": "2025-09-19T09:20:00+00:00"},
+      {"path": "docs/upload.md", "exists": false, "ts": "2025-09-19T09:20:00+00:00"}
+    ]
+  }
+}
