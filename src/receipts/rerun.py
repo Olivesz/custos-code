@@ -4,12 +4,17 @@ Runs the repo's committed test/build configuration (not the command the agent ty
 git worktree with a timeout, and appends the result to the ledger as a RERUN event so the
 re-run is itself auditable. On by default for run_tests/build claims when expected < 60 s.
 
-E3 (decided): the worktree is HEAD overlaid with the live working tree (staged, unstaged, and
-untracked files included), so uncommitted edits count as part of "the final tree", and the
-command is auto-detected from committed config markers (`_detect_test_command`) rather than
-the agent's own typed command or an edited `package.json` script that isn't committed yet.
-`cmd` lets a caller override auto-detection when it already knows the exact command (mainly
-tests, and a future per-claim-type command such as a distinct build vs. test invocation).
+E3 (decided): the worktree is HEAD overlaid with the live working tree -- tracked files as they
+sit on disk plus untracked-but-not-gitignored files, staged or not -- so uncommitted edits count
+as part of "the final tree", but ignored files (venvs, node_modules, build output, caches) never
+enter the sandbox: they aren't part of the tree the agent's report is about, and copying them in
+can make a re-run pass or fail for reasons that have nothing to do with the agent's changes. The
+command is auto-detected from HEAD's committed config markers (`_detect_test_command`), checked
+against the git object store directly rather than the overlaid worktree, so neither the agent's
+own typed command nor an uncommitted edit to (or brand-new untracked) `package.json` can steer
+which runner is picked. `cmd` lets a caller override auto-detection when it already knows the
+exact command (mainly tests, and a future per-claim-type command such as a distinct build vs.
+test invocation).
 
 E4 (async in the Stop hook): `rerun_tests` itself is a blocking call that can take up to
 `timeout_s`, far past the ~10 s the product wants the Stop hook to feel responsive within. The
@@ -50,17 +55,45 @@ _TEST_COMMANDS: tuple[tuple[str, list[str]], ...] = (
 )
 
 
-def _detect_test_command(worktree: Path) -> list[str] | None:
+def _detect_test_command(repo_root: str) -> list[str] | None:
+    """Check HEAD's own committed blobs for a marker file, never the working tree -- an
+    uncommitted edit to (or brand-new untracked) `package.json`/`pyproject.toml`/etc. must not
+    change which runner gets picked (E3).
+    """
     for marker, command in _TEST_COMMANDS:
-        if (worktree / marker).exists():
+        result = subprocess.run(
+            ["git", "-C", repo_root, "cat-file", "-e", f"HEAD:{marker}"],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0:
             return command
     return None
 
 
+def _tracked_files(repo_root: str) -> list[str]:
+    out = subprocess.run(
+        ["git", "-C", repo_root, "ls-files", "-z"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    return [p for p in out.split("\0") if p]
+
+
+def _untracked_unignored_files(repo_root: str) -> list[str]:
+    out = subprocess.run(
+        ["git", "-C", repo_root, "ls-files", "-z", "--others", "--exclude-standard"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    return [p for p in out.split("\0") if p]
+
+
 def _materialize_worktree(repo_root: str, worktree: Path) -> None:
-    """Checkout HEAD into a throwaway worktree, then overlay the actual working tree on
-    top -- staged, unstaged and untracked files included -- so "the final tree" means
-    what is on disk right now, not just the last commit. Never mutates repo_root itself.
+    """Checkout HEAD into a throwaway worktree, then overlay the live working tree on top --
+    tracked files as they sit on disk now, plus untracked-but-not-gitignored files -- so "the
+    final tree" means what git would see if everything were committed right now. Ignored files
+    (venvs, node_modules, build output, caches) are never copied in. A tracked file deleted on
+    disk but not yet committed is removed from the worktree rather than left at its HEAD
+    content. Never mutates repo_root itself.
     """
     subprocess.run(
         ["git", "-C", repo_root, "worktree", "add", "--detach", str(worktree), "HEAD"],
@@ -68,7 +101,20 @@ def _materialize_worktree(repo_root: str, worktree: Path) -> None:
         text=True,
         check=True,
     )
-    shutil.copytree(repo_root, worktree, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
+    repo = Path(repo_root)
+
+    for rel in _tracked_files(repo_root):
+        src, dst = repo / rel, worktree / rel
+        if src.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        else:
+            dst.unlink(missing_ok=True)
+
+    for rel in _untracked_unignored_files(repo_root):
+        src, dst = repo / rel, worktree / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
 
 def rerun_tests(
@@ -83,14 +129,13 @@ def rerun_tests(
     that doesn't have the real ledger identity yet (or the ledger store itself, E8, once it
     exists) renumbers before appending; `run_worker` below passes the real `session_id` since
     it has it. `cmd` overrides auto-detection (E3) when the caller already knows the exact
-    command; otherwise the command is auto-detected from the worktree's own committed config
-    markers.
+    command; otherwise the command is auto-detected from HEAD's own committed config markers.
     """
     with tempfile.TemporaryDirectory(prefix="receipts-rerun-") as tmp:
         worktree = Path(tmp) / "worktree"
         _materialize_worktree(repo_root, worktree)
         try:
-            command = cmd if cmd is not None else _detect_test_command(worktree)
+            command = cmd if cmd is not None else _detect_test_command(repo_root)
             started = datetime.now(UTC)
             timed_out = False
             if command is None:

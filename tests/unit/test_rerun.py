@@ -55,6 +55,68 @@ def test_rerun_tests_picks_up_uncommitted_edits(tmp_path: Path) -> None:
     assert "1 failed" in (event.output or "")
 
 
+def test_rerun_tests_ignores_gitignored_files(tmp_path: Path) -> None:
+    """Ignored files (venvs, build output, caches) never enter the sandbox (#8)."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "pyproject.toml").write_text('[project]\nname = "fixture"\nversion = "0"\n')
+    (repo / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+    (repo / ".gitignore").write_text("ignored_dir/\n")
+    _commit_all(repo)
+
+    (repo / "ignored_dir").mkdir()
+    (repo / "ignored_dir" / "test_should_not_run.py").write_text(
+        "def test_boom():\n    assert False\n"
+    )
+
+    event = rerun_tests(str(repo), timeout_s=30)
+
+    assert event.exit_code == 0
+    assert "1 passed" in (event.output or "")
+
+
+def test_rerun_tests_picks_up_untracked_unignored_files(tmp_path: Path) -> None:
+    """Untracked but not-gitignored files are part of "the final tree" too (#8)."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "pyproject.toml").write_text('[project]\nname = "fixture"\nversion = "0"\n')
+    _commit_all(repo)
+
+    (repo / "test_new.py").write_text("def test_new():\n    assert True\n")
+
+    event = rerun_tests(str(repo), timeout_s=30)
+
+    assert event.exit_code == 0
+    assert "1 passed" in (event.output or "")
+
+
+def test_rerun_tests_drops_files_deleted_since_head(tmp_path: Path) -> None:
+    """A tracked file deleted on disk (uncommitted) must not be resurrected from HEAD (#8)."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "pyproject.toml").write_text('[project]\nname = "fixture"\nversion = "0"\n')
+    (repo / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+    _commit_all(repo)
+
+    (repo / "test_sample.py").unlink()
+
+    event = rerun_tests(str(repo), timeout_s=30)
+
+    assert event.exit_code == 5
+    assert "collected 0 items" in (event.output or "")
+
+
+def test_rerun_tests_detects_command_from_head_not_uncommitted_edits(tmp_path: Path) -> None:
+    """An uncommitted/untracked config marker must not steer runner detection (E3, #8)."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "README.md").write_text("hi\n")
+    _commit_all(repo)
+
+    (repo / "package.json").write_text('{"scripts": {"test": "exit 1"}}\n')
+
+    event = rerun_tests(str(repo), timeout_s=10)
+
+    assert event.exit_code is None
+    assert "no known test config" in (event.output or "")
+
+
 def test_rerun_tests_reports_no_known_test_config(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
     (repo / "README.md").write_text("hi\n")
