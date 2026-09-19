@@ -23,6 +23,8 @@ from typing import Any
 
 from . import claims as claims_mod
 from . import feedback, parsers, rerun
+from . import judge as judge_mod
+from . import review as review_mod
 from . import verdicts as verdicts_mod
 from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
@@ -202,8 +204,15 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     _, state_p, receipt_p = _paths(sid)
     sess, ledger = _ledger_for(payload)
     repo = payload.get("cwd") if isinstance(payload.get("cwd"), str) else sess.cwd
-    claims = claims_mod.extract(report, sid)
-    recs = verdicts_mod.run(claims, ledger, repo)
+    # The measured path (eval/arms/RESULTS.md: 86% vs 70% for the tiered pipeline, McNemar
+    # p=0.00017). Falls back to deterministic rules with no key, so the hook never hard-fails.
+    backend = judge_mod.make_backend()
+    if backend is not None:
+        out = review_mod.review(report, ledger, sid, backend)
+        claims, recs = out.claims, out.verdicts
+    else:
+        claims = claims_mod.extract(report, sid)
+        recs = verdicts_mod.run(claims, ledger, repo)
     with open(receipt_p, "w", encoding="utf-8") as fh:
         fh.write(_render(claims, recs) + "\n")
 
