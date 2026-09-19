@@ -71,7 +71,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [ ] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
 - [ ] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
 - [ ] Devin: booth or email for access; VERIFY list in docs/DEVIN.md. Oliver asks; work paused until then.
-- [ ] Token Company key (`ttc-...`) and the comparison arm (#16). Anush.
+- [ ] Token Company key (`ttc-...`) and the comparison arm (#17). Anush.
 
 ### Sponsor credits to claim (before the event)
 | Credit | Why we need it | Owner |
@@ -80,7 +80,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 | Cognition: $1,000 Devin credits (form) — Cloud, CLI, Desktop | Every Devin path in docs/DEVIN.md; gate on the Cognition track | Parked; Devin work paused |
 | Warp Build plan, code HACKMIT | Demo runs in Warp; optional agent under test | Done (Oliver) |
 | Cursor Pro (SpaceXAI booth code) | Optional fourth agent under test for the bench | Anush, if time |
-| The Token Company: bear-2 compression API (`pip install the-token-company`, key `ttc-...`, sign-in opened 18 Sep, booth) | Cost-comparison arm on the judge window; see issue #16 | Anush |
+| The Token Company: bear-2 compression API (`pip install the-token-company`, key `ttc-...`, sign-in opened 18 Sep, booth) | Cost-comparison arm on the judge window; see issue #17 | Anush |
 | Meta $50 Muse API | Optional cheap extractor for the cost comparison | Anush, optional |
 | Not needed | Runpod, Voloridge compute, Elastic, Deepgram, Linq, Fragment, Notability, hardware | — |
 No Anthropic credits are offered; the Anthropic backend stays comparison-only unless someone has a key.
