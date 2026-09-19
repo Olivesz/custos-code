@@ -81,12 +81,20 @@ _NOT_CLAIM_RE = re.compile(
     | \bby\s+(?:a|an|the)\s+\w+\s+(?:that|which)\s+ran\b   # "updated by a sync that ran…"
     | \b(?:needs?|need\s+to|to\s+do|todo|pending|blocked|waiting|not\s+yet|still\s+(?:needs?|open|to))\b
     | \b(?:cannot|can['’]t)\s+(?:assert|confirm|verify)\b
+    | ^(?:Debug|Fix|Add|Implement|Build|Update|Create|Run|Make|Write|Refactor|Investigate|Check|Review)\s+(?:the|a|an|this|these|your|my)\b   # a task title, not a report of work done
+    | \b(?:are|is|were|was)\s+(?:all\s+)?showing\s+as\b   # observed state, not an action the agent took
     """,
     re.IGNORECASE | re.VERBOSE,
 )
 
 # ---------- object extraction ----------
-_PATH_RE = re.compile(r"(?<![\w/])((?:[\w.-]+/)*[\w.-]+\.(?:py|ts|tsx|js|jsx|go|rs|java|kt|rb|php|c|cc|cpp|h|hpp|cs|swift|md|json|ya?ml|toml|cfg|ini|txt|sql|sh|css|html|env))\b")
+# Absolute and dot-prefixed paths must match whole, or a truncated path turns into a false
+# accusation: `/Users/me/.claude/x/SKILL.md` once matched as `claude/x/SKILL.md`, which does not
+# exist, which became `contradicted`. Leading `/`, `~/` and `.` are part of the path.
+_PATH_RE = re.compile(
+    r"(?<![\w/~.-])((?:~|\.{1,2})?/?(?:[\w.-]+/)*[\w.-]+"
+    r"\.(?:py|ts|tsx|js|jsx|go|rs|java|kt|rb|php|c|cc|cpp|h|hpp|cs|swift|md|json|ya?ml|toml|cfg|ini|txt|sql|sh|css|html|env))\b"
+)
 _CMD_RE = re.compile(r"`([^`\n]{2,120})`")
 _SHA_RE = re.compile(r"\b([0-9a-f]{7,40})\b")
 _REF_RE = re.compile(r"\b(?:to|on|onto|into)\s+`?((?:origin/)?[\w./-]+)`?")

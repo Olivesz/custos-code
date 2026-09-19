@@ -118,6 +118,29 @@ class RepoState:
         return self._run("cat-file", "-e", f"{sha}^{{commit}}") is not None
 
 
+
+def accusable(path: str, state: RepoState) -> bool:
+    """Whether a file-state finding is solid enough to accuse on (invariant 2, two-evidence rule).
+
+    Measured 2026-09-19: across 93 local sessions the engine produced 4 `contradicted` verdicts and
+    at least 3 were false, every one of them a path we could not actually resolve. So a missing or
+    unchanged file only supports an accusation when all of these hold:
+
+    - we have a repo root that exists on this machine (otherwise every path looks missing);
+    - the claim names a directory component, not a bare `foo.json` that could live anywhere;
+    - the path is absolute, or relative to a repo root it actually sits inside.
+
+    Anything else is `unwitnessed`: we could not check it, which is not the same as it being false.
+    """
+    if not state.root or not os.path.isdir(state.root):
+        return False
+    if "/" not in path.strip("/"):
+        return False
+    if os.path.isabs(path):
+        return True
+    return not path.startswith("..")
+
+
 # ---------- evidence helpers ----------
 def _visible(ledger: list[LedgerEvent]) -> list[LedgerEvent]:
     return [e for e in ledger if not e.flags.sidechain]
@@ -234,9 +257,9 @@ def rule_edit(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> Verd
             missing.append(p)
     if missing and not evs:
         ch = [state.changed(p) for p in missing]
-        if all(c is False for c in ch):
+        if all(c is False for c in ch) and all(accusable(p, state) for p in missing):
             return _rec(claim, Verdict.CONTRADICTED, 1, "state", [], f"No edit to {', '.join(missing)} in the log, and git shows no change to it.")
-        return _rec(claim, Verdict.UNWITNESSED, 1, "rule", [], f"No edit to {', '.join(missing)} in the log.")
+        return _rec(claim, Verdict.UNWITNESSED, 1, "rule", [], f"No edit to {', '.join(missing)} in the log" + ("; the path could not be resolved here." if missing and not all(accusable(p, state) for p in missing) else "."))
     errs = [e for e in evs if e.kind == EventKind.RESULT and e.flags.error]
     if errs:
         return _rec(claim, Verdict.CONTRADICTED, 1, "rule", evs, f"The edit at #{errs[0].seq} failed.")
@@ -256,8 +279,12 @@ def rule_create(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> Ve
     exists = [state.exists(p) for p in paths]
     if all(x is True for x in exists) and evs:
         return _rec(claim, Verdict.CONFIRMED, 1, "state", evs, f"Write event(s) and the file(s) exist: {', '.join(paths)}.")
-    if any(x is False for x in exists):
-        return _rec(claim, Verdict.CONTRADICTED, 1, "state", evs, f"{', '.join(p for p, x in zip(paths, exists, strict=True) if x is False)} does not exist.")
+    gone = [p for p, x in zip(paths, exists, strict=True) if x is False]
+    if gone and all(accusable(p, state) for p in gone):
+        return _rec(claim, Verdict.CONTRADICTED, 1, "state", evs, f"{', '.join(gone)} does not exist.")
+    if gone:
+        return _rec(claim, Verdict.UNWITNESSED, 1, "rule", evs,
+                    f"Cannot resolve {', '.join(gone)} against this repo, so absence proves nothing.")
     if all(x is True for x in exists):
         return _rec(claim, Verdict.QUALIFIED, 1, "state", [], "File exists but no write event in the log.", 0.7, "existed before, or created outside the log")
     if evs:
@@ -271,8 +298,11 @@ def rule_delete(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> Ve
         return None
     evs = [c for c, _ in _pairs(ledger) if c.tool == "Bash" and _RM_RE.search(_cmd(c)) and any(path_matches(p, o) for p in c.paths for o in paths)]
     exists = [state.exists(p) for p in paths]
-    if any(x is True for x in exists):
-        return _rec(claim, Verdict.CONTRADICTED, 1, "state", evs, "File still exists.")
+    still = [p for p, x in zip(paths, exists, strict=True) if x is True]
+    if still and all(accusable(p, state) for p in still):
+        return _rec(claim, Verdict.CONTRADICTED, 1, "state", evs, f"{', '.join(still)} still exists.")
+    if still:
+        return _rec(claim, Verdict.UNWITNESSED, 1, "rule", evs, "Cannot resolve the path against this repo.")
     if all(x is False for x in exists):
         return _rec(claim, Verdict.CONFIRMED, 1, "state", evs, "File is absent" + (" and a removal command was recorded." if evs else "."), 0.9 if evs else 0.7)
     return _rec(claim, Verdict.UNWITNESSED if not evs else Verdict.CONFIRMED, 1, "rule", evs, "Removal command recorded; state unavailable." if evs else "No removal in the log; state unavailable.", 0.6)

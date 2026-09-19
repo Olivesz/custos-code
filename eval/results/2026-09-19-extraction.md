@@ -49,3 +49,34 @@ Question: how good is the regex baseline actually, and can a model do better?
   Face) to raise the regex fallback's recall and to build a far larger gold set than 10 sessions.
 - Cascade worth testing once labels exist: `gpt-5-mini` for recall 0.95, then a stronger model or
   the rules to filter, instead of one model doing both jobs.
+
+---
+
+# False-accusation audit, same day
+
+Rather than label 204 sentences for "is this a claim", we pointed the check at the only verdict
+that can harm a user: `contradicted`. Ran the full pipeline over **93 local sessions with a report
+and ≥3 tool calls**.
+
+| | before | after |
+|---|---|---|
+| claims extracted | 122 | 122 |
+| accusations (`contradicted`) | 4 | **1** |
+| of which false on inspection | ≥3 | 0 known |
+
+All three false accusations had one cause: `_PATH_RE` truncated absolute and dot-prefixed paths, so
+`/Users/me/.claude/skills/standup/SKILL.md` was parsed as `claude/skills/standup/SKILL.md`, which of
+course does not exist, which became an accusation. The fourth was an extraction error: a restated
+task (`Debug the pipeline — …`) typed as an edit claim.
+
+Fixes:
+1. `_PATH_RE` now matches absolute, `~`-prefixed and `./`-prefixed paths whole.
+2. New `rules.accusable()`: a missing or unchanged file may only support an accusation when the
+   repo root exists on this machine, the claim names a directory component (not a bare
+   `foo.json` that could live anywhere), and the path is absolute or inside that root. Otherwise
+   the verdict is `unwitnessed` — we could not check it, which is not the same as it being false.
+3. `_NOT_CLAIM_RE` drops imperative task titles and observed-state phrasing.
+
+**The lesson worth keeping:** 45 minutes × 3 people aimed at the extractor would not have found
+this. Thirty seconds aimed at the accusations did. Measure the stage where the product can hurt
+someone, not the stage that is easiest to label.
