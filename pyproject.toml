@@ -27,6 +27,7 @@ build-backend = "hatchling.build"
 line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # long lines in docstrings are fine; the formatter handles code
 
 [tool.mypy]
 strict = true

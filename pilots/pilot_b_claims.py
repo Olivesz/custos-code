@@ -3,7 +3,11 @@ Usage: ANTHROPIC_API_KEY=... .venv/bin/python pilot_b_claims.py path/to/session.
 1. Build the evidence ledger from the harness-written JSONL: every tool_use (name+input) and tool_result (truncated), timestamped.
 2. Take the final assistant message as the 'report'.
 3. Ask the model to split the report into atomic claims and label each CONFIRMED / CONTRADICTED / NO_EVIDENCE against the ledger, citing ledger line numbers."""
-import json, sys, argparse, anthropic
+import argparse
+import json
+
+import anthropic
+
 ap=argparse.ArgumentParser(); ap.add_argument('jsonl'); ap.add_argument('--model',default='claude-opus-5'); ap.add_argument('--max-ledger-chars',type=int,default=60000)
 a=ap.parse_args()
 ledger=[]; final=None; results={}
