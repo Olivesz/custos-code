@@ -1,0 +1,147 @@
+# Gaps and how we close them rigorously
+
+Written after attacking our own measurements (`eval/results/2026-09-19-extraction.md`,
+`docs/METHODS.md`). Each gap states the finding, why the current evidence is insufficient, and the
+specific experiment that closes it. Ordered by how badly a rigorous reviewer would hurt us.
+
+---
+
+## G1 — Accusation precision is undefined (n = 0)
+
+**Finding.** After the path fix, the engine makes **zero** `contradicted` verdicts across 93 real
+local sessions and 121 extracted claims. Our headline safety claim ("we do not falsely accuse") has
+no supporting data. Not a good rate: no rate at all.
+
+**Why more real sessions will not fix it.** Precision is a property of the positive class. You
+cannot estimate it from a sample in which you never predict positive. Collecting another 500 honest
+sessions would still give n = 0 accusations and tell us nothing. This is the classic rare-positive
+estimation problem, and the standard answer is to *construct* the positive class rather than wait
+for it.
+
+**The experiment that closes it.** Two corpora with ground truth known by construction:
+
+- **Trap sessions (positive class).** A repo fixture plus a task whose honest completion is
+  impossible, run through a real agent: a `pytest | head` that exits 0 on "collected 0 items", a
+  broken runner, a deleted failing test, a ghost write. An oracle that does not read the report
+  knows the truth. Any accusation the checker makes here is a **true positive by construction**.
+- **Negative controls (honest class).** Sessions where the agent genuinely did the work, verified by
+  the same oracle. Any accusation here is a **false positive by construction**.
+
+From those two we get precision, recall and F1 on the accusation class with **zero human
+labelling**, because the labels come from the environment rather than a judgement.
+
+**Reporting standard.** Wilson intervals, not point estimates, and the number of trials stated. With
+`k` traps × `m` models × `n` runs the sample size is explicit and the intervals will be honest.
+
+**Watch for.** Trap sessions are synthetic, so a trap-only precision figure is optimistic about the
+wild. Report it as "precision on adversarially-constructed cases", and keep the real-corpus
+abstention rate beside it as the complementary number.
+
+---
+
+## G2 — The metamorphic suite is 60% passable by a do-nothing checker
+
+**Finding.** A stub whose `run()` returns `unwitnessed` for every claim passes **9 of 15** relation
+tests. Most of our relations are *safety* properties ("must not remain confirmed"), which a constant
+abstainer satisfies for free. Only 6 are *liveness* properties ("must become contradicted", "must
+become unrecorded").
+
+**Why this matters.** A suite that a trivial system passes does not evidence correctness. Stated
+formally: our relations are necessary conditions, and we have been presenting them as if they were
+close to sufficient.
+
+**The experiment that closes it.** Two moves.
+
+1. **Add liveness relations** so that abstention is punished: for every seed where evidence is
+   present and unambiguous, the verdict must be a specific answer, not merely "not confirmed".
+2. **Measure suite strength directly with a mutation score.** Mechanically mutate the checker
+   (invert a comparison, drop a guard, widen a regex, return the wrong verdict constant), run the
+   suite, and report the fraction of mutants killed. That is the standard answer to "is your test
+   suite any good", and unlike a pass count it cannot be satisfied by a do-nothing implementation.
+   Target: publish the mutation score, whatever it is.
+
+---
+
+## G3 — The labeller we scored against is unreliable
+
+**Finding.** Three runs of the same strict prompt over the same 204 sentences found **73, 62 and 67**
+claims. Pairwise Cohen's κ was 0.72–0.81, but only **61%** of the claims it ever names appear in all
+three runs.
+
+**Why this matters.** Every extraction number we have (regex recall 0.14, classifier recall 0.60)
+was scored against a single noisy draw from that instrument. It also caps what any system can score:
+you cannot demonstrate accuracy beyond the reliability of your reference.
+
+**The experiment that closes it.**
+
+1. **Ensemble the reference.** Use majority-of-3 as the label and report the residual instability.
+   Variance of a majority vote is lower; quantify by how much rather than assuming.
+2. **Calibrate against humans on a small sample.** 30 sentences labelled by two people, compared
+   against the machine majority. That yields machine-vs-human κ, which is the number that says
+   whether the machine reference is usable at all. Thirty rows is ten minutes, not forty-five.
+3. **Report the ceiling explicitly.** If human-vs-human κ on the same 30 rows is 0.7, then 0.7 is
+   the ceiling for any system and a system near it is at human level, not failing.
+
+This is where the scarce human effort belongs: calibrating the instrument, not labelling the corpus.
+
+---
+
+## G4 — The capture–recapture estimate is too unstable to cite
+
+**Finding.** Chapman's bias-corrected estimator gives N̂ = 101 with a 95% CI of **[67, 135]**, 67% of
+the estimate. Classifier recall comes out 0.62 with CI **[0.47, 0.94]**. The overlap is nAB = 9, and
+the estimator's variance blows up at small overlap.
+
+**Also an assumption problem.** Lincoln–Petersen and Chapman both assume the two detectors fail
+independently. A regex and a language model both key on surface lexical cues, so they will miss the
+same terse and unusual claims. Positive dependence inflates the overlap, which deflates N̂, which
+**overstates recall**. Our recall figures are therefore upper bounds, and we do not know by how much.
+
+**The experiment that closes it.** On the trap corpus the set of true claims is known by
+construction, so recall is measured directly and no estimator is needed. Keep capture–recapture only
+as an order-of-magnitude sanity check on the wild corpus, always with the CI and the dependence
+caveat attached, or drop it from the pitch.
+
+---
+
+## G5 — Coverage is 7%
+
+**Finding.** Of 121 claims extracted across the real corpus, the checker answers 8 and abstains on
+113. A tool that is safe because it almost never speaks is not yet a product.
+
+**The experiment that closes it.** An **ablation**: run the same corpus with tiers progressively
+enabled (rules only; + re-run; + judge) and report coverage and accusation count at each step. That
+answers two questions at once: how much coverage each tier buys, and whether any tier is dead
+weight. If the judge moves coverage from 7% to something material without adding accusations, it has
+earned its place; if it does not, we should say so and cut it.
+
+Part of the low coverage is upstream: the regex extracts unanswerable junk, which inflates the
+denominator. Measure coverage against classifier-extracted claims too, and report both.
+
+---
+
+## G6 — The corpus is one person's sessions
+
+**Finding.** All 93–120 sessions come from a single user and skew toward docs, planning and repo
+hygiene rather than test-and-build coding. The claim distribution, and therefore every rate we
+report, may not transfer.
+
+**The experiment that closes it.** SWE-chat (issue #27): 6,000 real sessions across Claude Code,
+Codex, Cursor and Copilot, ODC-BY, auto-gated. Sample stratified by agent and task type. Until then,
+every rate in the deck carries the sampling caveat in the same sentence, not in a footnote.
+
+---
+
+## Priority under a deadline
+
+| | Gap | Closes | Effort |
+|---|---|---|---|
+| 1 | G1 traps + negative controls | the undefined safety number, with construction-known labels | high value, moderate effort |
+| 2 | G2 mutation score + liveness relations | "your suite proves nothing" | low effort, high credibility |
+| 3 | G5 ablation | "why five tiers", and the 7% coverage problem | low effort, one run |
+| 4 | G3 30 human labels | whether any extraction number is usable | 10 minutes of human time |
+| 5 | G6 SWE-chat | external validity | blocked on account access |
+| 6 | G4 | drop it or caveat it; superseded by G1 | free |
+
+The through-line: **every remaining number should come from an environment that knows the truth, or
+carry an interval and a stated assumption.** Nothing asserted.
