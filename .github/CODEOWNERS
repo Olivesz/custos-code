@@ -23,6 +23,7 @@
 /docs/DESIGN.md                @Olivesz
 /docs/design-doc.html          @Olivesz
 /docs/MECHANICS.md             @Olivesz
+/docs/WARP.md                  @Olivesz
 /docs/prototype/               @Olivesz
 
 # Anush: parsers, integrity, re-run, bench, eval, cost
