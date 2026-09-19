@@ -25,22 +25,6 @@ Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The bu
 - Finance reconciliation fixture and, if it fits, the cross-run `memory.md` loop (Maximor).
 - **Evidence track (parallel, starts now):** recruit testers, run the study in `docs/EVIDENCE_PLAN.md`, collect donated sessions, coordinate gold-set labelling, gather testimonials, cut the demo video.
 
-### Interim while Ananya is out (from 19 Sep; revert when she is back)
-Her calendar-time work cannot wait; her build work can. Redistribution:
-
-| Item | Was | Now | Why |
-|---|---|---|---|
-| Codex post-hoc adapter (`adapters/codex.py`) | Ananya | **Anush** | Fully specified from a real rollout (docs/ADAPTERS.md §3); it is a parser job, and it feeds the bench runner he owns |
-| Docker for the bench runner | Ananya | **Anush** | He owns bench |
-| Tester recruitment: ask script, first 15 outreach messages, consent form | Ananya | **Oliver** (start now) | Replies take days; this is the long pole |
-| Gold-set session selection (seeded random, 20 sessions) | Ananya (logistics) | **Oliver** | Needed by hour 8 regardless |
-| CI, packaging, `uv` | Ananya | **Oliver** (already done for v0) | Only maintenance left |
-| Devin Path C adapter, blueprint recorder, API nudge | Ananya | **Paused** until Devin access; then Ananya | Blocked on access anyway |
-| Copilot and OTel adapters | Ananya | **Paused** (post-event) | Not on the critical path |
-| Finance fixture and memory loop (Maximor) | Ananya | **Paused**; one slide unless she is back by hour 12 | Conditional track |
-| PR-comment GitHub Action | Ananya | **Oliver after the hour-10 go/no-go**, else post-event | Demo form B is nice-to-have; form A is the demo |
-| Running study sessions, testimonials, demo video | Ananya | **Ananya on return**; Oliver keeps the tracker warm | Needs a person present |
-
 ### Shared
 - Gold-set labelling: all three label the same 100 claims independently; κ is computed across us.
 - Pitch rehearsal: twice, timed, in Warp.
@@ -57,25 +41,46 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 ## Phases
 
 ### Now → event (calendar time; the evidence track is the long pole)
-- [x] Repo created, CI green, collaboration rules merged (PR #1); Anush and Ananya are collaborators; CODEOWNERS routes reviews.
+- [x] Repo created; collaboration rules, CODEOWNERS, and CI workflow committed. Current remote CI status and collaborator access were not rechecked in the 19 Sep audit.
+- [x] Packaging metadata, Makefile targets, and pre-commit configuration committed. Local environment setup and passing checks remain to be verified (see audit below).
 - [x] Design doc v0.4, research report, mechanics, adapters, Devin plan, prototype, evidence protocol.
 - [ ] Keys set (OpenAI, Anthropic) for Oliver and Anush; Codex CLI and Claude Code logged in.
 - [ ] Register for the OpenAI challenge (credits only for submitters). Oliver.
-- [ ] Recruitment started: ask script written, first 15 messages sent, consent form drafted. Oliver (interim).
+- [ ] Recruitment started: ask script written, first 15 messages sent, consent form drafted. Ananya.
 - [x] Study metrics pre-registered in `docs/EVIDENCE_PLAN.md`.
-- [ ] Gold set: 20 sessions chosen with a recorded seed (10 local, 10 SWE-chat); ~100 claims extracted; labelling by Oliver and Anush now, Ananya's pass when back. Oliver.
-- [ ] Claude Code post-hoc adapter + 3 golden tests. Oliver. Unblocks `receipts check --last`.
-- [ ] Codex post-hoc adapter + 3 golden tests from local rollouts. Anush.
+- [ ] Gold set: 20 sessions chosen with a recorded seed (10 local, 10 SWE-chat); ~100 claims extracted; all three label independently. Ananya coordinates selection and labelling.
+- [x] Claude Code post-hoc adapter + 3 adapter tests (one golden comparison, flags/redaction, latest-session lookup), merged in PR #5 (`791a28b`). Oliver. `receipts check --last` displays the ledger summary and report; verdicts are not implemented. Tests were not successfully rerun in the 19 Sep audit (see below).
+- [x] Hash-chain construction and verification, basic secret redaction, and a chain/tamper unit test implemented. SQLite persistence and the verification CLI remain unfinished.
+- [ ] Codex post-hoc adapter + 3 golden tests from local rollouts. Ananya.
 - [ ] pytest and jest parsers with hypothesis tests; pipe flagger. Anush.
 - [ ] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
 - [ ] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
 - [ ] Devin: booth or email for access; VERIFY list in docs/DEVIN.md. Oliver asks; work paused until then.
 - [ ] Token Company sign-in; confirm compressor API shape. Anush.
 
-### Next five, per person (as of 19 Sep)
-**Oliver:** (1) Claude Code post-hoc adapter and golden tests; (2) claim extractor with the regex baseline; (3) recruitment messages out and consent form; (4) gold-set selection with seed; (5) E9 experiment on the PreToolUse wrapper.
-**Anush:** (1) Codex post-hoc adapter and golden tests; (2) pytest/jest parsers + pipe flagger with property tests; (3) hash-chain verification CLI (`receipts verify-ledger`); (4) piped-runner and broken-runner fixtures with oracles; (5) cost meter skeleton wired to both judge backends.
-**Ananya (on return):** (1) Devin Path C adapter; (2) run the first timed-verification sessions with recruited testers; (3) gold-set labelling pass; (4) PR-comment Action; (5) finance fixture only if hour 12 has not passed.
+### Repository audit (19 Sep; Ananya back)
+
+Ananya's original ownership above is restored. This audit covers the current checkout through `7ebc42d`; unchecked external tasks are not evidence that nobody has done them.
+
+| Area | Evidence and remaining work |
+|---|---|
+| Documentation and prototype | Design v0.4, research, mechanics, adapter/Devin specs, study protocol, and HTML prototype are present. The prototype is a mock, not an engine integration. |
+| Infrastructure | CI runs lint, types, and tests; packaging and developer commands exist. No committed uv lockfile or bench Dockerfile was found. The eval CI gate is still a comment. |
+| Claude Code and ledger | Adapter, CLI ledger/report display, hashing, and basic redaction are implemented. There are three adapter tests and one hash-chain test; only one adapter fixture has an expected golden ledger. |
+| Engine and live loop | Claim extraction, rules, verdict orchestration, judge backends/windowing, runner parsing, re-execution, feedback, and ledger persistence are stubs. Hook scripts call an unimplemented `_hook` command; `watch` and `cost` exit with code 2. |
+| Other integrations | Codex, Devin, Copilot, and OTel adapters are stubs. No implemented universal recorder, PR-comment Action, finance fixture, or cross-run memory loop was found. |
+| Bench, eval, and study | One piped-runner scenario YAML and the labelling guide exist. No implemented trap fixture repos/oracles, gold-set labels, study results, or cost results were found in the checkout. Recruitment, donations, access, registrations, and submissions need owner confirmation. |
+
+Local verification attempted on 19 Sep:
+
+- `make check` exited 2 at the lint step: `make: uv: No such file or directory`. Lint, type checking, and tests did not run through this target.
+- `PYTHONPATH=src python3 -m pytest -q` exited 2 with two collection errors: the available Python 3.10.16 cannot import `enum.StrEnum`. The project requires Python >=3.12. No tests passed or failed execution in this attempt; collection failed.
+- Current remote CI status was not verified. These environment failures do not establish whether the implementation passes under its required environment.
+
+### Next five, per person (as of 19 Sep; ownership restored)
+**Oliver:** (1) claim extractor with the regex baseline; (2) Tier 1–2 rules and verdict orchestration; (3) E9 experiment on the PreToolUse wrapper; (4) live hooks and correction loop; (5) sponsor access and demo preparation.
+**Anush:** (1) pytest/jest parsers + pipe flagger with property tests; (2) hash-chain verification CLI (`receipts verify-ledger`); (3) piped-runner and broken-runner fixtures with oracles; (4) eval metrics and baseline comparison on the shared gold set; (5) cost meter wired to both judge backends.
+**Ananya:** (1) recruitment ask, consent form, and scheduling; (2) Codex post-hoc adapter and golden tests; (3) seeded gold-set selection and coordination of all three labelling passes; (4) local uv setup/CI verification and Docker for the bench runner; (5) run the first timed-verification sessions when the checker and study materials are ready. Then follow the adapter build order (Devin requires access), build the PR-comment Action, and take the finance/memory track only if time permits.
 
 ### Event: 24 hours (see `docs/DESIGN.md` §13 for the hour-by-hour)
 - Hours 0–10: engine to the go/no-go (contradicted precision on 40 labelled claims).
@@ -91,8 +96,8 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 
 | Track | Owner | Why it cannot wait |
 |---|---|---|
-| Tester recruitment and scheduling | Oliver (interim), Ananya | People take days to reply; sessions take a week to accumulate |
-| Session donations | Oliver (interim), Ananya | Real, unrigged sessions are required in every demo ("you planted the lie") |
+| Tester recruitment and scheduling | Ananya | People take days to reply; sessions take a week to accumulate |
+| Session donations | Ananya | Real, unrigged sessions are required in every demo ("you planted the lie") |
 | Gold-set labelling | All | Needs three independent passes and a reconciliation meeting |
 | Sponsor access (OpenAI credits, Devin, Token Company sign-in) | Oliver | Gated by sponsor timelines |
 | Bench fixtures | Anush | Traps must be validated to actually elicit the failure before they are trusted |
@@ -105,4 +110,4 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - Bench: ≥ 4 traps × 2 agents × 10 runs, rates with 95% CIs.
 - Cost chart on 50 sessions.
 - Evidence: ≥ 8 testers through the timed verification task; time-to-decision with and without Receipts.
-- Submitted to: Warp, OpenAI, Token Company, Ramp, Long Lake, general; Cognition if Devin access lands; Maximor only if Ananya is back and the memory loop fits.
+- Submitted to: Warp, OpenAI, Token Company, Ramp, Long Lake, general; Cognition if Devin access lands; Maximor only if the memory loop fits.
