@@ -142,12 +142,12 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
                     seq += 1
                 elif rec["type"] == "user" and kind == "tool_result":
                     call = calls.get(str(block.get("tool_use_id")))
-                    tool = call[0] if call else None
-                    inp = call[1] if call else {}
+                    rtool: str | None = call[0] if call else None
+                    rinp: dict[str, Any] = call[1] if call else {}
                     tur = rec.get("toolUseResult")
                     full = _result_text(block, tur)
                     full = redact(full)
-                    flags = _flags_from_result(tool, inp, block, tur, sidechain)
+                    flags = _flags_from_result(rtool, rinp, block, tur, sidechain)
                     paths: list[str] = []
                     if isinstance(tur, dict):
                         fp: object = tur.get("filePath")
@@ -158,7 +158,7 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
                     if len(full.encode()) > MAX_OUTPUT_BYTES:
                         flags.truncated = True
                     events.append(LedgerEvent(
-                        seq=seq, ts=ts, session_id=session_id, kind=EventKind.RESULT, tool=tool,
+                        seq=seq, ts=ts, session_id=session_id, kind=EventKind.RESULT, tool=rtool,
                         output=full.encode()[:MAX_OUTPUT_BYTES].decode(errors="ignore"),
                         output_hash=hashlib.sha256(full.encode()).hexdigest(),
                         exit_code=None, paths=paths, cwd=rec_cwd, flags=flags,
