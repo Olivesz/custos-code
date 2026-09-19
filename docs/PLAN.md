@@ -20,7 +20,7 @@ Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The bu
 
 ### Ananya — infra, integrations, and the evidence track
 - Repo hygiene, CI (`.github/workflows/ci.yml`), packaging, `uv`, Docker for the bench runner.
-- Adapters: `devin.py` first (Path C, then the blueprint recorder and CLI hooks per `docs/DEVIN.md`), then `codex.py`, `copilot.py`, `otel.py`.
+- Adapters in build order (`docs/ADAPTERS.md` §6): Claude Code post-hoc (with Oliver), `codex.py` post-hoc, then the class-M recorder, then Devin Path C/A/B when access arrives, then `copilot.py`, `otel.py`.
 - The PR-comment GitHub Action (product sketch B).
 - Finance reconciliation fixture and, if it fits, the cross-run `memory.md` loop (Maximor).
 - **Evidence track (parallel, starts now):** recruit testers, run the study in `docs/EVIDENCE_PLAN.md`, collect donated sessions, coordinate gold-set labelling, gather testimonials, cut the demo video.

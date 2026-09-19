@@ -33,10 +33,12 @@ Status: `open` · `decided` · `deferred (post-event)`
 ## Adapters and integrations
 | # | Question | Owner | Status | Notes |
 |---|---|---|---|---|
-| A1 | Codex rollout JSONL field mapping | Ananya | open | Format observed on this machine (MECHANICS §2): session_meta, turn_context, function_call/exec_command, exec_command_end (argv), function_call_output with "Process exited with code N", patch_apply_end, agent_message, task_complete. VERIFY exit field on exec_command_end and patch_apply_end fields on three real rollouts. |
+| A1 | Codex rollout JSONL field mapping | Ananya | decided | Format observed on this machine (MECHANICS §2): session_meta, turn_context, function_call/exec_command, exec_command_end (argv), function_call_output with "Process exited with code N", patch_apply_end, agent_message, task_complete. exec_command_end has argv, exit_code, aggregated_output, duration; patch_apply_end has success and per-path changes; task_complete has last_agent_message. Full map in docs/ADAPTERS.md §3. |
 | A2 | Devin: which evidence path first? | Ananya | open | See docs/DEVIN.md. Path C (PR + structured_output + CI + git) ships first; Path A (CLI hooks in `.devin/hooks.v1.json`, `--export` ATIF) for the live demo; Path B (blueprint-planted recorder) is the Cognition showpiece and has three VERIFYs. Booth hour 0: org API token, blueprint editing on hackathon plan, send-message endpoint. |
 | A3 | Copilot session log format and stable link from a PR | Ananya | open | Documented as attached to commits; verify the export. |
 | A4 | Cursor: SpecStory export vs hooks | Ananya | deferred (post-event) | |
+| A6 | Codex loop: lifecycle hooks (config reference says they exist) vs `codex exec resume` with the nudge as next prompt | Ananya | open | VERIFY hook shape; until then class F with resume. docs/ADAPTERS.md §3. |
+| A7 | Universal recorder (class M): DEBUG trap vs PATH-first shell wrapper inside agent-spawned shells | Oliver | open | docs/ADAPTERS.md §4. Also the Devin cloud recorder. |
 | A5 | `transcript_path` lag in Claude Code hooks | Oliver | decided | Use `last_assistant_message` from Stop/SubagentStop for the report; transcript only for history. |
 
 ## Bench and eval
