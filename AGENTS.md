@@ -84,6 +84,10 @@ Anywhere in code or docs, use a greppable tag with an owner:
 
 `grep -rn "NEEDS-DECISION" .` is the running list. When a tag is resolved, move the decision to `docs/adr/` (if non-obvious) or just delete the tag, and update `docs/OPEN_QUESTIONS.md`.
 
+## Working with the other two people
+
+Read `CONTRIBUTING.md`. In short: you write only inside the paths `.github/CODEOWNERS` assigns to your owner; `models.py`, `AGENTS.md`, `OPEN_QUESTIONS.md`, `adr/` and `pyproject.toml` are shared seams that change only via a PR reviewed by both others; never commit to `main`; branch `<name>/<area>-<short>`; small PRs, rebased on `main`, squash-merged, CI green, one reviewer; `make check` before every push; the PR's Receipt section holds real command output.
+
 ## Conventions
 
 - Python 3.12, `uv`, Pydantic v2 for every type, Typer CLI, Rich tables. `ruff` and `mypy --strict` clean.
