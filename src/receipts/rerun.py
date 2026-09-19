@@ -34,6 +34,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -45,10 +46,13 @@ MAX_OUTPUT_BYTES = 4096  # matches config.example.toml [ledger].max_output_bytes
 
 # E3: the repo's own committed test config decides the command, never the command
 # the agent typed (defeats an edited `package.json` script or a swallowed exit code).
+# `sys.executable`, not a bare "python": plenty of machines (this one included) have no `python`
+# on PATH, only `python3` or a venv-scoped binary -- a bare "python" fails closed with
+# FileNotFoundError on those instead of running the re-run at all.
 _TEST_COMMANDS: tuple[tuple[str, list[str]], ...] = (
-    ("pyproject.toml", ["python", "-m", "pytest"]),
-    ("pytest.ini", ["python", "-m", "pytest"]),
-    ("setup.cfg", ["python", "-m", "pytest"]),
+    ("pyproject.toml", [sys.executable, "-m", "pytest"]),
+    ("pytest.ini", [sys.executable, "-m", "pytest"]),
+    ("setup.cfg", [sys.executable, "-m", "pytest"]),
     ("package.json", ["npm", "test", "--silent"]),
     ("go.mod", ["go", "test", "./..."]),
     ("Cargo.toml", ["cargo", "test"]),
