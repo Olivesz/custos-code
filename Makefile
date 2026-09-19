@@ -1,19 +1,24 @@
-.PHONY: check fix test lint type sync
+.PHONY: check fix test lint type sync build
+
+UV ?= uv
 
 sync:
-	uv sync --all-extras
+	$(UV) sync --locked --all-extras
 
 lint:
-	uv run ruff check .
+	$(UV) run --locked ruff check .
 
 type:
-	uv run mypy src
+	$(UV) run --locked mypy src
 
 test:
-	uv run pytest -q
+	$(UV) run --locked pytest -q
 
 check: lint type test
 
 fix:
-	uv run ruff check . --fix
-	uv run ruff format .
+	$(UV) run --locked ruff check . --fix
+	$(UV) run --locked ruff format .
+
+build:
+	$(UV) build

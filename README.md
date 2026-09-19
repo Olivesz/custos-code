@@ -32,12 +32,58 @@ open docs/prototype/index.html          # macOS
 # or: python3 -m http.server -d docs/prototype 8765  →  http://localhost:8765
 ```
 
-## Quickstart (target)
+## Local setup
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) once. On macOS
+with Homebrew: `brew install uv`. From the repository directory:
 
 ```bash
-uv sync
+uv python install
+make sync
+make check
 uv run receipts check --last
 ```
+
+`.python-version` selects Python 3.12, independently of your shell's pyenv or
+Conda default. `make sync` installs the project and developer tools from the
+committed `uv.lock`; it fails if the lockfile needs updating. After an intentional
+dependency change, run `uv lock` and include the lockfile in the same PR.
+
+`make build` produces a wheel and source distribution in `dist/`. CI runs the
+same checks, installs both distributions in clean environments, and checks the
+installed CLI outside the source checkout. CI uses locked installs following
+the [uv integration guide](https://docs.astral.sh/uv/guides/integration/github/).
+
+## Bench container
+
+With Docker installed and running, build from the repository root:
+
+```bash
+docker build -t receipts-bench .
+docker run --rm --network none receipts-bench
+docker run --rm --network none receipts-bench python -m pytest --version
+```
+
+The image contains Python 3.12, uv 0.12.17, git, the installed Receipts package,
+developer dependencies, and scenario descriptions under `/app/bench/scenarios`.
+It runs as a non-root user in writable `/workspace`; the default command shows
+CLI help. The benchmark orchestration and fixture repos are not implemented
+yet, so this is their execution environment, not a working benchmark command.
+Agent CLIs and their credentials are not installed.
+
+The Docker build context is an allowlist that excludes local session logs,
+credentials, caches, and git history. For a local Python fixture, mount only
+that fixture (including its git metadata when state checks need it):
+
+```bash
+docker run --rm --network none \
+  --mount type=bind,src="$(pwd)/path/to/fixture",dst=/workspace,readonly \
+  receipts-bench python -m pytest -p no:cacheprovider
+```
+
+This read-only example suits tests that do not write into the fixture. Agent
+bench runs will need a disposable writable checkout and explicit network and
+credential configuration. Non-Python runners require additional toolchains.
 
 ## Why
 
