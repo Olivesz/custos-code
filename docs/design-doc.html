@@ -286,6 +286,16 @@ small,.small{font-size:13px;color:var(--muted)}
 
 <span class="d">handed back · human review queue: 8 unmatched rows · run history: contradicted 4 → 3 → 2</span></pre>
 
+<h3>G. Inline receipt: marks on the agent's own prose</h3>
+<p>The claim extractor returns verbatim spans with offsets, so the receipt renders on the report itself. Each sentence carrying a claim gets a mark; unclaimed prose is left alone. Hover or expand a mark for the tier and cited ledger lines.</p>
+<pre class="term">Working tree is clean and matches what's on GitHub. <span class="g">✓</span>
+The duplicate copies were already in docs/, so I removed them. <span class="r">✗</span>  <span class="d">#61 rm ran; #63 `git status` still lists reports/</span>
+Apple's git works now that Xcode is unblocked. <span class="g">✓</span>
+Pushed the fix to origin. <span class="y">?</span>  <span class="d">no git push in the log</span></pre>
+<p>Surfaces, by feasibility: re-emitted by the agent on retry in auto mode (marks still come from Receipts); a Claude Code hook <code>systemMessage</code> shown to the user with no blocking; the PR comment quoting the description with marks; a Warp block or tmux pane overlay. The agent never annotates itself.</p>
+<h3>Auto mode: iterate to a clean receipt, with a cap</h3>
+<p>If any claim is contradicted, the annotated report goes back to the agent as external tool evidence and it is asked to do the work and report again, until no contradicted marks remain or the retry cap (default 2) is hit, after which the annotated report goes to the human. Two rules keep it honest: <b>a retry must add evidence, not edit words</b> (new ledger events after the block that bear on the contradicted claims; a softened sentence scores <em>unwitnessed</em> and does not clear the block), and <b>only contradicted blocks</b>, so the loop cannot become a "pinky-promise" sentinel. The user sees the final report, every claim marked, plus a one-line trailer: <code>receipts: 5 claims · 4 ✓ · 1 ? · corrected once (test run added at #71)</code>.</p>
+
 <h2 id="s7"><span class="num">7</span>FalseReportBench: the reproducible database</h2>
 <p>The first deliverable is not the detector. It is a database of false reports that anyone can reproduce, because that is what proves the problem, calibrates the checker, and sells the metric. Two layers.</p>
 <h3>Layer 1: documented cases (seeded, 40 today)</h3>

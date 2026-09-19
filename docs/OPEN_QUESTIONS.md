@@ -13,6 +13,8 @@ Status: `open` · `decided` · `deferred (post-event)`
 | P4 | Product name. "Receipts" is a placeholder. | All | open | Decide before the README goes public. |
 | P5 | Scope of `qualified`: which evidence changes count (test deleted, renamed, assertion removed, flaky)? | Oliver | open | See DESIGN §4. Needs a rule list, not a judge. |
 | P6 | Tier 5 intent coverage: in scope for the event or post-event? | Oliver | open | Recommendation: post-event, one slide only. |
+| P7 | Inline receipt: which overlay surface first (agent re-emit, hook systemMessage, PR comment, Warp block)? | Oliver | open | See DESIGN §6G. Recommendation: hook systemMessage for the event; agent re-emit in auto mode. |
+| P8 | Auto mode retry cap and the "new evidence required" rule: how to detect that a retry added evidence for a specific claim? | Oliver | open | Ledger events after the block whose paths/commands match the claim's objects. Cap default 2. |
 
 ## Engine
 | # | Question | Owner | Status | Notes |

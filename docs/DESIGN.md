@@ -236,6 +236,39 @@ receipts run 3 of 5 · finance/reconcile-q3 · 41 events
 handed back · human review queue: 8 unmatched rows · run history: contradicted 4 → 3 → 2
 ```
 
+### G. Inline receipt: marks on the agent's own prose
+
+The claim extractor already returns verbatim spans with character offsets, so the receipt can be rendered *on the report itself* instead of beside it: each sentence that carries a claim gets a mark at its end, and unclaimed prose is left alone.
+
+```
+Working tree is clean and matches what's on GitHub. ✓
+The duplicate copies were already in docs/, so I removed them. ✗  (#61 rm ran; #63 `git status` still lists reports/)
+Apple's git works now that Xcode is unblocked. ✓
+Pushed the fix to origin. ?  (no git push in the log)
+```
+
+Marks: ✓ confirmed · ✗ contradicted · ? unwitnessed · ○ unrecorded · ≈ qualified. Hovering or expanding a mark shows the tier and the cited ledger lines.
+
+Where the overlay can live, in order of feasibility:
+
+1. **Re-emitted by the agent on retry (native-looking).** In auto mode the Stop hook blocks and hands back the annotated report; the agent's next message is the corrected report. Receipts re-checks it and, when clean, prints the marked version. The marks come from Receipts, never from the agent's self-assessment.
+2. **Hook-injected user-facing message.** Claude Code hooks can return a `systemMessage` shown to the user; the Stop hook prints the marked report there without blocking. Zero UI work.
+3. **PR comment.** Quote the PR description with marks (the GitHub Action).
+4. **Terminal overlay.** A Warp block or a tmux side pane re-renders the last agent message with marks. Warp's block model makes this a natural sponsor demo; not required for the event.
+
+Rule: the agent never annotates itself. A mark that the model could write is the self-report problem again.
+
+### Auto mode: iterate to a clean receipt, with a cap
+
+After the first pass, if any claim is contradicted, Receipts returns the annotated report to the agent as external tool evidence and asks it to do the work and report again. The loop repeats until the receipt has no contradicted marks, or until the retry cap (default 2) is hit, at which point the annotated report goes to the human with the remaining marks.
+
+Two rules keep this honest:
+
+- **A retry must add evidence, not edit words.** The corrected report only counts if the ledger contains new events after the block that bear on the contradicted claims (a real test run, a real write). A rewrite that turns ✗ into ? by softening the sentence is scored as `unwitnessed` and does not clear the block. This closes the obvious dodge.
+- **Only contradicted blocks by default.** Unwitnessed and unrecorded are shown, not blocked, so the loop cannot become the "won't stop until it pinky-promises" sentinel the community already dislikes.
+
+The user sees one thing: the final report, every claim marked, with a one-line trailer such as `receipts: 5 claims · 4 ✓ · 1 ? · corrected once (test run added at #71)`.
+
 ## 7. FalseReportBench: the reproducible database
 
 The first deliverable is not the detector. It is a database of false reports that anyone can reproduce, because that is what proves the problem, calibrates the checker, and sells the metric. Two layers.
