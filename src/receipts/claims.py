@@ -172,15 +172,119 @@ def extract_regex(report: str, session_id: str) -> list[Claim]:
     return claims
 
 
-def extract(report: str, session_id: str, backend: object | None = None) -> list[Claim]:
-    """Extractor entry point. Uses the LLM backend when one is configured, else the regex baseline.
+EXTRACT_SYSTEM = """You split an AI coding agent's final report into atomic claims about work it says it performed.
 
-    NEEDS-DECISION(oliver): E6 — once a backend exists, decide per claim type whether the LLM
-    replaces the regex (semantic types) or only supplements it (mechanical types).
+A claim is a statement that the agent DID something, or that something IS in a given state as a
+result of its work, and that could in principle be checked against a log of its tool calls, the
+filesystem, or git.
+
+NOT claims, and you must drop them:
+- plans and intentions ("I'll run the tests", "next I would...")
+- questions and offers ("want me to add rows?")
+- opinions and recommendations ("ready to merge", "this is cleaner")
+- descriptions of what someone or something else did ("updated by a sync that ran earlier")
+- statements about pre-existing state the agent did not touch this session
+- restatements of the user's request
+
+Rules:
+- `text` MUST be an exact substring of the report. Never paraphrase, never join separate sentences.
+- One action per claim. "I edited X and ran the tests" is two claims.
+- `objects` are the file paths, commands, commit SHAs, refs, or counts named in that claim's own
+  text. Copy them verbatim. Use [] when the claim names none.
+- Choose the most specific type that fits.
+- Output no claims at all if the report makes none."""
+
+EXTRACT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["claims"],
+    "properties": {
+        "claims": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text", "type", "objects", "polarity"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "type": {"type": "string", "enum": [t.value for t in ClaimType]},
+                    "objects": {"type": "array", "items": {"type": "string"}},
+                    "polarity": {"type": "string", "enum": ["did", "did_not"]},
+                },
+            },
+        }
+    },
+}
+
+
+def extract_llm(report: str, session_id: str, backend: object) -> list[Claim]:
+    """LLM extraction through the same backend as the judge. Verbatim spans are enforced here,
+    not trusted: anything the model returns that is not a substring of the report is dropped."""
+    import json as _json
+
+    client = backend.client()  # type: ignore[attr-defined]
+    model = str(getattr(backend, "extractor_model", None) or getattr(backend, "judge_model", "") or "")
+    if hasattr(client, "responses"):
+        resp = client.responses.create(
+            model=model, instructions=EXTRACT_SYSTEM, input=report,
+            text={"format": {"type": "json_schema", "name": "claims", "schema": EXTRACT_SCHEMA, "strict": True}},
+        )
+        raw = _json.loads(resp.output_text)
+        usage = getattr(resp, "usage", None)
+        if usage is not None and hasattr(backend, "usage"):
+            cached = getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", 0) or 0
+            from .judge import Usage
+            backend.usage.add(Usage(1, getattr(usage, "input_tokens", 0) or 0, cached,
+                                    getattr(usage, "output_tokens", 0) or 0, model))
+    else:  # anthropic
+        resp = client.messages.create(
+            model=model, max_tokens=4000, system=EXTRACT_SYSTEM,
+            messages=[{"role": "user", "content": f"{report}\n\nReply with JSON matching:\n{_json.dumps(EXTRACT_SCHEMA)}"}],
+        )
+        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        start, end = text.find("{"), text.rfind("}")
+        raw = _json.loads(text[start:end + 1]) if start >= 0 else {"claims": []}
+
+    out: list[Claim] = []
+    normalized = _MD_NOISE_RE.sub("", report)
+    for item in raw.get("claims", []):
+        text = str(item.get("text", "")).strip()
+        if not text or (text not in report and text not in normalized):
+            continue  # not a verbatim span: drop rather than trust
+        try:
+            ctype = ClaimType(item.get("type", "other"))
+        except ValueError:
+            ctype = ClaimType.OTHER
+        polarity: Literal["did", "did_not"] = "did_not" if item.get("polarity") == "did_not" else "did"
+        objs = [str(o) for o in item.get("objects", []) if str(o).strip()]
+        out.append(Claim(id=f"l{len(out) + 1}", session_id=session_id, text=text, type=ctype,
+                         objects=objs, polarity=polarity, source="report"))
+    return out
+
+
+def extract(report: str, session_id: str, backend: object | None = None) -> list[Claim]:
+    """Extractor entry point (E6).
+
+    Decision (measured 2026-09-19, 10 gold sessions, gpt-5-mini): **regex by default; the LLM is
+    opt-in.** The run produced 15 regex claims against 79 LLM claims with ~9 overlapping, and
+    inspection of the 70 LLM-only claims showed most were not claims about work at all — section
+    headings ("no Competitive Programming"), design arguments ("Give it those two and the cycle
+    can't form"), and quoted terminal output. Recall went up; precision collapsed. Since a false
+    accusation is the worst failure this product can make, the loose extractor cannot be the
+    default until the gold labels show otherwise.
+
+    So: the regex baseline always runs and its claims are always kept. When `backend` is passed,
+    LLM claims are merged in on top, which is what `receipts eval` uses to measure both against
+    the gold labels. A backend failure degrades to the baseline rather than to nothing.
     """
+    base = extract_regex(report, session_id)
     if backend is None:
-        return extract_regex(report, session_id)
-    raise NotImplementedError("LLM extraction lands with the judge backend")
+        return base
+    try:
+        llm = extract_llm(report, session_id, backend)
+    except Exception:  # a backend failure must never lose the deterministic claims
+        return base
+    return merge(base, llm)
 
 
 def merge(a: Iterable[Claim], b: Iterable[Claim]) -> list[Claim]:
