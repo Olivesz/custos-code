@@ -13,6 +13,7 @@ from rich.table import Table
 
 from . import claims as claims_mod
 from . import judge as judge_mod
+from . import review as review_mod
 from . import verdicts as verdicts_mod
 from .adapters import claude_code
 from .models import EventKind, Verdict
@@ -31,6 +32,7 @@ def check(
     events: bool = typer.Option(False, "--events", help="Also print the ledger."),
     repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
     judge: bool = typer.Option(False, "--judge", help="Escalate semantic claims to the Tier 4 judge (needs an API key)."),
+    rules_only: bool = typer.Option(False, "--rules-only", help="Deterministic rules only; no model call."),
 ) -> None:
     """Print the receipt for one session: every claim in the final report, with its verdict and evidence."""
     if last:
@@ -61,10 +63,18 @@ def check(
     if not report:
         raise typer.Exit(code=0)
     cl = claims_mod.extract(report, sess.id)
-    backend = judge_mod.make_backend() if judge else None
-    if judge and backend is None:
-        console.print("[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic)[/]")
-    recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
+    backend = None if rules_only else judge_mod.make_backend()
+    if backend is not None and not judge:
+        # default path: one call over the report and the annotated ledger (docs/GAPS.md, eval/arms)
+        out = review_mod.review(report, ledger, sess.id, backend)
+        cl, recs = out.claims, out.verdicts
+        tail = f"one call ({out.input_tokens} in / {out.output_tokens} out)"
+    else:
+        if backend is None and not rules_only:
+            console.print("[yellow]no model backend: set OPENAI_API_KEY; falling back to rules only[/]")
+        cl = claims_mod.extract(report, sess.id)
+        recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
+        tail = "rules only" if backend is None else f"rules + judge ({backend.usage.requests} req)"
     by_id = {c.id: c for c in cl}
     for r in recs:
         c = by_id[r.claim_id]
@@ -74,7 +84,6 @@ def check(
         console.print(f"      [dim]tier {r.tier} · {r.method} · {ev} · {r.rationale}{(' · ' + r.qualifier) if r.qualifier else ''}[/]")
     s = verdicts_mod.summary(recs)
     parts = [f"{s[v.value]} {MARK[v][0]}" for v in Verdict if s[v.value]]
-    tail = "rules only" if backend is None else f"rules + judge ({backend.usage.requests} req, {backend.usage.input_tokens} in / {backend.usage.output_tokens} out)"
     console.print(f"[bold]receipts[/] {len(recs)} claims · {' · '.join(parts) if parts else 'no claims found'} · {tail}")
 
 
