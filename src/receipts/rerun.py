@@ -4,6 +4,13 @@ Runs the repo's committed test/build configuration (not the command the agent ty
 git worktree with a timeout, and appends the result to the ledger as a RERUN event so the
 re-run is itself auditable. On by default for run_tests/build claims when expected < 60 s.
 
+E3 (decided): the worktree is HEAD overlaid with the live working tree (staged, unstaged, and
+untracked files included), so uncommitted edits count as part of "the final tree", and the
+command is auto-detected from committed config markers (`_detect_test_command`) rather than
+the agent's own typed command or an edited `package.json` script that isn't committed yet.
+`cmd` lets a caller override auto-detection when it already knows the exact command (mainly
+tests, and a future per-claim-type command such as a distinct build vs. test invocation).
+
 E4 (async in the Stop hook): `rerun_tests` itself is a blocking call that can take up to
 `timeout_s`, far past the ~10 s the product wants the Stop hook to feel responsive within. The
 Stop hook (cli.py `_hook stop`) never calls it directly: it calls `spawn_async`, which returns
@@ -18,19 +25,125 @@ Owner: Anush.
 """
 from __future__ import annotations
 
+import hashlib
 import json
-import shlex
 import shutil
 import subprocess
 import tempfile
 from datetime import UTC, datetime
 from enum import StrEnum
-from hashlib import sha256
 from pathlib import Path
 
 from .models import EventFlags, EventKind, LedgerEvent
 
 MAX_OUTPUT_BYTES = 4096  # matches config.example.toml [ledger].max_output_bytes; no config loader yet
+
+# E3: the repo's own committed test config decides the command, never the command
+# the agent typed (defeats an edited `package.json` script or a swallowed exit code).
+_TEST_COMMANDS: tuple[tuple[str, list[str]], ...] = (
+    ("pyproject.toml", ["python", "-m", "pytest"]),
+    ("pytest.ini", ["python", "-m", "pytest"]),
+    ("setup.cfg", ["python", "-m", "pytest"]),
+    ("package.json", ["npm", "test", "--silent"]),
+    ("go.mod", ["go", "test", "./..."]),
+    ("Cargo.toml", ["cargo", "test"]),
+)
+
+
+def _detect_test_command(worktree: Path) -> list[str] | None:
+    for marker, command in _TEST_COMMANDS:
+        if (worktree / marker).exists():
+            return command
+    return None
+
+
+def _materialize_worktree(repo_root: str, worktree: Path) -> None:
+    """Checkout HEAD into a throwaway worktree, then overlay the actual working tree on
+    top -- staged, unstaged and untracked files included -- so "the final tree" means
+    what is on disk right now, not just the last commit. Never mutates repo_root itself.
+    """
+    subprocess.run(
+        ["git", "-C", repo_root, "worktree", "add", "--detach", str(worktree), "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    shutil.copytree(repo_root, worktree, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
+
+
+def rerun_tests(
+    repo_root: str,
+    session_id: str = "",
+    seq: int = -1,
+    timeout_s: int = 60,
+    cmd: list[str] | None = None,
+) -> LedgerEvent:
+    """Replay the repo's test command against the final tree, in an isolated worktree, and
+    return the result as a RERUN event. `session_id`/`seq` default to placeholders -- a caller
+    that doesn't have the real ledger identity yet (or the ledger store itself, E8, once it
+    exists) renumbers before appending; `run_worker` below passes the real `session_id` since
+    it has it. `cmd` overrides auto-detection (E3) when the caller already knows the exact
+    command; otherwise the command is auto-detected from the worktree's own committed config
+    markers.
+    """
+    with tempfile.TemporaryDirectory(prefix="receipts-rerun-") as tmp:
+        worktree = Path(tmp) / "worktree"
+        _materialize_worktree(repo_root, worktree)
+        try:
+            command = cmd if cmd is not None else _detect_test_command(worktree)
+            started = datetime.now(UTC)
+            timed_out = False
+            if command is None:
+                output = "no known test config found (pyproject.toml, package.json, go.mod, Cargo.toml)"
+                exit_code: int | None = None
+            else:
+                try:
+                    proc = subprocess.run(
+                        command,
+                        cwd=worktree,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_s,
+                    )
+                    output = proc.stdout + proc.stderr
+                    exit_code = proc.returncode
+                except subprocess.TimeoutExpired as exc:
+                    timed_out = True
+                    stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+                    stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+                    output = f"{stdout}{stderr}\n[receipts] timed out after {timeout_s}s"
+                    exit_code = None
+            duration_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
+        finally:
+            subprocess.run(
+                ["git", "-C", repo_root, "worktree", "remove", "--force", str(worktree)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    output_hash = hashlib.sha256(output.encode()).hexdigest()
+    truncated = len(output.encode()) > MAX_OUTPUT_BYTES
+    stored_output = output[:MAX_OUTPUT_BYTES] if truncated else output
+
+    return LedgerEvent(
+        seq=seq,
+        ts=started,
+        session_id=session_id,
+        kind=EventKind.RERUN,
+        tool="rerun_tests",
+        input={"command": command, "ref": "HEAD+working-tree"},
+        output=stored_output,
+        output_hash=output_hash,
+        exit_code=exit_code,
+        paths=[repo_root],
+        cwd=str(worktree),
+        duration_ms=duration_ms,
+        flags=EventFlags(truncated=truncated, timed_out=timed_out),
+    )
+
+
+# --- E4: detached async spawn, so the Stop hook never waits on the above ---
 
 
 def _sessions_root() -> Path:
@@ -43,56 +156,14 @@ def _rerun_dir(session_id: str) -> Path:
     return d
 
 
-def rerun_tests(repo_root: str, cmd: str, session_id: str, seq: int, timeout_s: int = 60) -> LedgerEvent:
-    """Replay `cmd` against a detached worktree of the final tree; never touches the working copy."""
-    worktree_dir = tempfile.mkdtemp(prefix="receipts-rerun-")
-    started = datetime.now(UTC)
-    try:
-        subprocess.run(
-            ["git", "worktree", "add", "--detach", "--quiet", worktree_dir, "HEAD"],
-            cwd=repo_root, check=True, capture_output=True, text=True, timeout=30,
-        )
-        timed_out = False
-        try:
-            proc = subprocess.run(
-                shlex.split(cmd), cwd=worktree_dir, capture_output=True, text=True, timeout=timeout_s,
-            )
-            stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
-        except subprocess.TimeoutExpired as e:
-            timed_out = True
-            stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
-            stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
-            exit_code = None
-        duration_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
-        full_output = stdout + (("\n" + stderr) if stderr else "")
-        truncated = len(full_output.encode()) > MAX_OUTPUT_BYTES
-        output = full_output[:MAX_OUTPUT_BYTES]
-        return LedgerEvent(
-            seq=seq,
-            ts=datetime.now(UTC),
-            session_id=session_id,
-            kind=EventKind.RERUN,
-            tool="rerun",
-            # NEEDS-DECISION(oliver): EventFlags has no `timed_out` field; a timeout is currently
-            # only recoverable from exit_code is None + duration_ms >= timeout_s * 1000. Add one
-            # when models.py (shared seam) is next touched, rather than editing it for this alone.
-            input={"command": cmd, "worktree": worktree_dir, "timed_out": timed_out},
-            output=output,
-            output_hash=sha256(full_output.encode()).hexdigest(),
-            exit_code=exit_code,
-            cwd=worktree_dir,
-            duration_ms=duration_ms,
-            flags=EventFlags(truncated=truncated),
-        )
-    finally:
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", worktree_dir],
-            cwd=repo_root, capture_output=True, text=True,
-        )
-        shutil.rmtree(worktree_dir, ignore_errors=True)
-
-
-def spawn_async(session_id: str, claim_id: str, repo_root: str, cmd: str, report_seq: int, timeout_s: int = 60) -> Path:
+def spawn_async(
+    session_id: str,
+    claim_id: str,
+    repo_root: str,
+    report_seq: int,
+    timeout_s: int = 60,
+    cmd: list[str] | None = None,
+) -> Path:
     """Launch Tier 3 detached and return immediately; never blocks the caller (E4).
 
     Idempotent: a claim already pending or already settled is not re-spawned. The child is its
@@ -143,7 +214,11 @@ def run_worker(session_id: str, claim_id: str) -> None:
     # NEEDS-DECISION(oliver): real next-seq should come from the session's ledger store once
     # ledger.LedgerStore (SQLite, E8 hash chain) exists; seq=0 is a placeholder until then.
     event = rerun_tests(
-        pending["repo_root"], pending["cmd"], session_id, seq=0, timeout_s=pending["timeout_s"],
+        pending["repo_root"],
+        session_id,
+        seq=0,
+        timeout_s=pending["timeout_s"],
+        cmd=pending.get("cmd"),
     )
     result_path.write_text(event.model_dump_json())
     pending_path.unlink(missing_ok=True)
