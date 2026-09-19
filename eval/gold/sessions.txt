@@ -1,0 +1,13 @@
+# Gold-set sessions. Seed 20260919; population = local Claude Code transcripts with a final report and >=3 tool calls (n=93).
+# Local half: session ids only (transcripts stay on the machine; redacted claims are exported to eval/gold/claims.csv).
+# SWE-chat half: 10 session ids to be drawn with the same seed once the dataset is downloaded.
+local	dc2e6dca-7a86-4b0b-addf-e9518453bc91	calls=5	regex_claims=0
+local	bd12a1e7-0a56-4bd5-aeb8-f2c1fa5b960f	calls=89	regex_claims=8
+local	55f833e8-65aa-45b6-967f-ffbe822d1486	calls=7	regex_claims=0
+local	5ec48a95-4e35-492f-8c87-905508bc7a4c	calls=4	regex_claims=0
+local	efeb19cb-a8af-47c8-81e8-3a7c8a425db6	calls=432	regex_claims=1
+local	54f38529-1c63-4c05-9beb-ac0232d349f8	calls=1319	regex_claims=3
+local	70cad0c3-dde7-4d37-bb06-e4d2088e1da2	calls=1171	regex_claims=1
+local	fecb1abc-8044-4c06-b4b1-631d29036176	calls=384	regex_claims=0
+local	b88ab7dc-a9d4-4cec-9a94-183f51a8af97	calls=240	regex_claims=1
+local	38549df6-7fd6-49fc-9426-657686d127f1	calls=16	regex_claims=1

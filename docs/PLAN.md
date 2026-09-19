@@ -61,11 +61,12 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [x] Design doc v0.4, research report, mechanics, adapters, Devin plan, prototype, evidence protocol.
 - [ ] OpenAI credits requested by all three (API key + Codex); Devin credits form submitted; Codex CLI and Claude Code logged in.
 - [ ] Register for the OpenAI challenge (credits only for submitters). Oliver.
-- [ ] Recruitment started: ask script written, first 15 messages sent, consent form drafted. Oliver (interim).
+- [~] Recruitment: ask script and consent form in `eval/study/`; messages not yet sent. Oliver (interim).
 - [x] Study metrics pre-registered in `docs/EVIDENCE_PLAN.md`.
-- [ ] Gold set: 20 sessions chosen with a recorded seed (10 local, 10 SWE-chat); ~100 claims extracted; labelling by Oliver and Anush now, Ananya's pass when back. Oliver.
-- [ ] Claude Code post-hoc adapter + 3 golden tests. Oliver. Unblocks `receipts check --last`.
+- [~] Gold set: local half chosen with seed 20260919 (`eval/gold/sessions.txt`), regex claims exported to `eval/gold/claims_to_label.csv`; SWE-chat half pending download. Labelling by Oliver and Anush now, Ananya's pass when back.
+- [x] Claude Code post-hoc adapter + golden test (#5); claim extractor (#10); Tier 1–2 rules and `receipts check` verdicts (#11); hooks and auto-mode loop (#12).
 - [ ] Codex post-hoc adapter + 3 golden tests from local rollouts. Anush.
+- [~] Parsers, windowing, Tier 3 re-run merged (#4); async re-run + PATH resolution in review (#13, needs rebase); follow-ups #8, #9. Anush.
 - [ ] pytest and jest parsers with hypothesis tests; pipe flagger. Anush.
 - [ ] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
 - [ ] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
