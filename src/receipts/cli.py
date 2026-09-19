@@ -132,6 +132,29 @@ def _hook(
 
 
 @app.command()
-def cost(session: str) -> None:
+def cost(
+    session: str | None = typer.Argument(None, help="Path to a session transcript (Claude Code JSONL)."),
+    last: bool = typer.Option(False, "--last", help="Use the most recent Claude Code session."),
+    repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
+    judge: bool = typer.Option(False, "--judge", help="Escalate semantic claims to the Tier 4 judge (needs an API key)."),
+    json_out: bool = typer.Option(False, "--json", help="Print JSON instead of a table."),
+) -> None:
     """Tokens and dollars by tier for one session."""
-    raise typer.Exit(code=2)
+    from . import cost as cost_mod
+
+    if last:
+        session = claude_code.find_last_session()
+    if not session:
+        raise typer.BadParameter("give a session path or --last")
+    sess, ledger, report = claude_code.parse(session)
+    cl = claims_mod.extract(report or "", sess.id)
+    backend = judge_mod.make_backend() if judge else None
+    if judge and backend is None:
+        console.print("[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic)[/]")
+    recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
+    usage = backend.usage if backend is not None else None
+    c = cost_mod.compute(sess.id, recs, ledger, judge_usage=usage)
+    if json_out:
+        console.print_json(data=c.to_dict())
+    else:
+        console.print(cost_mod.render_table(c))
