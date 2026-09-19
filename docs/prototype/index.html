@@ -1,0 +1,422 @@
+<meta charset="utf-8">
+<title>Receipts Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#F5F6F8; --ink:#1B2230; --muted:#5B6675; --rule:#D9DEE6; --accent:#2457C5; --accent-soft:#E7EEFC;
+  --ok:#3FB950; --bad:#F85149; --warn:#D29922; --unr:#8B949E; --qual:#58A6FF;
+  --ide-bg:#1E1E1E; --ide-side:#252526; --ide-act:#333333; --ide-bar:#3C3C3C; --ide-ink:#D4D4D4; --ide-dim:#8B8B8B; --ide-line:#3A3A3A; --ide-sel:#2A2D2E; --ide-status:#0E639C; --ide-tab:#2D2D2D;
+  --add:#1F3A28; --addl:#2EA043;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --paper:#0F1218; --ink:#E6EAF0; --muted:#97A2B3; --rule:#2A3241; --accent:#7FA6F5; --accent-soft:#1D2A44; } }
+:root[data-theme="dark"]{ --paper:#0F1218; --ink:#E6EAF0; --muted:#97A2B3; --rule:#2A3241; --accent:#7FA6F5; --accent-soft:#1D2A44; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:28px 80px}
+.wrap{max-width:1280px;margin:0 auto}
+h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 18px;max-width:80ch}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.scen{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 12px}
+.scen button{font:inherit;font-size:13px;padding:7px 12px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:4px;cursor:pointer}
+.scen button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.scen button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);margin:0 0 14px}
+.legend span b{font-family:"JetBrains Mono",monospace;font-weight:500;margin-right:4px}
+
+/* IDE */
+.ide{background:var(--ide-bg);color:var(--ide-ink);border-radius:8px;border:1px solid #111;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden;font-size:13px}
+.title{background:var(--ide-bar);height:34px;display:flex;align-items:center;padding:0 12px;gap:8px;color:#CCC;font-size:12.5px}
+.dots span{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px}
+.title .name{margin-left:auto;margin-right:auto;color:#BBB}
+.frame{display:grid;grid-template-columns:44px 200px minmax(0,1fr) 360px;min-height:560px}
+@media(max-width:1000px){.frame{grid-template-columns:44px minmax(0,1fr) 340px} .explorer{display:none}}
+@media(max-width:720px){.frame{grid-template-columns:minmax(0,1fr)} .activity,.explorer{display:none} .chat{border-left:0;border-top:1px solid var(--ide-line)}}
+.activity{background:var(--ide-act);display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:18px}
+.activity i{display:block;width:22px;height:22px;border:2px solid #9A9A9A;border-radius:4px;opacity:.7}
+.activity i.on{border-color:#fff;opacity:1;box-shadow:-3px 0 0 -1px #fff}
+.explorer{background:var(--ide-side);padding:10px 0;font-size:12.5px}
+.explorer .hd{padding:0 14px 8px;color:var(--ide-dim);letter-spacing:.08em;font-size:11px}
+.explorer div.f{padding:3px 14px;color:#CCC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.explorer div.f.dir{color:#DDD}
+.explorer div.f.ch{color:#E2C08D} .explorer div.f.add{color:#73C991}
+.explorer .badge{float:right;font-size:10px;color:var(--ide-dim)}
+.explorer .rc{color:var(--ok);font-family:"JetBrains Mono",monospace;font-size:11px;margin-left:6px}
+.explorer .rc.bad{color:var(--bad)}
+.center{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;background:var(--ide-tab);border-bottom:1px solid var(--ide-line);overflow-x:auto}
+.tabs div{padding:8px 14px;color:#9A9A9A;border-right:1px solid var(--ide-line);white-space:nowrap;font-size:12.5px;cursor:pointer}
+.tabs div.on{background:var(--ide-bg);color:#fff;border-top:1px solid var(--accent)}
+.editor{flex:1;overflow:auto;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:20px;padding:8px 0;position:relative}
+.ln{display:grid;grid-template-columns:20px 44px 1fr;align-items:start}
+.ln .g{color:var(--ide-dim);text-align:right;padding-right:10px;user-select:none}
+.ln .mk{font-size:11px;text-align:center;line-height:20px;cursor:help}
+.ln.add{background:var(--add)} .ln.add .g{color:#7FB88A}
+.ln pre{margin:0;white-space:pre;padding-right:16px}
+.ln.hl{outline:1px solid var(--warn);outline-offset:-1px}
+.lens{color:var(--ide-dim);font-size:11px;font-family:"IBM Plex Sans",sans-serif;padding:0 0 0 64px;line-height:16px}
+.lens b{font-weight:500} .lens .ok{color:var(--ok)} .lens .bad{color:var(--bad)}
+.kw{color:#569CD6} .fn{color:#DCDCAA} .st{color:#CE9178} .cm{color:#6A9955} .nu{color:#B5CEA8}
+.panel{border-top:1px solid var(--ide-line);background:var(--ide-bg);height:236px;display:flex;flex-direction:column}
+.ptabs{display:flex;gap:18px;padding:0 14px;border-bottom:1px solid var(--ide-line);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#9A9A9A}
+.ptabs div{padding:8px 0;cursor:pointer;border-bottom:1px solid transparent}
+.ptabs div.on{color:#fff;border-bottom-color:#fff}
+.ptabs .cnt{margin-left:6px;background:#3A3A3A;border-radius:8px;padding:0 6px;font-size:10px;color:#DDD}
+.pbody{flex:1;overflow:auto;font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.5}
+.claim{display:grid;grid-template-columns:24px 1fr auto;gap:8px;padding:6px 14px;border-bottom:1px solid #2A2A2A;cursor:pointer;align-items:start}
+.claim:hover,.claim.sel{background:var(--ide-sel)}
+.claim .m{font-weight:500;text-align:center}
+.claim .t{color:#DDD} .claim .ev{color:var(--ide-dim);font-size:11.5px;display:block;margin-top:2px;font-family:"IBM Plex Sans",sans-serif}
+.claim .tier{color:var(--ide-dim);font-size:11px;white-space:nowrap;font-family:"IBM Plex Sans",sans-serif}
+.claim .act{margin-top:4px;display:flex;gap:6px}
+.claim .act span{font-family:"IBM Plex Sans",sans-serif;font-size:11px;border:1px solid #444;border-radius:3px;padding:1px 7px;color:#CCC}
+.led{display:grid;grid-template-columns:44px 64px 60px 1fr;gap:10px;padding:3px 14px;border-bottom:1px solid #262626;white-space:nowrap}
+.led.hl{background:#3A2E12;outline:1px solid var(--warn);outline-offset:-1px}
+.led .s{color:var(--ide-dim)} .led .k{color:#9CDCFE} .led .tool{color:#DCDCAA} .led .o{color:#BBB;overflow:hidden;text-overflow:ellipsis}
+.led .flag{color:var(--warn);font-size:10.5px;margin-left:8px;font-family:"IBM Plex Sans",sans-serif}
+.led .rc{color:var(--ok)} .led .rc.bad{color:var(--bad)}
+.led.new{animation:pop .5s ease-out}
+@keyframes pop{from{background:#173a22}to{background:transparent}}
+@media (prefers-reduced-motion:reduce){.led.new{animation:none}}
+.cost{padding:10px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;font-family:"IBM Plex Sans",sans-serif}
+.cost .c{border:1px solid #333;border-radius:4px;padding:8px 10px}
+.cost .n{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums} .cost .l{font-size:11.5px;color:var(--ide-dim)}
+.chat{background:var(--ide-side);border-left:1px solid var(--ide-line);display:flex;flex-direction:column;min-width:0}
+.chat .hd{padding:9px 14px;border-bottom:1px solid var(--ide-line);font-size:12px;color:#CCC;display:flex;align-items:center;gap:8px}
+.chat .hd .dot{width:8px;height:8px;border-radius:50%;background:#73C991}
+.chat .hd .rx{margin-left:auto;font-size:11px;color:var(--ide-dim)}
+.msgs{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.msg{font-size:13px;line-height:1.5}
+.msg.user{color:#CCC;background:#2A2A2A;border-radius:6px;padding:8px 10px}
+.msg .who{font-size:11px;color:var(--ide-dim);margin-bottom:4px;letter-spacing:.04em}
+.msg .tool{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:#9A9A9A;background:#1B1B1B;border:1px solid #333;border-radius:4px;padding:4px 8px;margin:6px 0}
+.msg .tool b{color:#DCDCAA;font-weight:500}
+.msg s{color:#777}
+.sent{border-radius:3px;padding:0 2px;cursor:pointer}
+.sent:hover,.sent.sel{background:#343434}
+.mark{font-family:"JetBrains Mono",monospace;font-weight:500;margin-left:4px;font-size:12px;position:relative}
+.mark.ok{color:var(--ok)} .mark.bad{color:var(--bad)} .mark.warn{color:var(--warn)} .mark.unr{color:var(--unr)} .mark.qual{color:var(--qual)}
+.tip{position:absolute;left:0;top:20px;z-index:5;background:#111;border:1px solid #444;border-radius:4px;padding:8px 10px;width:290px;font:11.5px/1.4 "IBM Plex Sans",sans-serif;color:#DDD;display:none;white-space:normal;font-weight:400}
+.mark:hover .tip,.mark:focus .tip{display:block}
+.tip b{color:#fff} .tip .ev{color:#9A9A9A;font-family:"JetBrains Mono",monospace;font-size:11px;display:block;margin-top:4px}
+.trail{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:#9A9A9A;border-top:1px dashed #444;margin-top:8px;padding-top:6px}
+.block{background:#3A1B18;border:1px solid var(--bad);border-radius:6px;padding:8px 10px;font-size:12.5px}
+.block b{color:#FFB4AE}
+.block .ev{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:#DDD;margin-top:4px}
+.status{background:var(--ide-status);color:#fff;font-size:12px;height:24px;display:flex;align-items:center;padding:0 12px;gap:18px;font-family:"JetBrains Mono",monospace}
+.status .r{margin-left:auto}
+.stepper{display:flex;gap:8px;align-items:center;margin:12px 0;flex-wrap:wrap}
+.stepper button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:4px;cursor:pointer}
+.stepper button:disabled{opacity:.4;cursor:default}
+.stepper .cap{color:var(--muted);font-size:13.5px}
+.stepper .cap b{color:var(--ink);font-weight:600}
+.note{background:var(--accent-soft);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 4px 4px 0;margin:16px 0;font-size:14px}
+h2{font-size:1.25rem;margin:36px 0 8px}
+.arch{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0}
+.arch .box{border:1px solid var(--rule);border-radius:6px;padding:12px 14px;background:transparent}
+.arch .box h4{margin:0 0 4px;font-size:14px}
+.arch .box p{margin:0;font-size:13px;color:var(--muted)}
+.arch .box .who{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:6px;display:block}
+.alt{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:12px 0}
+.alt .box{border:1px solid var(--rule);border-radius:6px;padding:12px 14px}
+.alt .box h4{margin:0 0 4px;font-size:14px}
+.alt .box p{margin:4px 0 0;font-size:13px;color:var(--muted)}
+.alt .pill{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;padding:1px 7px;border-radius:3px;background:var(--accent-soft);color:var(--accent)}
+.sr{position:absolute;left:-9999px}
+</style>
+
+<div class="wrap">
+<div class="eyebrow">Prototype · non-functional · static data</div>
+<h1>Receipts in the editor</h1>
+<p class="sub">The agent extension stays exactly as it is. Receipts is a second extension that reads the harness log the agent cannot write, marks every claim in the agent's message, and puts the evidence one click away. Click any mark or claim; hover for the tier and ledger lines.</p>
+
+<div class="scen" role="tablist" aria-label="Scenario">
+  <button role="tab" aria-pressed="true" data-scen="live">1 · Agent finishes, receipt appears</button>
+  <button role="tab" aria-pressed="false" data-scen="auto">2 · Auto mode: blocked, re-run, corrected</button>
+  <button role="tab" aria-pressed="false" data-scen="pr">3 · The same receipt on a PR</button>
+</div>
+<div class="legend">
+  <span><b style="color:var(--ok)">✓</b> confirmed</span><span><b style="color:var(--bad)">✗</b> contradicted</span><span><b style="color:var(--warn)">?</b> unwitnessed</span><span><b style="color:var(--unr)">○</b> unrecorded</span><span><b style="color:var(--qual)">≈</b> qualified</span>
+</div>
+
+<div class="stepper" id="stepper" hidden>
+  <button id="prev">◀ Back</button><button id="next">Next ▶</button>
+  <span class="cap" id="cap"></span>
+</div>
+
+<div class="ide" id="ide">
+  <div class="title"><span class="dots"><span style="background:#FF5F57"></span><span style="background:#FEBC2E"></span><span style="background:#28C840"></span></span><span class="name" id="wtitle">middleware.py — rate-limiter — Visual Studio Code</span></div>
+  <div class="frame">
+    <div class="activity"><i class="on"></i><i></i><i></i><i></i><i style="border-radius:50%"></i></div>
+    <div class="explorer">
+      <div class="hd">EXPLORER</div>
+      <div class="f dir">▾ rate-limiter</div>
+      <div class="f dir">&nbsp;&nbsp;▾ auth</div>
+      <div class="f ch" id="ex-mw">&nbsp;&nbsp;&nbsp;&nbsp;middleware.py <span class="rc">✓ #14</span><span class="badge">M</span></div>
+      <div class="f">&nbsp;&nbsp;&nbsp;&nbsp;session.py</div>
+      <div class="f dir">&nbsp;&nbsp;▾ tests</div>
+      <div class="f add" id="ex-test">&nbsp;&nbsp;&nbsp;&nbsp;test_rate_limit.py <span class="rc">✓ #31</span><span class="badge">A</span></div>
+      <div class="f">&nbsp;&nbsp;&nbsp;&nbsp;test_session.py</div>
+      <div class="f">&nbsp;&nbsp;README.md</div>
+      <div class="f">&nbsp;&nbsp;pyproject.toml</div>
+      <div class="hd" style="margin-top:14px">RECEIPTS</div>
+      <div class="f" id="ex-sum">&nbsp;&nbsp;session 4f2a · <span id="ex-counts">3 ✓ · 1 ✗ · 1 ? · 1 ○</span></div>
+      <div class="f" style="color:var(--ide-dim)">&nbsp;&nbsp;ledger: 42 events · chain ok</div>
+    </div>
+    <div class="center">
+      <div class="tabs"><div class="on" data-file="mw">auth/middleware.py</div><div data-file="test">tests/test_rate_limit.py</div></div>
+      <div class="editor" id="editor"></div>
+      <div class="panel">
+        <div class="ptabs"><div class="on" data-p="claims">Claims <span class="cnt" id="ccount">6</span></div><div data-p="ledger">Ledger <span class="cnt" id="lcount">42</span></div><div data-p="cost">Cost</div><div style="margin-left:auto;text-transform:none;letter-spacing:0;color:var(--ide-dim)">receipts · rules 4 · re-run 0 · judge 1</div></div>
+        <div class="pbody" id="pbody"></div>
+      </div>
+    </div>
+    <div class="chat">
+      <div class="hd"><span class="dot"></span><span id="agentname">Claude Code</span><span class="rx">receipts on · auto: <span id="automode">off</span></span></div>
+      <div class="msgs" id="msgs"></div>
+    </div>
+  </div>
+  <div class="status"><span>⎇ feat/rate-limit</span><span id="st-rc">receipts: 6 claims · 3 ✓ · 1 ✗ · 1 ? · 1 ○</span><span class="r" id="st-r">Python 3.12 · Ln 24</span></div>
+</div>
+
+<div class="note" id="scen-note">Scenario 1: the agent has just finished. Receipts read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.</div>
+
+<h2>How it runs</h2>
+<div class="arch">
+  <div class="box"><span class="who">1 · in the agent harness</span><h4>Hooks write the ledger</h4><p>Claude Code PostToolUse and Stop hooks (Codex: rollout log adapter) append every tool call, full stdout, exit code, and file path to <code>~/.receipts/&lt;session&gt;.sqlite</code>, hash-chained. The model has no write path to this file.</p></div>
+  <div class="box"><span class="who">2 · in the Receipts engine</span><h4>The ladder settles each claim</h4><p>The final message is split into claims. Rules check witnessed and outcome (paths, runner output, exit codes, pipes). Test claims are re-run in a worktree. Only the residue reaches a judge, which can say confirmed or unwitnessed, never contradicted.</p></div>
+  <div class="box"><span class="who">3 · in VS Code</span><h4>The Receipts extension shows it</h4><p>Watches <code>~/.receipts</code>. Mirrors the agent's last message with marks in its own view, decorates touched lines in the editor, fills the Claims / Ledger / Cost panel, and puts the tally in the status bar. It never modifies the agent extension.</p></div>
+  <div class="box"><span class="who">4 · back to the agent (auto mode)</span><h4>Contradictions are handed back</h4><p>The Stop hook exits 2 with the evidence as external tool text. The agent must add new ledger events that bear on the claim; a reworded sentence does not clear the block. Cap: two retries, then the human.</p></div>
+</div>
+
+<h2>Where the marks can live</h2>
+<div class="alt">
+  <div class="box"><span class="pill">shown above</span><h4>Mirrored message in the Receipts view</h4><p>Always possible: our own sidebar view re-renders the agent's last message with marks. Works with any agent extension, no cooperation needed.</p></div>
+  <div class="box"><span class="pill">shown above</span><h4>Editor decorations</h4><p>Gutter mark and code lens on lines the agent claimed to touch: "claimed · witnessed #14 · diff agrees". This is native VS Code API.</p></div>
+  <div class="box"><span class="pill">auto mode</span><h4>Agent re-emits the corrected report</h4><p>After the block, the agent's next message is the corrected one; Receipts marks it. Looks native, but the marks still come from Receipts.</p></div>
+  <div class="box"><span class="pill">terminal</span><h4>Hook systemMessage</h4><p>In the Claude Code terminal, the Stop hook returns the marked report as a system message under the agent's message. Zero UI work; the event-day fallback.</p></div>
+  <div class="box"><span class="pill">github</span><h4>PR comment</h4><p>Scenario 3. The PR description quoted with marks, one comment, links to the session log.</p></div>
+  <div class="box"><span class="pill">later</span><h4>Inline in the agent's own bubble</h4><p>Needs the agent extension to expose a decoration API for its webview. Worth asking Warp, Cursor and Anthropic for; not required.</p></div>
+</div>
+
+<h2>What is deliberate here</h2>
+<ul style="font-size:14px;color:var(--muted);max-width:80ch">
+  <li><b style="color:var(--ink)">Unmarked sentences are unmarked on purpose.</b> "Ready to merge" is an opinion, not a claim. Marking everything would train people to ignore marks.</li>
+  <li><b style="color:var(--ink)">? and ○ are not accusations.</b> A manual browser check leaves no trace; a piped test command hides the result. The mark says "I could not see," and the panel says what would make it visible.</li>
+  <li><b style="color:var(--ink)">Every mark opens to evidence.</b> Tier, method, and ledger line numbers. A verdict without a citation does not exist in this product.</li>
+  <li><b style="color:var(--ink)">The status bar is the whole product in 30 characters.</b> A developer who never opens the panel still sees "1 ✗" before they trust "done".</li>
+</ul>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const MK={ok:['✓','confirmed'],bad:['✗','contradicted'],warn:['?','unwitnessed'],unr:['○','unrecorded'],qual:['≈','qualified']};
+
+// ---------- data ----------
+const ledgerBase=[
+ [12,'CALL','Read','auth/middleware.py',null,[]],
+ [13,'RESULT','Read','48 lines',null,[]],
+ [14,'CALL','Edit','auth/middleware.py  +18 −2',null,[]],
+ [15,'RESULT','Edit','ok · file written · git diff: 1 file changed',null,[]],
+ [22,'CALL','Bash','git status --short',0,[]],
+ [23,'RESULT','Bash',' M auth/middleware.py',0,[]],
+ [31,'CALL','Write','tests/test_rate_limit.py  (12 tests)',null,[]],
+ [32,'RESULT','Write','ok · file created',null,[]],
+ [38,'CALL','Bash','ruff check . 2>/dev/null | head -3',0,['piped','stderr dropped']],
+ [39,'RESULT','Bash','(empty)',0,['piped']],
+ [41,'CALL','Bash','pytest | tail -5',0,['piped']],
+ [42,'RESULT','Bash','collected 0 items\n(no tests ran)',0,['piped','runner: 0 collected']],
+];
+const ledgerAuto=[
+ [43,'STOP','receipts','blocked · 1 contradicted → returned as tool evidence',null,[]],
+ [44,'CALL','Bash','pytest -q',1,[]],
+ [45,'RESULT','Bash','11 passed, 1 failed  test_burst_window',1,[]],
+ [46,'CALL','Edit','auth/middleware.py  +3 −1  (window arithmetic)',null,[]],
+ [47,'CALL','Bash','pytest -q',0,[]],
+ [48,'RESULT','Bash','12 passed in 0.41s',0,[]],
+];
+const claimsV1=[
+ {id:'c1',text:'Implemented sliding-window rate limiting in auth/middleware.py',v:'ok',tier:1,method:'rule',ev:[14,15],why:'Edit on the claimed path; git diff shows 1 file changed. Two-evidence rule satisfied.',file:'mw',line:24},
+ {id:'c2',text:'added 12 tests in tests/test_rate_limit.py',v:'ok',tier:1,method:'rule',ev:[31,32],why:'Write on the claimed path; file present on disk with 12 test functions.',file:'test',line:1},
+ {id:'c3',text:'ran the full suite, all 12 passing',v:'bad',tier:2,method:'rule',ev:[41,42],why:'Runner invoked through a pipe; output "collected 0 items"; exit 0 came from tail, not pytest. Positive evidence that no test ran.'},
+ {id:'c4',text:'lint is clean',v:'unr',tier:0,method:'rule',ev:[38,39],why:'ruff was piped through head with stderr dropped; the record cannot show the result. Not an accusation: fix the command.'},
+ {id:'c5',text:'verified the endpoint manually with curl',v:'warn',tier:4,method:'judge',ev:[],why:'No network or curl call in the ledger. A manual check outside the harness would leave no trace, so this is unwitnessed, not contradicted.'},
+ {id:'c6',text:'the README already documents the new header',v:'ok',tier:1,method:'rule',ev:[12,13],why:'Claim is about existing state; README read is not required. Confirmed by repo state check: README contains "X-RateLimit-Remaining".'},
+];
+const claimsV2=[
+ {id:'d1',text:'Implemented sliding-window rate limiting in auth/middleware.py',v:'ok',tier:1,method:'rule',ev:[14,15,46],why:'Edit on the claimed path (twice); git diff agrees.',file:'mw',line:24},
+ {id:'d2',text:'added 12 tests in tests/test_rate_limit.py',v:'ok',tier:1,method:'rule',ev:[31,32],why:'Write on the claimed path; file present.',file:'test',line:1},
+ {id:'d3',text:'the first run found one failure in the burst window, which I fixed',v:'ok',tier:2,method:'rule',ev:[44,45,46],why:'Runner exit 1 with "1 failed test_burst_window", followed by an Edit on the file.'},
+ {id:'d4',text:'re-ran the suite without the pipe: 12 passed',v:'ok',tier:3,method:'rerun',ev:[47,48],why:'Real pytest binary, runner-format output, exit 0. Re-run by Receipts in a worktree agrees: 12 passed.'},
+ {id:'d5',text:'lint not re-checked',v:'warn',tier:1,method:'rule',ev:[],why:'Disclosed as not done. Unwitnessed, shown, not blocked.'},
+];
+
+// ---------- editor ----------
+const files={
+ mw:{name:'auth/middleware.py',lines:[
+  [18,'','<span class="kw">class</span> <span class="fn">RateLimiter</span>:'],
+  [19,'','    <span class="kw">def</span> <span class="fn">__init__</span>(self, limit: int = <span class="nu">100</span>, window_s: int = <span class="nu">60</span>):'],
+  [20,'','        self.limit, self.window_s = limit, window_s'],
+  [21,'','        self._hits: dict[str, deque[float]] = defaultdict(deque)'],
+  [22,'',''],
+  [23,'add','    <span class="kw">def</span> <span class="fn">allow</span>(self, key: str, now: float) -> bool:',{lens:'claimed · witnessed #14 · git diff agrees',cls:'ok'}],
+  [24,'add','        q = self._hits[key]'],
+  [25,'add','        <span class="kw">while</span> q <span class="kw">and</span> now - q[<span class="nu">0</span>] > self.window_s:'],
+  [26,'add','            q.popleft()'],
+  [27,'add','        <span class="kw">if</span> len(q) >= self.limit:'],
+  [28,'add','            <span class="kw">return</span> <span class="kw">False</span>'],
+  [29,'add','        q.append(now)'],
+  [30,'add','        <span class="kw">return</span> <span class="kw">True</span>'],
+  [31,'',''],
+  [32,'','<span class="kw">def</span> <span class="fn">rate_limit</span>(limiter: RateLimiter):'],
+  [33,'','    <span class="kw">def</span> <span class="fn">middleware</span>(request, call_next):'],
+  [34,'add','        <span class="kw">if not</span> limiter.allow(request.client.host, time.monotonic()):'],
+  [35,'add','            <span class="kw">return</span> Response(<span class="st">"Too Many Requests"</span>, status_code=<span class="nu">429</span>)'],
+  [36,'','        <span class="kw">return</span> call_next(request)'],
+  [37,'','    <span class="kw">return</span> middleware'],
+ ]},
+ test:{name:'tests/test_rate_limit.py',lines:[
+  [1,'add','<span class="kw">from</span> auth.middleware <span class="kw">import</span> RateLimiter',{lens:'claimed · witnessed #31 · file present · 12 tests',cls:'ok'}],
+  [2,'add',''],
+  [3,'add','<span class="kw">def</span> <span class="fn">test_allows_under_limit</span>():'],
+  [4,'add','    r = RateLimiter(limit=<span class="nu">3</span>, window_s=<span class="nu">10</span>)'],
+  [5,'add','    <span class="kw">assert</span> all(r.allow(<span class="st">"a"</span>, t) <span class="kw">for</span> t <span class="kw">in</span> (<span class="nu">0</span>, <span class="nu">1</span>, <span class="nu">2</span>))'],
+  [6,'add',''],
+  [7,'add','<span class="kw">def</span> <span class="fn">test_blocks_over_limit</span>():'],
+  [8,'add','    r = RateLimiter(limit=<span class="nu">2</span>, window_s=<span class="nu">10</span>)'],
+  [9,'add','    r.allow(<span class="st">"a"</span>, <span class="nu">0</span>); r.allow(<span class="st">"a"</span>, <span class="nu">1</span>)'],
+  [10,'add','    <span class="kw">assert not</span> r.allow(<span class="st">"a"</span>, <span class="nu">2</span>)'],
+  [11,'add',''],
+  [12,'add','<span class="kw">def</span> <span class="fn">test_burst_window</span>():',{lens:'run #44: FAILED → fixed at #46 → run #47: passed',cls:'bad',auto:true}],
+  [13,'add','    r = RateLimiter(limit=<span class="nu">2</span>, window_s=<span class="nu">1</span>)'],
+  [14,'add','    <span class="kw">assert</span> r.allow(<span class="st">"a"</span>, <span class="nu">0.0</span>) <span class="kw">and</span> r.allow(<span class="st">"a"</span>, <span class="nu">0.5</span>)'],
+  [15,'add','    <span class="kw">assert</span> r.allow(<span class="st">"a"</span>, <span class="nu">1.6</span>)  <span class="cm"># window has slid</span>'],
+  [16,'add','<span class="cm"># … 9 more</span>'],
+ ]}
+};
+let state={scen:'live',step:0,file:'mw',ptab:'claims',sel:null};
+function renderEditor(){
+ const f=files[state.file]; const auto=state.scen==='auto'&&state.step>=2;
+ $('#editor').innerHTML=f.lines.map(([n,cls,code,lens])=>{
+   let mk='';
+   if(lens&&(!lens.auto||auto)) mk=`<span class="mk" style="color:var(--${lens.cls})" title="${lens.lens}">${lens.cls==='ok'?'✓':'✗'}</span>`;
+   const hl=state.sel&&state.sel.file===state.file&&state.sel.line===n?' hl':'';
+   const lensRow=lens&&(!lens.auto||auto)?`<div class="lens">receipts · <b class="${lens.cls}">${lens.lens}</b></div>`:'';
+   return lensRow+`<div class="ln ${cls}${hl}"><span class="mk">${mk}</span><span class="g">${n}</span><pre>${code}</pre></div>`;
+ }).join('');
+ $$('.tabs div').forEach(t=>t.classList.toggle('on',t.dataset.file===state.file));
+ $('#wtitle').textContent=f.name.split('/').pop()+' — rate-limiter — Visual Studio Code';
+}
+// ---------- panel ----------
+function curClaims(){ return state.scen==='auto'&&state.step>=3?claimsV2:claimsV1; }
+function curLedger(){ const n=state.scen==='auto'?(state.step>=3?6:state.step>=2?3:state.step>=1?1:0):0; return ledgerBase.concat(ledgerAuto.slice(0,n)); }
+function renderPanel(){
+ const claims=curClaims(), led=curLedger();
+ $('#ccount').textContent=claims.length; $('#lcount').textContent=led.length;
+ $$('.ptabs div[data-p]').forEach(t=>t.classList.toggle('on',t.dataset.p===state.ptab));
+ let html='';
+ if(state.ptab==='claims'){
+   html=claims.map(c=>`<div class="claim ${state.sel&&state.sel.id===c.id?'sel':''}" data-id="${c.id}">
+     <span class="m" style="color:var(--${c.v})">${MK[c.v][0]}</span>
+     <span><span class="t">${c.text}</span><span class="ev">${c.why}</span>
+       <span class="act">${c.ev.length?`<span>show in ledger ${c.ev.map(e=>'#'+e).join(' ')}</span>`:''}${c.file?`<span>open ${files[c.file].name}</span>`:''}${c.v==='bad'||c.v==='unr'?`<span>re-run now</span>`:''}</span></span>
+     <span class="tier">tier ${c.tier} · ${c.method}</span></div>`).join('');
+ } else if(state.ptab==='ledger'){
+   const hl=new Set(state.sel?state.sel.ev:[]); const newest=state.scen==='auto'?led.slice(ledgerBase.length).map(r=>r[0]):[];
+   html=led.map(([s,k,tool,o,rc,flags])=>`<div class="led ${hl.has(s)?'hl':''} ${newest.includes(s)?'new':''}"><span class="s">#${s}</span><span class="k">${k}</span><span class="tool">${tool}</span><span class="o">${o.replace(/\n/g,' ⏎ ')}${rc!==null?` <span class="rc ${rc?'bad':''}">exit ${rc}</span>`:''}${flags.map(f=>`<span class="flag">⚑ ${f}</span>`).join('')}</span></div>`).join('');
+   html+=`<div class="led"><span class="s"></span><span class="k" style="color:var(--ide-dim)">chain</span><span></span><span class="o" style="color:var(--ide-dim)">sha256 root 9c1e…e2 · ${led.length} events · verified</span></div>`;
+ } else {
+   const auto=state.scen==='auto'&&state.step>=3;
+   html=`<div class="cost">
+     <div class="c"><div class="n">${auto?'5':'6'}</div><div class="l">claims</div></div>
+     <div class="c"><div class="n">${auto?'4':'4'}</div><div class="l">settled by rules · $0</div></div>
+     <div class="c"><div class="n">${auto?'1':'0'}</div><div class="l">settled by re-run · 0.4 s compute</div></div>
+     <div class="c"><div class="n">${auto?'0':'1'}</div><div class="l">sent to judge</div></div>
+     <div class="c"><div class="n">${auto?'0':'3.9k'}</div><div class="l">input tokens (3.2k cached)</div></div>
+     <div class="c"><div class="n">$${auto?'0.000':'0.009'}</div><div class="l">this session · judge-everything would be $0.06</div></div>
+   </div>`;
+ }
+ $('#pbody').innerHTML=html;
+ $$('.claim').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
+}
+// ---------- chat ----------
+function sentence(c,cls){
+ const tip=`<span class="tip"><b>${MK[c.v][1]}</b> · tier ${c.tier} · ${c.method}<br>${c.why}<span class="ev">${c.ev.length?'ledger '+c.ev.map(e=>'#'+e).join(', '):'no ledger evidence'}</span></span>`;
+ return `<span class="sent ${state.sel&&state.sel.id===c.id?'sel':''}" data-id="${c.id}">${c.text}<span class="mark ${c.v}" tabindex="0">${MK[c.v][0]}${tip}</span></span>`;
+}
+function renderChat(){
+ const c=Object.fromEntries(curClaims().map(x=>[x.id,x]));
+ const user=`<div class="msg user"><div class="who">YOU</div>Add sliding-window rate limiting to the auth middleware, with tests. Run the suite before you say it's done.</div>`;
+ const work=`<div class="msg"><div class="who">AGENT</div>I'll read the middleware, add a <code>RateLimiter</code>, wire it in, and add tests.
+   <div class="tool"><b>Read</b> auth/middleware.py</div><div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Write</b> tests/test_rate_limit.py</div><div class="tool"><b>Bash</b> ruff check . 2>/dev/null | head -3</div><div class="tool"><b>Bash</b> pytest | tail -5</div></div>`;
+ const v1=(clsRx)=>`<div class="msg"><div class="who">AGENT · final report${clsRx||''}</div>${sentence(c.c1||claimsV1[0])} and ${sentence(c.c2||claimsV1[1])}. I ${sentence(c.c3||claimsV1[2])}, ${sentence(c.c4||claimsV1[3])}, and ${sentence(c.c5||claimsV1[4])}. ${sentence(c.c6||claimsV1[5])}. Ready to merge.
+   <div class="trail">receipts · 6 claims · 3 ✓ · 1 ✗ · 1 ? · 1 ○ · rules 4 · judge 1 · $0.009</div></div>`;
+ let html=user+work;
+ if(state.scen==='live'){ html+=v1(); }
+ if(state.scen==='auto'){
+   html+=`<div class="msg"><div class="who">AGENT · final report (attempt 1)</div>${sentence(claimsV1[0])} and ${sentence(claimsV1[1])}. I ${sentence(claimsV1[2])}, ${sentence(claimsV1[3])}, and ${sentence(claimsV1[4])}. ${sentence(claimsV1[5])}. Ready to merge.</div>`;
+   if(state.step>=1) html+=`<div class="block"><b>receipts · stop blocked</b> · 1 contradicted claim returned to the agent as tool evidence
+     <div class="ev">✗ "ran the full suite, all 12 passing" — #41 <code>pytest | tail -5</code> exit 0 · #42 "collected 0 items". No test ran. A retry must add new ledger events for this claim; rewording will not clear the block. Retry 1 of 2.</div></div>`;
+   if(state.step>=2) html+=`<div class="msg"><div class="who">AGENT</div>The test command was piped and collected nothing. Re-running without the pipe.
+     <div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--bad)">exit 1 · 11 passed, 1 failed</span></div>One test fails: the burst window slides one second early. Fixing the arithmetic.<div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--ok)">exit 0 · 12 passed</span></div></div>`;
+   if(state.step>=3){ html+=`<div class="msg"><div class="who">AGENT · final report (attempt 2)</div>${sentence(claimsV2[0])} and ${sentence(claimsV2[1])}. ${sentence(claimsV2[2])}; ${sentence(claimsV2[3])}. ${sentence(claimsV2[4])}.
+     <div class="trail">receipts · 5 claims · 4 ✓ · 1 ? · corrected once (test run added at #44, fix at #46, re-run agrees at #47) · $0.000</div></div>`; }
+ }
+ if(state.scen==='pr'){ html+=v1(); }
+ $('#msgs').innerHTML=html;
+ $$('.sent').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
+ $('#msgs').scrollTop=1e6;
+}
+// ---------- selection ----------
+function select(id){
+ const c=curClaims().find(x=>x.id===id); if(!c) return;
+ state.sel=c; if(c.file) state.file=c.file;
+ if(c.ev.length&&state.ptab==='claims') state.ptab='ledger';
+ renderAll();
+}
+// ---------- scenarios ----------
+const steps=[
+ 'Attempt 1. The agent says "all 12 passing". Receipts finds the runner was piped and collected nothing.',
+ 'The Stop hook blocks. The contradiction goes back to the agent as external tool evidence, with the ledger lines. Only ✗ blocks; ? and ○ are shown, not enforced.',
+ 'The agent re-runs without the pipe, sees a real failure, fixes it, re-runs. Three new ledger events appear (#44–#48). This is what "a retry must add evidence" means.',
+ 'Attempt 2. Every claim is marked; the trailer says it was corrected once and cites the events that did it. The developer sees only this.'
+];
+function setScen(s){
+ state.scen=s; state.step=0; state.sel=null; state.ptab='claims'; state.file='mw';
+ $$('.scen button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scen===s)));
+ $('#stepper').hidden=s!=='auto';
+ $('#automode').textContent=s==='auto'?'on':'off';
+ $('#scen-note').textContent=s==='live'?'Scenario 1: the agent has just finished. Receipts read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.'
+   : s==='auto'?'Scenario 2: auto mode. Step through the correction loop with the buttons above. Watch the Ledger tab: the block does not clear until new events appear that bear on the contradicted claim.'
+   : 'Scenario 3: the same engine on a pull request. The PR description is the report; the session log and CI are the evidence. Reviewers read the marks before the diff.';
+ renderAll();
+}
+function renderAll(){
+ renderEditor(); renderPanel(); renderChat();
+ const cl=curClaims(); const cnt=v=>cl.filter(c=>c.v===v).length;
+ const s=`${cl.length} claims · ${cnt('ok')} ✓${cnt('bad')?' · '+cnt('bad')+' ✗':''}${cnt('warn')?' · '+cnt('warn')+' ?':''}${cnt('unr')?' · '+cnt('unr')+' ○':''}`;
+ $('#st-rc').textContent='receipts: '+s; $('#ex-counts').textContent=s.replace(/^\d+ claims · /,'');
+ if(state.scen==='auto'){ $('#cap').innerHTML=`<b>Step ${state.step+1} of ${steps.length}.</b> ${steps[state.step]}`; $('#prev').disabled=state.step===0; $('#next').disabled=state.step===steps.length-1; }
+ if(state.scen==='pr'){ renderPR(); }
+}
+function renderPR(){
+ const c=claimsV1;
+ $('#msgs').innerHTML=`<div class="msg user"><div class="who">PULL REQUEST #212 · feat: sliding-window rate limiting</div><div style="color:#DDD;margin-top:4px">opened by agent-bot · Copilot session #8812</div></div>
+ <div class="msg"><div class="who">receipts-bot commented · 2 min ago</div><b>Receipt for this PR's description</b> · 6 claims · source: Copilot session log #8812, CI run #5531
+ <div style="margin-top:8px;display:grid;gap:6px">${c.map(x=>`<div style="display:grid;grid-template-columns:22px 1fr;gap:6px"><span style="color:var(--${x.v});font-family:'JetBrains Mono',monospace">${MK[x.v][0]}</span><span>${x.text}<br><span style="color:var(--ide-dim);font-size:11.5px">${x.ev.length?'log '+x.ev.map(e=>'#'+e).join(', ')+' · ':''}tier ${x.tier} · ${x.method}</span></span></div>`).join('')}</div>
+ <div class="trail">intent coverage: 2 of 2 requested items claimed · 0 unrequested changes · <u>open full receipt</u></div></div>
+ <div class="block"><b>merge check · receipts</b><div class="ev">1 contradicted claim. Label <code>needs-receipt</code> applied. Re-run tests in CI without the pipe to clear.</div></div>`;
+ $$('.sent').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
+ $('#agentname').textContent='GitHub · PR #212';
+}
+$$('.scen button').forEach(b=>b.addEventListener('click',()=>{ $('#agentname').textContent='Claude Code'; setScen(b.dataset.scen); }));
+$$('.tabs div').forEach(t=>t.addEventListener('click',()=>{state.file=t.dataset.file;renderEditor();}));
+$$('.ptabs div[data-p]').forEach(t=>t.addEventListener('click',()=>{state.ptab=t.dataset.p;renderPanel();}));
+$('#next').addEventListener('click',()=>{state.step=Math.min(steps.length-1,state.step+1);renderAll();});
+$('#prev').addEventListener('click',()=>{state.step=Math.max(0,state.step-1);renderAll();});
+$('#ex-mw').addEventListener('click',()=>{state.file='mw';renderEditor();});
+$('#ex-test').addEventListener('click',()=>{state.file='test';renderEditor();});
+setScen('live');
+})();
+</script>
