@@ -5,7 +5,8 @@ One sentence. Link the open question or bench trap it serves (e.g. `E9`, `piped-
 ## Area
 
 - [ ] Stays inside my owned paths (see `.github/CODEOWNERS`), or the owner is tagged below.
-- [ ] Touches a shared seam (`models.py`, `AGENTS.md`, `OPEN_QUESTIONS.md`, `pyproject.toml`) → both other people requested as reviewers.
+- [ ] Touches a shared seam (`models.py`, `AGENTS.md`, `OPEN_QUESTIONS.md`, `pyproject.toml`) → both other people must **approve**, not just review.
+- [ ] Both other people are requested as reviewers (always, whatever this touches — whoever is awake unblocks it).
 
 ## Checks
 
