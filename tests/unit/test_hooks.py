@@ -25,6 +25,52 @@ def test_post_tool_use_appends_call_and_result(tmp_path: Path, monkeypatch) -> N
     assert lines[1]["flags"]["piped"] is True and lines[1]["output"] == "collected 0 items"
 
 
+def test_pre_tool_use_wraps_runner_to_a_file_not_stdout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _use_home(tmp_path, monkeypatch)
+    out = hooks.on_pre_tool_use({"session_id": "s2", "tool_name": "Bash", "tool_use_id": "tu1",
+                                 "tool_input": {"command": "pytest -q"}})
+    assert out is not None
+    wrapped = out["hookSpecificOutput"]["updatedInput"]["command"]
+    assert "RECEIPTS_RC_FILE=" in wrapped
+    assert "__RECEIPTS_RC=" not in wrapped  # issue #22: not the legacy stdout-marker form
+
+    pending_path = tmp_path / ".receipts" / "rc_pending" / "s2.json"
+    pending = json.loads(pending_path.read_text())
+    assert list(pending) == ["tu1"]
+
+
+def test_pre_tool_use_skips_wrapping_without_tool_use_id(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # No tool_use_id means on_post_tool_use could never find the rc file again; don't wrap.
+    _use_home(tmp_path, monkeypatch)
+    out = hooks.on_pre_tool_use({"session_id": "s3", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}})
+    assert out is None
+
+
+def test_pre_and_post_tool_use_round_trip_the_rc_file(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Full E5/E9/#22 wiring: PreToolUse hands PostToolUse a file path via the tool_use_id map,
+    PostToolUse reads resolved_bin/exit_code from it and unlinks both the file and the map entry,
+    and the model's own tool output is stored untouched (no trailer to forge)."""
+    _use_home(tmp_path, monkeypatch)
+    out = hooks.on_pre_tool_use({"session_id": "s4", "tool_name": "Bash", "tool_use_id": "tu2",
+                                 "tool_input": {"command": "pytest -q"}})
+    assert out is not None
+    pending_path = tmp_path / ".receipts" / "rc_pending" / "s4.json"
+    rc_path = json.loads(pending_path.read_text())["tu2"]
+    # simulate what the wrapped shell command itself would have written to that file
+    Path(rc_path).write_text("/usr/bin/pytest\n0\n")
+
+    hooks.on_post_tool_use({"session_id": "s4", "cwd": "/w", "tool_name": "Bash", "tool_use_id": "tu2",
+                            "tool_input": {"command": "pytest -q"}, "tool_response": "5 passed"})
+
+    live = tmp_path / ".receipts" / "live" / "s4.jsonl"
+    call, result = (json.loads(line) for line in live.read_text().splitlines())
+    assert call["input"]["resolved_bin"] == "/usr/bin/pytest"
+    assert result["exit_code"] == 0
+    assert result["output"] == "5 passed"  # untouched: nothing was ever written to stdout
+    assert not os.path.exists(rc_path)
+    assert json.loads(pending_path.read_text()) == {}
+
+
 def test_stop_manual_mode_writes_receipt_and_does_not_block(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _use_home(tmp_path, monkeypatch)
     out = hooks.on_stop({"session_id": "11111111-2222-3333-4444-555555555555", "transcript_path": FIXTURE, "cwd": str(tmp_path),
