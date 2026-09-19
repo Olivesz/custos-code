@@ -7,12 +7,15 @@ hook payload at all. See docs/ADAPTERS.md §2 for the payload shapes.
 """
 from __future__ import annotations
 
+import pathlib
+
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from . import claims as claims_mod
 from . import judge as judge_mod
+from . import report as report_mod
 from . import review as review_mod
 from . import verdicts as verdicts_mod
 from .adapters import claude_code
@@ -30,9 +33,12 @@ def check(
     session: str | None = typer.Argument(None, help="Path to a session transcript (Claude Code JSONL)."),
     last: bool = typer.Option(False, "--last", help="Use the most recent Claude Code session."),
     events: bool = typer.Option(False, "--events", help="Also print the ledger."),
+    evidence: bool = typer.Option(False, "--evidence", help="Print the cited ledger lines under each claim."),
     repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
-    judge: bool = typer.Option(False, "--judge", help="Escalate semantic claims to the Tier 4 judge (needs an API key)."),
     rules_only: bool = typer.Option(False, "--rules-only", help="Deterministic rules only; no model call."),
+    ladder: bool = typer.Option(False, "--ladder", help="Use the superseded tiered pipeline instead of review."),
+    fmt: str = typer.Option("terminal", "--format", help="terminal | markdown | html"),
+    out_path: str | None = typer.Option(None, "--out", help="Write the rendered receipt to a file."),
 ) -> None:
     """Print the receipt for one session: every claim in the final report, with its verdict and evidence."""
     if last:
@@ -42,49 +48,62 @@ def check(
     sess, ledger, report = claude_code.parse(session)
     calls = sum(1 for e in ledger if e.kind == EventKind.CALL)
     flagged = sum(1 for e in ledger if e.flags.piped or e.flags.truncated or e.flags.error)
-    console.print(f"[bold]receipts[/] session {sess.id[:8]}… · {sess.n_events} events · {calls} tool calls · "
-                  f"{flagged} flagged · chain {sess.ledger_root_hash[:8]}… · cwd {sess.cwd}")
-    if events:
-        t = Table(show_header=True, header_style="dim")
-        for col in ("#", "kind", "tool", "detail", "flags"):
-            t.add_column(col)
-        for e in ledger:
-            detail = ""
-            if e.kind == EventKind.CALL and e.input:
-                detail = str(e.input.get("command") or e.input.get("file_path") or e.input.get("path") or "")[:90]
-            elif e.output:
-                detail = e.output.replace("\n", " ⏎ ")[:90]
-            fl = " ".join(k for k, v in e.flags.model_dump().items() if v)
-            t.add_row(str(e.seq), e.kind.value, e.tool or "", detail, fl)
-        console.print(t)
-    console.rule("final report")
-    console.print(report or "[dim](no assistant text found)[/]")
-    console.rule("receipt")
+
+    if fmt == "terminal":
+        console.print(f"[bold]receipts[/] session {sess.id[:8]}… · {sess.n_events} events · {calls} tool calls · "
+                      f"{flagged} flagged · chain {sess.ledger_root_hash[:8]}… · cwd {sess.cwd}")
+        if events:
+            t = Table(show_header=True, header_style="dim")
+            for col in ("#", "kind", "tool", "detail", "flags"):
+                t.add_column(col)
+            for e in ledger:
+                detail = ""
+                if e.kind == EventKind.CALL and e.input:
+                    detail = str(e.input.get("command") or e.input.get("file_path") or e.input.get("path") or "")[:90]
+                elif e.output:
+                    detail = e.output.replace("\n", " ⏎ ")[:90]
+                fl = " ".join(k for k, v in e.flags.model_dump().items() if v)
+                t.add_row(str(e.seq), e.kind.value, e.tool or "", detail, fl)
+            console.print(t)
+        console.rule("final report")
+        console.print(report or "[dim](no assistant text found)[/]")
+        console.rule("receipt")
     if not report:
         raise typer.Exit(code=0)
-    cl = claims_mod.extract(report, sess.id)
+
     backend = None if rules_only else judge_mod.make_backend()
-    if backend is not None and not judge:
-        # default path: one call over the report and the annotated ledger (docs/GAPS.md, eval/arms)
-        out = review_mod.review(report, ledger, sess.id, backend)
-        cl, recs = out.claims, out.verdicts
-        tail = f"one call ({out.input_tokens} in / {out.output_tokens} out)"
+    if backend is not None and not ladder:
+        # Default: one call over the report and the annotated ledger. 86% vs the ladder's 70%
+        # on construction-truth fixtures, McNemar p=0.00017 (eval/arms/RESULTS.md).
+        reviewed = review_mod.review(report, ledger, sess.id, backend)
+        claims, recs = reviewed.claims, reviewed.verdicts
+        tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
     else:
         if backend is None and not rules_only:
             console.print("[yellow]no model backend: set OPENAI_API_KEY; falling back to rules only[/]")
-        cl = claims_mod.extract(report, sess.id)
-        recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
-        tail = "rules only" if backend is None else f"rules + judge ({backend.usage.requests} req)"
-    by_id = {c.id: c for c in cl}
-    for r in recs:
-        c = by_id[r.claim_id]
-        mark, color = MARK[r.verdict]
-        ev = " ".join(f"#{e}" for e in r.evidence) or "—"
-        console.print(f"  [{color}]{mark} {r.verdict.value:<12}[/] {c.text[:88]}")
-        console.print(f"      [dim]tier {r.tier} · {r.method} · {ev} · {r.rationale}{(' · ' + r.qualifier) if r.qualifier else ''}[/]")
-    s = verdicts_mod.summary(recs)
-    parts = [f"{s[v.value]} {MARK[v][0]}" for v in Verdict if s[v.value]]
-    console.print(f"[bold]receipts[/] {len(recs)} claims · {' · '.join(parts) if parts else 'no claims found'} · {tail}")
+        claims = claims_mod.extract(report, sess.id)
+        recs = verdicts_mod.run(claims, ledger, repo or sess.cwd, backend)
+        tail = "rules only" if backend is None else f"rules + judge · {backend.usage.requests} requests"
+
+    if fmt == "markdown":
+        text = report_mod.markdown(claims, recs, source=f"{sess.source} session {sess.id[:8]}")
+    elif fmt == "html":
+        text = report_mod.html_card(claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}")
+    else:
+        report_mod.terminal(claims, recs, ledger, console, show_evidence=evidence)
+        console.print(f"[dim]  {tail}[/]")
+        text = None
+
+    if out_path:
+        body = text if text is not None else report_mod.html_card(
+            claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}")
+        pathlib.Path(out_path).write_text(body, encoding="utf-8")
+        console.print(f"[dim]wrote {out_path}[/]")
+    elif text is not None:
+        print(text)
+
+    if any(r.verdict == Verdict.CONTRADICTED for r in recs):
+        raise typer.Exit(code=1)
 
 
 HOOKS_SNIPPET = {
@@ -167,3 +186,74 @@ def cost(
         console.print_json(data=c.to_dict())
     else:
         console.print(cost_mod.render_table(c))
+
+@app.command()
+def demo(
+    scenario: str = typer.Option("piped-runner", "--scenario",
+                                 help="piped-runner | echoed-output | ghost-write | honest"),
+    out_path: str | None = typer.Option(None, "--out", help="Also write an HTML report card here."),
+) -> None:
+    """Run the whole loop on a known trap: the agent's claim, the evidence, the verdict, the nudge.
+
+    Everything on screen is produced live from the fixture's own tool log. Nothing is pre-rendered,
+    and the fixture is in the repo so anyone can read what the agent actually did.
+    """
+    import json as _json
+
+    from . import feedback as feedback_mod
+
+    picks = {"piped-runner": "trap_piped_0", "echoed-output": "trap_echo_0",
+             "ghost-write": "trap_ghost_0", "honest": "ok_tests_0"}
+    name = picks.get(scenario)
+    if name is None:
+        raise typer.BadParameter(f"scenario must be one of {', '.join(picks)}")
+    fixture = pathlib.Path(__file__).resolve().parents[2] / "eval" / "arms" / "fixtures" / f"{name}.jsonl"
+    if not fixture.exists():
+        console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
+        raise typer.Exit(code=2)
+
+    sess, ledger, report = claude_code.parse(str(fixture))
+    task = next((e.output for e in ledger if e.kind == EventKind.USER), "")
+
+    console.rule("[bold]1. what the developer asked for")
+    console.print(f"  {task}")
+
+    console.rule("[bold]2. what the agent actually did  (harness log, the model cannot write it)")
+    for e in ledger:
+        if e.kind == EventKind.CALL:
+            v = str((e.input or {}).get("command") or (e.input or {}).get("file_path") or "")
+            console.print(f"  [dim]#{e.seq}[/] [yellow]{e.tool}[/] {v[:100]}")
+        elif e.kind == EventKind.RESULT and e.output:
+            console.print(f"  [dim]#{e.seq}   → {e.output[:100].replace(chr(10), ' ⏎ ')}[/]")
+
+    console.rule("[bold]3. what the agent said")
+    console.print(f"  [italic]{report}[/]")
+
+    backend = judge_mod.make_backend()
+    if backend is None:
+        console.print("\n[yellow]no model backend: set OPENAI_API_KEY to run the review[/]")
+        raise typer.Exit(code=2)
+    reviewed = review_mod.review(report or "", ledger, sess.id, backend)
+
+    console.rule("[bold]4. the receipt")
+    report_mod.terminal(reviewed.claims, reviewed.verdicts, ledger, console, show_evidence=True)
+    console.print(f"[dim]  one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out[/]")
+
+    open_pairs = [(c, r) for c, r in zip(reviewed.claims, reviewed.verdicts, strict=True)
+                  if r.verdict.value in ("contradicted", "unrecorded")]
+    console.rule("[bold]5. what goes back to the agent")
+    if open_pairs:
+        reason = feedback_mod.build_block_reason(open_pairs, ledger, 1, 3)
+        console.print(f"  [red]stop blocked[/] — {len(open_pairs)} claim(s) need work, nudge is a "
+                      f"template, [bold]0 LLM tokens[/]")
+        for line in reason.splitlines()[1:]:
+            console.print(f"  [dim]{line[:160]}[/]")
+        console.print(f"\n  [dim]hook returns:[/] {_json.dumps({'decision': 'block'})}")
+    else:
+        console.print("  [green]nothing blocked[/] — every claim is confirmed or disclosed; the agent stops normally.")
+
+    if out_path:
+        pathlib.Path(out_path).write_text(
+            report_mod.html_card(reviewed.claims, reviewed.verdicts, ledger, report=report or "",
+                                 title=f"Receipt · {scenario}"), encoding="utf-8")
+        console.print(f"\n[dim]report card written to {out_path}[/]")

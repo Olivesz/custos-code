@@ -23,6 +23,20 @@ Pre-build. The design, research, plan, and evidence protocol are in `docs/`. Sta
 - [docs/EVIDENCE_PLAN.md](docs/EVIDENCE_PLAN.md) — pre-registered study: accuracy, time saved, retention, usability
 - [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md) — every unresolved decision with an owner
 
+## See it work
+
+```bash
+uv sync
+export OPENAI_API_KEY=...
+uv run receipts demo                 # the whole loop on a known trap, live
+uv run receipts demo --scenario honest   # the control: nothing blocks
+uv run receipts check --last         # your own most recent session
+```
+
+`demo` prints five things from the fixture's own tool log: what was asked, what the agent actually
+did, what it said, the receipt, and the deterministic nudge that goes back. `--format html --out
+card.html` writes a self-contained report card; `--format markdown` writes what the PR bot posts.
+
 ## Prototype
 
 `docs/prototype/index.html` is an interactive, non-functional mock of the editor experience: marks on the agent's message, the evidence panel, editor decorations, the auto-mode loop, and the PR receipt. It is a single self-contained file:
