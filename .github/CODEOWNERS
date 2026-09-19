@@ -29,6 +29,7 @@
 /src/receipts/parsers.py       @anushmainali
 /src/receipts/rerun.py         @anushmainali
 /src/receipts/cost.py          @anushmainali
+/src/receipts/compress.py      @anushmainali
 /bench/                        @anushmainali
 /eval/                         @anushmainali
 

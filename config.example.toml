@@ -22,3 +22,32 @@ redact = true
 
 [upload]
 enabled = false               # local by default; do not change without docs/privacy.md
+
+[compress]
+enabled = false                # off by default: judge-window-only pre-processor (Token Company bear-2).
+                                # RECEIPTS_TTC_API_KEY alone is not enough to turn this on -- it changes
+                                # what evidence the judge sees, so it needs an explicit yes here too.
+model = "bear-2"
+
+# Price list for cost.py's dollar accounting ($ per 1M tokens). One [prices.<model-id>] table per
+# model; `asof` dates the entry so a stale price is visible instead of silently wrong. Structure is
+# decided (NEEDS-DECISION(anush) in cost.py resolved: lives here, dated per entry); the figures below
+# are placeholders, not researched prices -- check the live price list before the cost slide
+# (docs/OPEN_QUESTIONS.md research gaps).
+[prices."gpt-5.2"]
+asof = "2026-09-19"
+input_per_1m = 0.0             # NEEDS-DECISION(anush): confirm against the OpenAI price list
+cached_input_per_1m = 0.0
+output_per_1m = 0.0
+
+[prices."claude-opus-5"]
+asof = "2026-09-19"
+input_per_1m = 0.0             # NEEDS-DECISION(anush): confirm against the Anthropic price list
+cached_input_per_1m = 0.0
+output_per_1m = 0.0
+
+[prices."bear-2"]
+asof = "2026-09-19"
+input_per_1m = 0.05            # Token Company's listed rate; one flat rate, no cached/output tiers
+cached_input_per_1m = 0.0
+output_per_1m = 0.0
