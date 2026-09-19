@@ -25,6 +25,7 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
+exclude = ["pilots"]  # feasibility-week scratch scripts, not product code
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]  # long lines in docstrings are fine; the formatter handles code
