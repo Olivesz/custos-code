@@ -57,6 +57,36 @@ Codex output is truncated by `max_output_tokens` on the call (default 2000 in th
 2. **Parse the runner's own summary** from stdout (`12 passed`, `1 failed`, `collected 0 items`, `FAIL src/x.test.ts`). Deterministic, per-runner parsers, and it is what settles most test claims. Pipes that cut the summary make the claim `unrecorded`.
 3. **Wrap the command in `PreToolUse`.** `updatedInput.command = "(<cmd>); __rc=$?; echo \"__RECEIPTS_RC=$__rc\"; exit $__rc"` for commands that match a known runner or build tool only. The exit code then appears in `tool_response` and the transcript. `VERIFY`: whether the rewritten command is what the model sees in its own context (if so, restrict wrapping to a hidden trailer and strip it from what we show). Do not wrap arbitrary commands; semantics of `&&` chains, backgrounding, and heredocs make general rewriting unsafe. Preferred order: 2, then 3 for runners, then Tier 3 re-run when both fail. The same trailer also carries `__RECEIPTS_BIN=$(command -v <argv0>)` (E5), so the wrapper-shadowing rule sees the binary the shell actually resolved, not the string the agent typed; `parsers.wrap_command_for_resolution`/`strip_and_parse_trailer` implement the wrap and the strip. `VERIFY(E5)`: whether that `command -v` reflects the agent's actual `PATH` if it mutated it mid-session.
 
+### E9 experiment result (2026-09-19): the wrapper is visible to the model
+
+Run live in a Claude Code session with only the `PreToolUse` hook installed. The command
+`.venv/bin/pytest --version` came back to the agent as:
+
+```
+pytest 9.1.1
+
+__RECEIPTS_BIN=.venv/bin/pytest
+__RECEIPTS_RC=0
+```
+
+Three consequences:
+
+1. **Context pollution.** Every runner command would carry two junk lines into the agent's
+   context for the rest of the session.
+2. **Forgery vector, and it is the serious one.** An agent that has seen `__RECEIPTS_RC=0` in its
+   own transcript knows the marker exists and can print it from a later `echo`, manufacturing
+   evidence for a test it never ran. A verification mechanism the audited party can read is a
+   mechanism it can imitate.
+3. **`command -v` returns what was typed.** The resolved binary came back as the relative
+   `.venv/bin/pytest`, not an absolute path, so the E5 trust check must resolve relative paths
+   against the event's `cwd` before deciding whether a runner lives inside the repo tree.
+
+**Decision:** keep the PreToolUse wrap, move the trailer off stdout. The wrapper writes
+`__RECEIPTS_BIN`/`__RECEIPTS_RC` to a per-call file whose path is a random name under the
+receipts directory, exported into the command's environment; `PostToolUse` reads and deletes it.
+The model then sees unmodified output, and cannot forge a marker whose filename it never saw.
+Tracked as issue #21.
+
 ### Completeness flags, set at ingest
 - `truncated`: Claude Code caps tool output shown to the model; the transcript keeps what the model saw. Codex states the original token count. Either way, keep the full text when the hook has it and a sha256 of it always.
 - `piped`: command contains `| head`, `| tail`, `| grep`, `2>/dev/null`, `> file`, `--silent`, `-q` beyond the runner's own quiet mode. Flag, do not judge.
