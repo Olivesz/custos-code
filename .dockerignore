@@ -1,0 +1,20 @@
+# Allow only build inputs; exclude local sessions and environments.
+**
+!Dockerfile
+!.python-version
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+!src/**
+!bench/
+!bench/README.md
+!bench/scenarios/
+!bench/scenarios/**
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
