@@ -12,6 +12,7 @@ from receipts.parsers import (
     parse_jest,
     parse_pytest,
     parse_vitest,
+    read_rc_file,
     strip_and_parse_trailer,
     wrap_command_for_resolution,
 )
@@ -207,6 +208,68 @@ def test_strip_and_parse_trailer_malformed_rc() -> None:
     assert rc is None
 
 
+# --- issue #22: trailer moved off stdout to a per-call file ---
+
+
+def test_wrap_command_for_resolution_file_mode_embeds_path_not_stdout() -> None:
+    wrapped = wrap_command_for_resolution("pytest -q", rc_path="/home/user/.receipts/rc/deadbeef")
+    assert wrapped is not None
+    assert "pytest -q" in wrapped
+    assert "/home/user/.receipts/rc/deadbeef" in wrapped
+    assert "command -v pytest" in wrapped
+    # The model reads this command's own stdout/stderr; the trailer must never land there.
+    assert BIN_MARKER not in wrapped
+    assert RC_MARKER not in wrapped
+    assert '> "$RECEIPTS_RC_FILE"' in wrapped
+
+
+def test_wrap_command_for_resolution_file_mode_ignores_non_runner() -> None:
+    assert wrap_command_for_resolution("ls -la", rc_path="/tmp/x") is None
+
+
+def test_wrap_command_for_resolution_file_mode_refuses_unsafe_shapes() -> None:
+    assert wrap_command_for_resolution("pytest -q &", rc_path="/tmp/x") is None
+
+
+def test_wrap_command_for_resolution_no_rc_path_keeps_legacy_stdout_form() -> None:
+    # rc_path=None is the explicit opt-in to the old (forgeable, but env-independent) stdout form.
+    wrapped = wrap_command_for_resolution("pytest -q")
+    assert wrapped is not None
+    assert BIN_MARKER in wrapped
+    assert RC_MARKER in wrapped
+
+
+def test_read_rc_file_roundtrip(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rc_path = tmp_path / "deadbeef"
+    rc_path.write_text("/usr/bin/pytest\n0\n")
+    bin_path, rc = read_rc_file(str(rc_path))
+    assert bin_path == "/usr/bin/pytest"
+    assert rc == 0
+
+
+def test_read_rc_file_resolution_failed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rc_path = tmp_path / "deadbeef"
+    rc_path.write_text("\n127\n")
+    bin_path, rc = read_rc_file(str(rc_path))
+    assert bin_path is None  # empty command -v output means "not found"
+    assert rc == 127
+
+
+def test_read_rc_file_malformed_rc(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rc_path = tmp_path / "deadbeef"
+    rc_path.write_text("/usr/bin/pytest\nnot-a-number\n")
+    bin_path, rc = read_rc_file(str(rc_path))
+    assert bin_path == "/usr/bin/pytest"
+    assert rc is None
+
+
+def test_read_rc_file_missing_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # The command never got as far as writing the trailer (interrupted, never ran, etc.).
+    bin_path, rc = read_rc_file(str(tmp_path / "never-written"))
+    assert bin_path is None
+    assert rc is None
+
+
 def test_is_trusted_runner_path_resolution_failed() -> None:
     assert is_trusted_runner_path(None, "/repo") is False
 
@@ -241,3 +304,40 @@ def test_is_trusted_runner_path_documented_override(tmp_path) -> None:  # type: 
     script = repo_root / "scripts" / "test.sh"
     assert is_trusted_runner_path(str(script), str(repo_root)) is False
     assert is_trusted_runner_path(str(script), str(repo_root), documented_runners=frozenset({"test.sh"})) is True
+
+
+def test_is_trusted_runner_path_relative_without_cwd_fails_closed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # E9: `command -v` can return a relative path verbatim (e.g. `.venv/bin/pytest`). With no cwd
+    # to resolve it against, this must not fall through to "outside repo tree => trusted".
+    repo_root = tmp_path / "repo"
+    assert is_trusted_runner_path(".venv/bin/pytest", str(repo_root)) is False
+
+
+def test_is_trusted_runner_path_relative_resolves_against_event_cwd_venv(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    repo_root = tmp_path / "repo"
+    (repo_root / ".venv" / "bin").mkdir(parents=True)
+    (repo_root / ".venv" / "bin" / "pytest").touch()
+    assert is_trusted_runner_path(".venv/bin/pytest", str(repo_root), cwd=str(repo_root)) is True
+
+
+def test_is_trusted_runner_path_relative_resolves_against_event_cwd_untrusted(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # The adversarial case with a relative path: an in-tree `./pytest` shadow reported relative,
+    # resolved against the real event cwd, must still be untrusted -- not accidentally waved
+    # through by resolving against the wrong (e.g. caller's ambient) directory.
+    repo_root = tmp_path / "repo"
+    (repo_root).mkdir(parents=True)
+    (repo_root / "pytest").touch()
+    assert is_trusted_runner_path("./pytest", str(repo_root), cwd=str(repo_root)) is False
+
+
+def test_is_trusted_runner_path_relative_resolves_against_event_cwd_not_caller_cwd(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The bug this fixes: resolving a relative path against the *calling process's* ambient cwd
+    # instead of the event's cwd. Put the caller somewhere unrelated to repo_root and confirm the
+    # trust decision still tracks the passed-in `cwd`, not wherever the test process happens to run.
+    repo_root = tmp_path / "repo"
+    (repo_root / ".venv" / "bin").mkdir(parents=True)
+    (repo_root / ".venv" / "bin" / "pytest").touch()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert is_trusted_runner_path(".venv/bin/pytest", str(repo_root), cwd=str(repo_root)) is True

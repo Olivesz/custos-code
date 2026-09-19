@@ -85,7 +85,10 @@ Three consequences:
 `__RECEIPTS_BIN`/`__RECEIPTS_RC` to a per-call file whose path is a random name under the
 receipts directory, exported into the command's environment; `PostToolUse` reads and deletes it.
 The model then sees unmodified output, and cannot forge a marker whose filename it never saw.
-Tracked as issue #22.
+Tracked as issue #22, closed: `hooks.on_pre_tool_use` generates the random path and correlates it
+to `on_post_tool_use` via a `tool_use_id`-keyed pending map (`~/.receipts/rc_pending/`), since
+whether `PostToolUse`'s `tool_input` reflects the rewritten or original command is undocumented
+and so cannot be relied on to re-derive the path. See E5 in docs/OPEN_QUESTIONS.md.
 
 ### Completeness flags, set at ingest
 - `truncated`: Claude Code caps tool output shown to the model; the transcript keeps what the model saw. Codex states the original token count. Either way, keep the full text when the hook has it and a sha256 of it always.

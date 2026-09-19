@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import sys
 import tomllib
 from datetime import UTC, datetime
@@ -49,20 +50,62 @@ def _paths(session_id: str) -> tuple[str, str, str]:
             os.path.join(HOME, "receipts", f"{session_id}.txt"))
 
 
+def _rc_dir() -> str:
+    d = os.path.join(HOME, "rc")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _rc_pending_path(session_id: str) -> str:
+    os.makedirs(os.path.join(HOME, "rc_pending"), exist_ok=True)
+    return os.path.join(HOME, "rc_pending", f"{session_id}.json")
+
+
+def _load_rc_pending(session_id: str) -> dict[str, str]:
+    p = _rc_pending_path(session_id)
+    if not os.path.exists(p):
+        return {}
+    with open(p, encoding="utf-8") as fh:
+        data: dict[str, str] = json.load(fh)
+    return data
+
+
+def _save_rc_pending(session_id: str, pending: dict[str, str]) -> None:
+    with open(_rc_pending_path(session_id), "w", encoding="utf-8") as fh:
+        json.dump(pending, fh)
+
+
 # ---------- PreToolUse ----------
 def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """E5: wrap a known-runner Bash command so `on_post_tool_use` can see the real resolved
-    binary path, defeating a `./pytest` wrapper shadowing the real one. Returns the hook
-    response JSON to print, or None to leave the command untouched."""
+    """E5/E9: wrap a known-runner Bash command so `on_post_tool_use` can see the real resolved
+    binary path and exit code, defeating a `./pytest` wrapper shadowing the real one. Returns the
+    hook response JSON to print, or None to leave the command untouched.
+
+    Issue #22: the trailer is written to a random per-call file under `~/.receipts/rc/` instead
+    of stdout (the E9 experiment showed a stdout trailer is visible in the model's own tool
+    output, letting it later forge the marker). `PostToolUse` cannot safely re-derive that random
+    path by re-parsing `tool_input.command` (undocumented whether it sees the original or the
+    rewritten command), so the path is instead handed across via a small per-session pending map
+    keyed on `tool_use_id`, which both events document. No `tool_use_id` means no way to
+    correlate the two sides, so the command is left unwrapped rather than leaking an orphan file.
+    """
     if payload.get("tool_name") != "Bash":
         return None
     inp = payload.get("tool_input")
     command = inp.get("command") if isinstance(inp, dict) else None
     if not isinstance(command, str):
         return None
-    wrapped = parsers.wrap_command_for_resolution(command)
+    tool_use_id = payload.get("tool_use_id")
+    if not isinstance(tool_use_id, str):
+        return None
+    rc_path = os.path.join(_rc_dir(), secrets.token_hex(16))
+    wrapped = parsers.wrap_command_for_resolution(command, rc_path=rc_path)
     if wrapped is None:
         return None
+    sid = str(payload.get("session_id", "unknown"))
+    pending = _load_rc_pending(sid)
+    pending[tool_use_id] = rc_path
+    _save_rc_pending(sid, pending)
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {"command": wrapped}}}
 
 
@@ -75,10 +118,20 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
     inp: dict[str, Any] = dict(raw_inp) if isinstance(raw_inp, dict) else {}
     resp = payload.get("tool_response")
     text = resp if isinstance(resp, str) else json.dumps(resp) if resp is not None else ""
-    # E5: a command `on_pre_tool_use` wrapped carries a trailer resolving its real binary path;
-    # strip it before this text is stored or handed to parsers.parse (it is not part of the
-    # runner's own output and would otherwise corrupt summary parsing / leak into the receipt).
-    text, resolved_bin, wrapped_exit_code = parsers.strip_and_parse_trailer(text)
+    # Issue #22: `on_pre_tool_use` (when it wrapped this call) writes the resolved binary path and
+    # exit code to a per-call file instead of stdout, so there is no trailer in `text` to strip
+    # here -- look the file up via the tool_use_id pending map instead.
+    resolved_bin: str | None = None
+    wrapped_exit_code: int | None = None
+    tool_use_id = payload.get("tool_use_id")
+    if isinstance(tool_use_id, str):
+        pending = _load_rc_pending(sid)
+        rc_path = pending.pop(tool_use_id, None)
+        if rc_path is not None:
+            resolved_bin, wrapped_exit_code = parsers.read_rc_file(rc_path)
+            if os.path.exists(rc_path):
+                os.remove(rc_path)
+            _save_rc_pending(sid, pending)
     text = redact(text)
     if resolved_bin is not None:
         inp["resolved_bin"] = resolved_bin  # feeds a future rules.py trust check (E5); unused today

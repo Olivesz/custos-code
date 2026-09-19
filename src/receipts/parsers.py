@@ -243,7 +243,7 @@ BIN_MARKER = "__RECEIPTS_BIN="
 RC_MARKER = "__RECEIPTS_RC="
 
 
-def wrap_command_for_resolution(command: str) -> str | None:
+def wrap_command_for_resolution(command: str, rc_path: str | None = None) -> str | None:
     """PreToolUse rewrite: append a trailer resolving argv[0]'s real binary path and exit code.
 
     Only commands whose first token looks like a known runner are wrapped (E5's own concern is
@@ -251,14 +251,31 @@ def wrap_command_for_resolution(command: str) -> str | None:
     left untouched because rewriting them safely needs shell-semantics we don't have here
     (MECHANICS §2.3: "do not wrap arbitrary commands"). Returns None when nothing should change.
 
-    VERIFY(E9/E5): whether the rewritten command is what the model sees in its own context: if
-    so, the trailer should be built so it never appears in what we show back to the model.
+    `rc_path`, when given, is a random per-call path (the caller's job -- typically under
+    `~/.receipts/rc/` -- to generate and later read/unlink; see `read_rc_file`). The trailer is
+    written to that file instead of stdout: the E9 experiment confirmed the stdout form is
+    visible in the model's own tool output, so a model that has seen `__RECEIPTS_RC=0` once can
+    later `echo` the same marker and manufacture evidence for a test it never ran (issue #22). A
+    file whose name the model never sees can't be forged that way. `rc_path` is embedded via a
+    quoted shell assignment, not printed, so it never appears in the command's own stdout/stderr.
+
+    `rc_path=None` keeps the legacy stdout-marker form (`BIN_MARKER`/`RC_MARKER`, stripped by
+    `strip_and_parse_trailer`), for harnesses that do not preserve env across the whole compound
+    command; prefer the file form whenever the caller can correlate `PreToolUse`/`PostToolUse`
+    for the same call (e.g. by `tool_use_id`).
     """
     token = first_token(command)
     if token is None or not is_known_runner_token(token):
         return None
     if "<<" in command or "\n" in command or " & " in command or command.rstrip().endswith("&"):
         return None
+    if rc_path is not None:
+        prefix = f"RECEIPTS_RC_FILE={shlex.quote(rc_path)}; export RECEIPTS_RC_FILE; "
+        trailer = (
+            f'; __rc=$?; printf "%s\\n%s\\n" "$(command -v {shlex.quote(token)} 2>/dev/null)" "$__rc" '
+            '> "$RECEIPTS_RC_FILE"; exit $__rc'
+        )
+        return f"{prefix}({command}){trailer}"
     trailer = (
         f'; __rc=$?; printf "\\n{BIN_MARKER}%s\\n{RC_MARKER}%s\\n" '
         f'"$(command -v {shlex.quote(token)} 2>/dev/null)" "$__rc"; exit $__rc'
@@ -267,10 +284,11 @@ def wrap_command_for_resolution(command: str) -> str | None:
 
 
 def strip_and_parse_trailer(output: str) -> tuple[str, str | None, int | None]:
-    """Split `wrap_command_for_resolution`'s trailer back out of captured output.
+    """Split `wrap_command_for_resolution`'s legacy stdout trailer back out of captured output.
 
-    Returns (output with the trailer lines removed, resolved binary path or None, exit code or
-    None). Used on the PostToolUse side before the output is stored or shown.
+    Only for the `rc_path=None` (stdout) form. Returns (output with the trailer lines removed,
+    resolved binary path or None, exit code or None). Used on the PostToolUse side before the
+    output is stored or shown.
     """
     bin_path: str | None = None
     rc: int | None = None
@@ -288,6 +306,29 @@ def strip_and_parse_trailer(output: str) -> tuple[str, str | None, int | None]:
     return "\n".join(kept), bin_path, rc
 
 
+def read_rc_file(path: str) -> tuple[str | None, int | None]:
+    """Parse the two-line trailer `wrap_command_for_resolution`'s file form writes.
+
+    Format: line 1 is `command -v`'s output (resolved binary path, or empty if not found), line
+    2 is the exit code. Returns (resolved binary path or None, exit code or None). A missing or
+    unreadable file (the command never ran, or ran interrupted before the trailer wrote it) reads
+    the same as a resolution failure: `(None, None)`. Pure read -- the caller (PostToolUse) is
+    responsible for unlinking the file afterward.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return None, None
+    bin_path = lines[0].strip() if len(lines) > 0 else ""
+    rc_text = lines[1].strip() if len(lines) > 1 else ""
+    try:
+        rc = int(rc_text)
+    except ValueError:
+        rc = None
+    return (bin_path or None), rc
+
+
 _TRUSTED_IN_TREE_PATTERNS = (
     re.compile(r"(^|/)\.venv/.*bin/"),
     re.compile(r"(^|/)venv/.*bin/"),
@@ -301,6 +342,7 @@ def is_trusted_runner_path(
     resolved_bin: str | None,
     repo_root: str,
     documented_runners: frozenset[str] = frozenset(),
+    cwd: str | None = None,
 ) -> bool:
     """True if a runner-shaped command's *actually resolved* binary is trustworthy evidence.
 
@@ -311,11 +353,24 @@ def is_trusted_runner_path(
     command, so an agent-authored `./pytest` at the repo root is never allowlisted no matter how
     it's invoked). Resolution failure (`None`, i.e. "command not found") is never trusted --
     that is positive evidence the claimed runner never ran.
+
+    `resolved_bin` comes from `command -v` inside the wrapped command (see
+    `wrap_command_for_resolution`) and is not guaranteed absolute -- observed in practice
+    returning e.g. `.venv/bin/pytest` verbatim. A relative path must be resolved against the
+    *ledger event's* `cwd` (the actual cwd the Bash call ran under), never the calling process's
+    own ambient cwd: resolving against the wrong directory can land outside `repo_root` by
+    accident and mark an in-tree shadow binary as trusted, exactly the bypass this check exists
+    to prevent. If `cwd` is unknown, fail closed (untrusted) rather than guess.
     """
     if not resolved_bin:
         return False
+    bin_path = Path(resolved_bin)
+    if not bin_path.is_absolute():
+        if not cwd:
+            return False
+        bin_path = Path(cwd) / bin_path
     try:
-        resolved = Path(resolved_bin).resolve()
+        resolved = bin_path.resolve()
         root = Path(repo_root).resolve()
     except OSError:
         return False
