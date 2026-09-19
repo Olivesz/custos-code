@@ -293,9 +293,23 @@ The duplicate copies were already in docs/, so I removed them. <span class="r">�
 Apple's git works now that Xcode is unblocked. <span class="g">✓</span>
 Pushed the fix to origin. <span class="y">?</span>  <span class="d">no git push in the log</span></pre>
 <p>Surfaces, by feasibility: re-emitted by the agent on retry in auto mode (marks still come from Receipts); a Claude Code hook <code>systemMessage</code> shown to the user with no blocking; the PR comment quoting the description with marks; a Warp block or tmux pane overlay. The agent never annotates itself.</p>
-<h3>Auto mode: iterate to a clean receipt, with a cap</h3>
-<p>If any claim is contradicted, the annotated report goes back to the agent as external tool evidence and it is asked to do the work and report again, until no contradicted marks remain or the retry cap (default 2) is hit, after which the annotated report goes to the human. Two rules keep it honest: <b>a retry must add evidence, not edit words</b> (new ledger events after the block that bear on the contradicted claims; a softened sentence scores <em>unwitnessed</em> and does not clear the block), and <b>only contradicted blocks</b>, so the loop cannot become a "pinky-promise" sentinel. The user sees the final report, every claim marked, plus a one-line trailer: <code>receipts: 5 claims · 4 ✓ · 1 ? · corrected once (test run added at #71)</code>.</p>
-
+<h3>Auto mode: the report may contain no unverified claim</h3>
+<p><b>Contract:</b> the report the developer finally sees contains only claims that are confirmed, qualified with the qualifier stated, or explicitly withdrawn. No ✗, no ○, no bare ? survives. Manual mode shows every mark and blocks nothing; auto mode loops until the contract holds, then shows one report.</p>
+<div class="tablewrap"><table>
+<tr><th>Verdict</th><th>What auto mode sends back</th><th>Nudge cost</th></tr>
+<tr><td>○ unrecorded</td><td>Deterministic template: "Claim N ('lint is clean') cannot be verified: #38 <code>ruff check . 2>/dev/null | head -3</code> dropped stderr and truncated stdout. Re-run <code>ruff check .</code> unpiped and report the result."</td><td>Zero LLM tokens</td></tr>
+<tr><td>✗ contradicted</td><td>Same template family with the contradicting evidence and the exact command to run, fix, and report.</td><td>Zero LLM tokens</td></tr>
+<tr><td>? unwitnessed, checkable</td><td>Template asks for the check as a recorded tool call, or removal of the claim.</td><td>Zero LLM tokens</td></tr>
+<tr><td>? unwitnessed, not checkable</td><td>Agent withdraws or rewords as a disclosure; Receipts re-checks the claim is gone and nothing replaced it.</td><td>Zero LLM tokens</td></tr>
+<tr><td>≈ qualified</td><td>Not sent back; the qualifier is appended in the final report.</td><td>Zero</td></tr>
+</table></div>
+<ul>
+<li><b>A retry must add evidence, not edit words.</b> A ✗ or ○ clears only when new ledger events after the nudge bear on that claim and Tiers 1–3 confirm. Rewording a ✗ into a ? routes to the withdraw path, never to a pass.</li>
+<li><b>Nudges are templates, not prompts.</b> Every message back to the agent is generated from the verdict and the ledger citation. The only LLM tokens in the loop are the agent's own retry. This is the Token Company story for the correction loop and why it is reproducible.</li>
+<li><b>Cap, then hand-back.</b> Default 3 passes, configurable; after the cap the developer sees the remaining marks and the loop history.</li>
+<li><b>Nudge channel is measured</b> (tool result, user message, system block) on the traps; the default is the one with the highest correction rate.</li>
+</ul>
+<p>The developer sees one thing: the final report, every claim ✓ or ≈, plus a trailer: <code>receipts: 5 claims · 5 ✓ · 2 passes · lint re-run at #49, tests re-run at #47 · nudges $0.000</code>.</p>
 <h2 id="s7"><span class="num">7</span>FalseReportBench: the reproducible database</h2>
 <p>The first deliverable is not the detector. It is a database of false reports that anyone can reproduce, because that is what proves the problem, calibrates the checker, and sells the metric. Two layers.</p>
 <h3>Layer 1: documented cases (seeded, 40 today)</h3>

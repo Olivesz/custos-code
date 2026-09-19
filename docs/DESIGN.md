@@ -258,16 +258,28 @@ Where the overlay can live, in order of feasibility:
 
 Rule: the agent never annotates itself. A mark that the model could write is the self-report problem again.
 
-### Auto mode: iterate to a clean receipt, with a cap
+### Auto mode: the report may contain no unverified claim
 
-After the first pass, if any claim is contradicted, Receipts returns the annotated report to the agent as external tool evidence and asks it to do the work and report again. The loop repeats until the receipt has no contradicted marks, or until the retry cap (default 2) is hit, at which point the annotated report goes to the human with the remaining marks.
+Contract: **the report the developer finally sees contains only claims that are confirmed, or qualified with the qualifier stated, or explicitly withdrawn.** No ✗, no ○, and no bare ? survives. Manual mode shows every mark and blocks nothing; auto mode loops until the contract holds, then shows one report.
 
-Two rules keep this honest:
+The loop, per verdict type, cheapest fix first:
 
-- **A retry must add evidence, not edit words.** The corrected report only counts if the ledger contains new events after the block that bear on the contradicted claims (a real test run, a real write). A rewrite that turns ✗ into ? by softening the sentence is scored as `unwitnessed` and does not clear the block. This closes the obvious dodge.
-- **Only contradicted blocks by default.** Unwitnessed and unrecorded are shown, not blocked, so the loop cannot become the "won't stop until it pinky-promises" sentinel the community already dislikes.
+| Verdict | What auto mode sends back | Cost of the nudge |
+|---|---|---|
+| ○ unrecorded | A deterministic, pre-generated instruction from a template: "Claim N ('lint is clean') cannot be verified: #38 `ruff check . 2>/dev/null \| head -3` dropped stderr and truncated stdout. Re-run `ruff check .` unpiped and report the result." | Zero LLM tokens; string template + ledger citation |
+| ✗ contradicted | The same template family with the contradicting evidence: "Claim N ('all 12 passing') is contradicted: #41 `pytest \| tail -5`, #42 'collected 0 items'. Run `pytest -q` unpiped, fix what fails, report the result." | Zero LLM tokens |
+| ? unwitnessed, checkable | If a deterministic check exists (a command, a file, a re-run), the template asks for it: "Claim N ('verified the endpoint with curl') has no evidence. Run the check with a tool call so it is recorded, or remove the claim." | Zero LLM tokens |
+| ? unwitnessed, not checkable | The agent is asked to withdraw or reword the claim as a disclosure ("not verified in this session"). Receipts re-checks that the withdrawn claim is gone and no new claim replaced it. | Zero LLM tokens |
+| ≈ qualified | Not sent back; the qualifier is appended to the claim in the final report ("tests pass; 1 test removed since task start"). | Zero |
 
-The user sees one thing: the final report, every claim marked, with a one-line trailer such as `receipts: 5 claims · 4 ✓ · 1 ? · corrected once (test run added at #71)`.
+Rules that keep the loop honest and cheap:
+
+- **A retry must add evidence, not edit words.** A ✗ or ○ clears only when new ledger events after the nudge bear on that claim (path or command match) and Tiers 1–3 confirm. Rewording a ✗ into a ? scores as unwitnessed-not-checkable and triggers the withdraw path, not a pass.
+- **Nudges are templates, not prompts.** Every message back to the agent is generated deterministically from the verdict and the ledger citation. The only LLM tokens spent in the loop are the agent's own retry. This is the Token Company story for the correction loop, and it is also why the loop is reproducible.
+- **Cap, then hand-back.** Default 3 passes. After the cap, the developer sees the report with the remaining marks and the loop's history. The cap is configurable; "run until clean" is allowed but the default protects against the sentinel failure mode.
+- **Nudge channel is measured, not assumed.** Tool-result, user-message, and system-block framings are a bench experiment (P3); the default is whichever gives the highest correction rate on the traps.
+
+The developer sees one thing: the final report, every claim ✓ or ≈, plus a trailer such as `receipts: 5 claims · 5 ✓ · 2 passes · lint re-run at #49, tests re-run at #47 · nudges $0.000`.
 
 ## 7. FalseReportBench: the reproducible database
 

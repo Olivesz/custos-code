@@ -7,14 +7,14 @@ Status: `open` · `decided` · `deferred (post-event)`
 ## Product and verdict semantics
 | # | Question | Owner | Status | Notes |
 |---|---|---|---|---|
-| P1 | Should `unwitnessed` ever block the Stop hook? | Oliver | open | Default no. Enterprises may want yes for "deployed" claims. |
+| P1 | Should `unwitnessed` or `unrecorded` ever block? | Oliver | decided | Manual mode: nothing blocks, all marks shown. Auto mode: the loop runs until no ✗, no ○, and no bare ? remain (withdrawn or made checkable), cap 3, then hand-back. See DESIGN §6. |
 | P2 | What does `receipts check --last` show on an honest session, and is that a product moment? | Oliver | open | Answer in the pitch: the cited receipt itself, plus pipe/truncation flags. Do not promise a catch. |
 | P3 | Feedback channel to the agent: tool result, user message, or system block? | Oliver | open | Literature says domain-dependent. Test all three on the traps; pick by correction rate. |
 | P4 | Product name. "Receipts" is a placeholder. | All | open | Decide before the README goes public. |
 | P5 | Scope of `qualified`: which evidence changes count (test deleted, renamed, assertion removed, flaky)? | Oliver | open | See DESIGN §4. Needs a rule list, not a judge. |
 | P6 | Tier 5 intent coverage: in scope for the event or post-event? | Oliver | open | Recommendation: post-event, one slide only. |
 | P7 | Inline receipt: which overlay surface first (agent re-emit, hook systemMessage, PR comment, Warp block)? | Oliver | open | See DESIGN §6G. Recommendation: hook systemMessage for the event; agent re-emit in auto mode. |
-| P8 | Auto mode retry cap and the "new evidence required" rule: how to detect that a retry added evidence for a specific claim? | Oliver | open | Ledger events after the block whose paths/commands match the claim's objects. Cap default 2. |
+| P8 | Auto mode: detecting that a retry added evidence for a specific claim; nudge templates per verdict type; cap default | Oliver | open | Ledger events after the nudge whose paths/commands match the claim's objects. Templates are deterministic (zero LLM tokens). Cap default 3, configurable. |
 
 ## Engine
 | # | Question | Owner | Status | Notes |

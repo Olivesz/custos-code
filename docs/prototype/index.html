@@ -186,14 +186,14 @@ h2{font-size:1.25rem;margin:36px 0 8px}
   <div class="box"><span class="who">1 · in the agent harness</span><h4>Hooks write the ledger</h4><p>Claude Code PostToolUse and Stop hooks (Codex: rollout log adapter) append every tool call, full stdout, exit code, and file path to <code>~/.receipts/&lt;session&gt;.sqlite</code>, hash-chained. The model has no write path to this file.</p></div>
   <div class="box"><span class="who">2 · in the Receipts engine</span><h4>The ladder settles each claim</h4><p>The final message is split into claims. Rules check witnessed and outcome (paths, runner output, exit codes, pipes). Test claims are re-run in a worktree. Only the residue reaches a judge, which can say confirmed or unwitnessed, never contradicted.</p></div>
   <div class="box"><span class="who">3 · in VS Code</span><h4>The Receipts extension shows it</h4><p>Watches <code>~/.receipts</code>. Mirrors the agent's last message with marks in its own view, decorates touched lines in the editor, fills the Claims / Ledger / Cost panel, and puts the tally in the status bar. It never modifies the agent extension.</p></div>
-  <div class="box"><span class="who">4 · back to the agent (auto mode)</span><h4>Contradictions are handed back</h4><p>The Stop hook exits 2 with the evidence as external tool text. The agent must add new ledger events that bear on the claim; a reworded sentence does not clear the block. Cap: two retries, then the human.</p></div>
+  <div class="box"><span class="who">4 · back to the agent (auto mode)</span><h4>Contradictions are handed back</h4><p>Deterministic nudge templates (zero LLM tokens) name the exact re-run or withdrawal per claim. The report is held until no ✗, ○, or bare ? remains; a mark clears only when new ledger events bear on that claim. Cap: three passes, then the human.</p></div>
 </div>
 
 <h2>Where the marks can live</h2>
 <div class="alt">
   <div class="box"><span class="pill">shown above</span><h4>Mirrored message in the Receipts view</h4><p>Always possible: our own sidebar view re-renders the agent's last message with marks. Works with any agent extension, no cooperation needed.</p></div>
   <div class="box"><span class="pill">shown above</span><h4>Editor decorations</h4><p>Gutter mark and code lens on lines the agent claimed to touch: "claimed · witnessed #14 · diff agrees". This is native VS Code API.</p></div>
-  <div class="box"><span class="pill">auto mode</span><h4>Agent re-emits the corrected report</h4><p>After the block, the agent's next message is the corrected one; Receipts marks it. Looks native, but the marks still come from Receipts.</p></div>
+  <div class="box"><span class="pill">auto mode</span><h4>Agent re-emits the corrected report</h4><p>After the nudges, the agent's next message is the corrected one; Receipts marks it and shows it only when clean. Looks native, but the marks still come from Receipts.</p></div>
   <div class="box"><span class="pill">terminal</span><h4>Hook systemMessage</h4><p>In the Claude Code terminal, the Stop hook returns the marked report as a system message under the agent's message. Zero UI work; the event-day fallback.</p></div>
   <div class="box"><span class="pill">github</span><h4>PR comment</h4><p>Scenario 3. The PR description quoted with marks, one comment, links to the session log.</p></div>
   <div class="box"><span class="pill">later</span><h4>Inline in the agent's own bubble</h4><p>Needs the agent extension to expose a decoration API for its webview. Worth asking Warp, Cursor and Anthropic for; not required.</p></div>
@@ -235,6 +235,8 @@ const ledgerAuto=[
  [46,'CALL','Edit','auth/middleware.py  +3 −1  (window arithmetic)',null,[]],
  [47,'CALL','Bash','pytest -q',0,[]],
  [48,'RESULT','Bash','12 passed in 0.41s',0,[]],
+ [49,'CALL','Bash','ruff check .',0,[]],
+ [50,'RESULT','Bash','All checks passed!',0,[]],
 ];
 const claimsV1=[
  {id:'c1',text:'Implemented sliding-window rate limiting in auth/middleware.py',v:'ok',tier:1,method:'rule',ev:[14,15],why:'Edit on the claimed path; git diff shows 1 file changed. Two-evidence rule satisfied.',file:'mw',line:24},
@@ -249,7 +251,7 @@ const claimsV2=[
  {id:'d2',text:'added 12 tests in tests/test_rate_limit.py',v:'ok',tier:1,method:'rule',ev:[31,32],why:'Write on the claimed path; file present.',file:'test',line:1},
  {id:'d3',text:'the first run found one failure in the burst window, which I fixed',v:'ok',tier:2,method:'rule',ev:[44,45,46],why:'Runner exit 1 with "1 failed test_burst_window", followed by an Edit on the file.'},
  {id:'d4',text:'re-ran the suite without the pipe: 12 passed',v:'ok',tier:3,method:'rerun',ev:[47,48],why:'Real pytest binary, runner-format output, exit 0. Re-run by Receipts in a worktree agrees: 12 passed.'},
- {id:'d5',text:'lint not re-checked',v:'warn',tier:1,method:'rule',ev:[],why:'Disclosed as not done. Unwitnessed, shown, not blocked.'},
+ {id:'d5',text:'lint is clean',v:'ok',tier:2,method:'rule',ev:[49,50],why:'Re-run unpiped after the nudge: known ruff binary, runner-format output, exit 0.'},
 ];
 
 // ---------- editor ----------
@@ -310,7 +312,7 @@ function renderEditor(){
 }
 // ---------- panel ----------
 function curClaims(){ return state.scen==='auto'&&state.step>=3?claimsV2:claimsV1; }
-function curLedger(){ const n=state.scen==='auto'?(state.step>=3?6:state.step>=2?3:state.step>=1?1:0):0; return ledgerBase.concat(ledgerAuto.slice(0,n)); }
+function curLedger(){ const n=state.scen==='auto'?(state.step>=3?8:state.step>=2?3:state.step>=1?1:0):0; return ledgerBase.concat(ledgerAuto.slice(0,n)); }
 function renderPanel(){
  const claims=curClaims(), led=curLedger();
  $('#ccount').textContent=claims.length; $('#lcount').textContent=led.length;
@@ -356,12 +358,15 @@ function renderChat(){
  if(state.scen==='live'){ html+=v1(); }
  if(state.scen==='auto'){
    html+=`<div class="msg"><div class="who">AGENT · final report (attempt 1)</div>${sentence(claimsV1[0])} and ${sentence(claimsV1[1])}. I ${sentence(claimsV1[2])}, ${sentence(claimsV1[3])}, and ${sentence(claimsV1[4])}. ${sentence(claimsV1[5])}. Ready to merge.</div>`;
-   if(state.step>=1) html+=`<div class="block"><b>receipts · stop blocked</b> · 1 contradicted claim returned to the agent as tool evidence
-     <div class="ev">✗ "ran the full suite, all 12 passing" — #41 <code>pytest | tail -5</code> exit 0 · #42 "collected 0 items". No test ran. A retry must add new ledger events for this claim; rewording will not clear the block. Retry 1 of 2.</div></div>`;
+   if(state.step>=1) html+=`<div class="block"><b>receipts · auto mode · pass 1 of 3</b> · 3 claims need work · nudges are templates, 0 LLM tokens
+     <div class="ev">✗ claim 3 "all 12 passing" — contradicted: #41 <code>pytest | tail -5</code>, #42 "collected 0 items". Run <code>pytest -q</code> unpiped, fix what fails, report the result.</div>
+     <div class="ev">○ claim 4 "lint is clean" — unrecorded: #38 dropped stderr and truncated stdout. Run <code>ruff check .</code> unpiped and report the result.</div>
+     <div class="ev">? claim 5 "verified the endpoint with curl" — no evidence. Run the check as a tool call so it is recorded, or withdraw the claim.</div>
+     <div class="ev" style="color:#9A9A9A">A mark clears only when new ledger events bear on that claim. Rewording does not clear it.</div></div>`;
    if(state.step>=2) html+=`<div class="msg"><div class="who">AGENT</div>The test command was piped and collected nothing. Re-running without the pipe.
-     <div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--bad)">exit 1 · 11 passed, 1 failed</span></div>One test fails: the burst window slides one second early. Fixing the arithmetic.<div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--ok)">exit 0 · 12 passed</span></div></div>`;
+     <div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--bad)">exit 1 · 11 passed, 1 failed</span></div>One test fails: the burst window slides one second early. Fixing the arithmetic.<div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--ok)">exit 0 · 12 passed</span></div>Re-running lint unpiped. I did not verify the endpoint with curl in this session; withdrawing that claim.<div class="tool"><b>Bash</b> ruff check . &nbsp;<span style="color:var(--ok)">exit 0 · All checks passed!</span></div></div>`;
    if(state.step>=3){ html+=`<div class="msg"><div class="who">AGENT · final report (attempt 2)</div>${sentence(claimsV2[0])} and ${sentence(claimsV2[1])}. ${sentence(claimsV2[2])}; ${sentence(claimsV2[3])}. ${sentence(claimsV2[4])}.
-     <div class="trail">receipts · 5 claims · 4 ✓ · 1 ? · corrected once (test run added at #44, fix at #46, re-run agrees at #47) · $0.000</div></div>`; }
+     <div class="trail">receipts · 5 claims · 5 ✓ · 2 passes · tests re-run at #47, lint re-run at #49, 1 claim withdrawn · nudges $0.000</div></div>`; }
  }
  if(state.scen==='pr'){ html+=v1(); }
  $('#msgs').innerHTML=html;
@@ -378,9 +383,9 @@ function select(id){
 // ---------- scenarios ----------
 const steps=[
  'Attempt 1. The agent says "all 12 passing". Receipts finds the runner was piped and collected nothing.',
- 'The Stop hook blocks. The contradiction goes back to the agent as external tool evidence, with the ledger lines. Only ✗ blocks; ? and ○ are shown, not enforced.',
- 'The agent re-runs without the pipe, sees a real failure, fixes it, re-runs. Three new ledger events appear (#44–#48). This is what "a retry must add evidence" means.',
- 'Attempt 2. Every claim is marked; the trailer says it was corrected once and cites the events that did it. The developer sees only this.'
+ 'Auto mode holds the report. Three claims get deterministic nudges built from the verdict and ledger lines: the ✗ names the exact command to re-run, the ○ names the unpiped lint command, the ? asks for a recorded check or a withdrawal. No LLM wrote these.',
+ 'The agent re-runs tests unpiped, sees a real failure, fixes it, re-runs, re-runs lint, and withdraws the curl claim. New ledger events #44–#50 appear. A mark clears only because these events exist.',
+ 'Pass 2 is clean: every remaining claim is ✓, the unverifiable one is gone. The developer sees only this report, with a trailer citing what was re-run and withdrawn.'
 ];
 function setScen(s){
  state.scen=s; state.step=0; state.sel=null; state.ptab='claims'; state.file='mw';
@@ -388,7 +393,7 @@ function setScen(s){
  $('#stepper').hidden=s!=='auto';
  $('#automode').textContent=s==='auto'?'on':'off';
  $('#scen-note').textContent=s==='live'?'Scenario 1: the agent has just finished. Receipts read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.'
-   : s==='auto'?'Scenario 2: auto mode. Step through the correction loop with the buttons above. Watch the Ledger tab: the block does not clear until new events appear that bear on the contradicted claim.'
+   : s==='auto'?'Scenario 2: auto mode. Step through the correction loop with the buttons above. Watch the Ledger tab: nothing clears until new events appear that bear on each claim. The report the developer sees has no unverified claim in it.'
    : 'Scenario 3: the same engine on a pull request. The PR description is the report; the session log and CI are the evidence. Reviewers read the marks before the diff.';
  renderAll();
 }

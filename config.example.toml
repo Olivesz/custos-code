@@ -11,7 +11,10 @@ samples = 3                   # majority vote before any judge verdict is shown
 [tiers]
 rerun_enabled = true          # Tier 3 on by default for test/build claims
 rerun_timeout_s = 60
-block_on = ["contradicted"]   # NEEDS-DECISION(oliver): P1 — should unwitnessed ever block?
+# manual mode: nothing blocks, all marks shown. auto mode: loop until clean.
+auto = false
+auto_max_passes = 3           # 0 = run until clean (not recommended; see DESIGN §6)
+auto_clear = ["contradicted", "unrecorded", "unwitnessed"]   # marks that must be resolved or withdrawn before the report is shown
 
 [ledger]
 max_output_bytes = 4096       # beyond this: truncate, keep full-content hash, flag truncated
