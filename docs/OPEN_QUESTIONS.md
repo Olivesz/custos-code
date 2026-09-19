@@ -23,7 +23,9 @@ Status: `open` · `decided` · `deferred (post-event)`
 | E2 | Which runners get parsers first? | Anush | open | Proposal: pytest, jest/vitest, go test, cargo. Others fall to `unrecorded`. |
 | E3 | Tier 3 re-run: worktree + subprocess, or Docker? | Anush | open | Worktree for the event; Docker for the bench runner. |
 | E4 | Tier 3 time budget in the Stop hook (10 s hook limit) | Anush | open | Rules block synchronously; re-run async, result posted as a follow-up. |
-| E5 | How to detect a wrapper script named like a runner (`./pytest`, PATH shadowing)? | Anush | open | Resolve binary path; require it outside the repo tree or in a known venv. |
+| E5 | How to detect a wrapper script named like a runner (`./pytest`, PATH shadowing)? | Anush | open | Resolve binary path; require it outside the repo tree or in a known venv. Codex gives argv directly. |
+| E9 | Claude Code stores no exit code for Bash (only `is_error`, stdout, stderr). Summary parsing vs PreToolUse `updatedInput` wrapping for runners vs Tier 3 re-run? | Oliver | open | Default all three in that order; VERIFY whether a wrapped command is visible to the model. MECHANICS §2. |
+| E10 | Subagent laundering rule: parent claim backed only by a subagent's prose is unwitnessed; backed by the child ledger's event is confirmed | Oliver | open | Designed in MECHANICS §1, untested. Needs a fixture. |
 | E6 | Claim extraction: LLM structured output vs regex for mechanical types? | Oliver | open | Measure recall on the gold set at hour 10. Regex may win for test/edit claims. |
 | E7 | Judge backend default | Oliver | decided | OpenAI SDK default, Anthropic behind the same interface. |
 | E8 | Hash chain: keep, given the model has no write path anyway? | Anush | open | Cheap; keep for tamper-evidence of the stored file, but do not oversell it. |
@@ -31,11 +33,11 @@ Status: `open` · `decided` · `deferred (post-event)`
 ## Adapters and integrations
 | # | Question | Owner | Status | Notes |
 |---|---|---|---|---|
-| A1 | Codex rollout JSONL field mapping | Ananya | open | Need three real rollouts to write the golden test. |
+| A1 | Codex rollout JSONL field mapping | Ananya | open | Format observed on this machine (MECHANICS §2): session_meta, turn_context, function_call/exec_command, exec_command_end (argv), function_call_output with "Process exited with code N", patch_apply_end, agent_message, task_complete. VERIFY exit field on exec_command_end and patch_apply_end fields on three real rollouts. |
 | A2 | Devin: does hackathon access include an org API token? | Ananya | open | Public API exposes metadata, chat messages, structured_output, PR list only. Adapter = PR + structured_output + CI log. |
 | A3 | Copilot session log format and stable link from a PR | Ananya | open | Documented as attached to commits; verify the export. |
 | A4 | Cursor: SpecStory export vs hooks | Ananya | deferred (post-event) | |
-| A5 | `transcript_path` lag in Claude Code hooks | Oliver | open | Read the file after a short retry; treat missing tail as `unrecorded`. |
+| A5 | `transcript_path` lag in Claude Code hooks | Oliver | decided | Use `last_assistant_message` from Stop/SubagentStop for the report; transcript only for history. |
 
 ## Bench and eval
 | # | Question | Owner | Status | Notes |

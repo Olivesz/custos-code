@@ -56,6 +56,8 @@ Every claim is pushed up until a tier settles it.
 AGENTS.md                 this file
 README.md                 quickstart and status
 docs/DESIGN.md            the design document (generated from docs/design-doc.html)
+docs/MECHANICS.md         how the receipt gets made: session/turn identity, logging per harness, claim→evidence mapping, the loop
+docs/prototype/index.html interactive mock of the editor experience
 docs/RESEARCH.md          research report: prevalence, cost, workarounds, landscape, 40 seed cases
 docs/research/            the five research notes and the coded complaint corpus
 docs/PLAN.md              team split, milestones, what runs in parallel
@@ -104,5 +106,6 @@ uv run receipts cost <session.jsonl>         # tokens and dollars by tier
 ## What to read before changing behaviour
 
 1. `docs/DESIGN.md` §4 (how verification works) and §16 (what was attacked and what changed).
+1. `docs/MECHANICS.md` (identity, logging, the claim→evidence table, how a retry clears a mark).
 2. `docs/OPEN_QUESTIONS.md`.
 3. The module docstring of whatever you are touching.
