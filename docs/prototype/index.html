@@ -100,6 +100,9 @@ h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.01em}
 .mark:hover .tip,.mark:focus .tip{display:block}
 .tip b{color:#fff} .tip .ev{color:#9A9A9A;font-family:"JetBrains Mono",monospace;font-size:11px;display:block;margin-top:4px}
 .trail{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:#9A9A9A;border-top:1px dashed #444;margin-top:8px;padding-top:6px}
+.held{border:1px dashed #555;border-radius:6px;padding:8px 10px;font-size:12.5px;color:#BBB}
+.held summary{cursor:pointer;color:#DDD}
+.held summary b{color:#FFB4AE}
 .block{background:#3A1B18;border:1px solid var(--bad);border-radius:6px;padding:8px 10px;font-size:12.5px}
 .block b{color:#FFB4AE}
 .block .ev{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:#DDD;margin-top:4px}
@@ -357,7 +360,7 @@ function renderChat(){
  let html=user+work;
  if(state.scen==='live'){ html+=v1(); }
  if(state.scen==='auto'){
-   html+=`<div class="msg"><div class="who">AGENT · final report (attempt 1)</div>${sentence(claimsV1[0])} and ${sentence(claimsV1[1])}. I ${sentence(claimsV1[2])}, ${sentence(claimsV1[3])}, and ${sentence(claimsV1[4])}. ${sentence(claimsV1[5])}. Ready to merge.</div>`;
+   html+=`<details class="held"${state.step===0?' open':''}><summary><b>receipts · report held</b> · pass 1 · 6 claims · 3 need work · not shown to you</summary><div class="msg" style="opacity:.55;margin-top:8px"><div class="who">AGENT · attempt 1 (held)</div>${sentence(claimsV1[0])} and ${sentence(claimsV1[1])}. I ${sentence(claimsV1[2])}, ${sentence(claimsV1[3])}, and ${sentence(claimsV1[4])}. ${sentence(claimsV1[5])}. Ready to merge.</div></details>`;
    if(state.step>=1) html+=`<div class="block"><b>receipts · auto mode · pass 1 of 3</b> · 3 claims need work · nudges are templates, 0 LLM tokens
      <div class="ev">✗ claim 3 "all 12 passing" — contradicted: #41 <code>pytest | tail -5</code>, #42 "collected 0 items". Run <code>pytest -q</code> unpiped, fix what fails, report the result.</div>
      <div class="ev">○ claim 4 "lint is clean" — unrecorded: #38 dropped stderr and truncated stdout. Run <code>ruff check .</code> unpiped and report the result.</div>
@@ -365,7 +368,7 @@ function renderChat(){
      <div class="ev" style="color:#9A9A9A">A mark clears only when new ledger events bear on that claim. Rewording does not clear it.</div></div>`;
    if(state.step>=2) html+=`<div class="msg"><div class="who">AGENT</div>The test command was piped and collected nothing. Re-running without the pipe.
      <div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--bad)">exit 1 · 11 passed, 1 failed</span></div>One test fails: the burst window slides one second early. Fixing the arithmetic.<div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--ok)">exit 0 · 12 passed</span></div>Re-running lint unpiped. I did not verify the endpoint with curl in this session; withdrawing that claim.<div class="tool"><b>Bash</b> ruff check . &nbsp;<span style="color:var(--ok)">exit 0 · All checks passed!</span></div></div>`;
-   if(state.step>=3){ html+=`<div class="msg"><div class="who">AGENT · final report (attempt 2)</div>${sentence(claimsV2[0])} and ${sentence(claimsV2[1])}. ${sentence(claimsV2[2])}; ${sentence(claimsV2[3])}. ${sentence(claimsV2[4])}.
+   if(state.step>=3){ html+=`<div class="msg"><div class="who">AGENT · final report · verified</div>${sentence(claimsV2[0])} and ${sentence(claimsV2[1])}. ${sentence(claimsV2[2])}; ${sentence(claimsV2[3])}. ${sentence(claimsV2[4])}.
      <div class="trail">receipts · 5 claims · 5 ✓ · 2 passes · tests re-run at #47, lint re-run at #49, 1 claim withdrawn · nudges $0.000</div></div>`; }
  }
  if(state.scen==='pr'){ html+=v1(); }
@@ -382,7 +385,7 @@ function select(id){
 }
 // ---------- scenarios ----------
 const steps=[
- 'Attempt 1. The agent says "all 12 passing". Receipts finds the runner was piped and collected nothing.',
+ 'Pass 1. The agent says "all 12 passing". Receipts finds the runner was piped and collected nothing, so the report is held, not shown. Expand the dashed card to see what was caught.',
  'Auto mode holds the report. Three claims get deterministic nudges built from the verdict and ledger lines: the ✗ names the exact command to re-run, the ○ names the unpiped lint command, the ? asks for a recorded check or a withdrawal. No LLM wrote these.',
  'The agent re-runs tests unpiped, sees a real failure, fixes it, re-runs, re-runs lint, and withdraws the curl claim. New ledger events #44–#50 appear. A mark clears only because these events exist.',
  'Pass 2 is clean: every remaining claim is ✓, the unverifiable one is gone. The developer sees only this report, with a trailer citing what was re-run and withdrawn.'
