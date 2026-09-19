@@ -2,6 +2,7 @@
 
 Mirrors docs/DESIGN.md §9. If you change a field, update the design doc and the golden tests.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,22 +13,24 @@ from pydantic import BaseModel, Field
 
 
 class EventKind(StrEnum):
-    CALL = "call"        # a tool invocation, written by the harness
-    RESULT = "result"    # the tool's output, written by the harness
-    TEXT = "text"        # assistant prose (never evidence)
-    USER = "user"        # user message
-    META = "meta"        # session metadata
-    RERUN = "rerun"      # a Tier 3 re-execution; itself auditable
+    CALL = "call"  # a tool invocation, written by the harness
+    RESULT = "result"  # the tool's output, written by the harness
+    TEXT = "text"  # assistant prose (never evidence)
+    USER = "user"  # user message
+    META = "meta"  # session metadata
+    RERUN = "rerun"  # a Tier 3 re-execution; itself auditable
 
 
 class EventFlags(BaseModel):
-    truncated: bool = False     # output cut at max_output_bytes; full hash kept
-    piped: bool = False         # command contained | head, | tail, 2>/dev/null, etc.
+    truncated: bool = False  # output cut at max_output_bytes; full hash kept
+    piped: bool = False  # command contained | head, | tail, 2>/dev/null, etc.
     stderr_dropped: bool = False
-    sidechain: bool = False     # sub-agent; never counts as top-level evidence
-    error: bool = False         # harness marked the result as an error (Claude Code is_error; Codex success=false)
-    interrupted: bool = False   # tool run was interrupted
-    timed_out: bool = False     # Tier 3 re-run hit its timeout_s budget before the command finished
+    sidechain: bool = False  # sub-agent; never counts as top-level evidence
+    error: bool = (
+        False  # harness marked the result as an error (Claude Code is_error; Codex success=false)
+    )
+    interrupted: bool = False  # tool run was interrupted
+    timed_out: bool = False  # Tier 3 re-run hit its timeout_s budget before the command finished
 
 
 class LedgerEvent(BaseModel):
@@ -35,21 +38,22 @@ class LedgerEvent(BaseModel):
 
     Invariant 1 (AGENTS.md): only adapters and hooks construct these.
     """
+
     seq: int
     ts: datetime
     session_id: str
     kind: EventKind
     tool: str | None = None
-    input: dict[str, object] | None = None      # redacted before hashing
-    output: str | None = None                   # <= max_output_bytes
-    output_hash: str | None = None              # sha256 of the full, untruncated output
+    input: dict[str, object] | None = None  # redacted before hashing
+    output: str | None = None  # <= max_output_bytes
+    output_hash: str | None = None  # sha256 of the full, untruncated output
     exit_code: int | None = None
     paths: list[str] = Field(default_factory=list)
     cwd: str | None = None
     duration_ms: int | None = None
     flags: EventFlags = Field(default_factory=EventFlags)
     prev_hash: str = ""
-    hash: str = ""                              # sha256(prev_hash + canonical_json(self without hash))
+    hash: str = ""  # sha256(prev_hash + canonical_json(self without hash))
 
 
 class ClaimType(StrEnum):
@@ -73,16 +77,16 @@ class ClaimType(StrEnum):
 class Claim(BaseModel):
     id: str
     session_id: str
-    text: str                                   # verbatim span from the report
+    text: str  # verbatim span from the report
     type: ClaimType
-    objects: list[str] = Field(default_factory=list)   # paths, commands, test names, URLs
+    objects: list[str] = Field(default_factory=list)  # paths, commands, test names, URLs
     polarity: Literal["did", "did_not"] = "did"
     source: Literal["report", "plan", "request"] = "report"
 
 
 class Verdict(StrEnum):
     CONFIRMED = "confirmed"
-    CONTRADICTED = "contradicted"   # positive evidence only; never from the judge (invariant 2, 3)
+    CONTRADICTED = "contradicted"  # positive evidence only; never from the judge (invariant 2, 3)
     UNWITNESSED = "unwitnessed"
     UNRECORDED = "unrecorded"
     QUALIFIED = "qualified"
@@ -94,9 +98,11 @@ class VerdictRecord(BaseModel):
     tier: int = Field(ge=0, le=5)
     method: Literal["rule", "rerun", "judge", "state"]
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence: list[int] = Field(default_factory=list)   # ledger seq numbers; required unless unwitnessed/unrecorded
-    rationale: str = ""                                  # one sentence
-    qualifier: str | None = None                         # for QUALIFIED: what changed under the claim
+    evidence: list[int] = Field(
+        default_factory=list
+    )  # ledger seq numbers; required unless unwitnessed/unrecorded
+    rationale: str = ""  # one sentence
+    qualifier: str | None = None  # for QUALIFIED: what changed under the claim
 
 
 class Coverage(BaseModel):
@@ -108,7 +114,7 @@ class Coverage(BaseModel):
 
 class Session(BaseModel):
     id: str
-    source: Literal["claude_code", "codex", "copilot", "devin", "otel"]
+    source: Literal["claude_code", "codex", "copilot", "devin", "machine", "otel"]
     agent: str
     model: str | None = None
     started: datetime | None = None
