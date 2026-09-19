@@ -15,7 +15,8 @@ Three people, mostly agent-written code, one weekend. Conflicts come from two pe
 - Never commit to `main`. Branch names: `<name>/<area>-<short>` (`anush/parsers-pytest`, `ananya/adapter-codex`).
 - One PR per concern, under ~400 lines of diff where possible. Big features land as a sequence of small PRs behind a `NotImplementedError` or a config flag, not one giant PR at hour 20.
 - Rebase on `main` before opening and before merging: `git fetch origin && git rebase origin/main`. Squash-merge; the PR title becomes the commit message.
-- CI must be green. A reviewer other than the author approves. During the event, the review can be a 2-minute look at the diff and the receipt; it still happens.
+- CI must be green. **Request both other people on every PR, not just the path's owner** (`gh pr create --reviewer anushmainali,AnanyaGuntur8`, minus yourself). One approval from either still merges a PR inside one person's own paths; shared seams still need both. This is about latency, not ceremony -- whoever is awake unblocks it, instead of the PR waiting on one named person. Do not rely on CODEOWNERS to request for you: it requests only the last matching pattern's owners, and on PR #44 it silently requested one of the two.
+- During the event, the review can be a 2-minute look at the diff and the receipt; it still happens.
 - Draft PRs early. Pushing a half-done branch is fine; opening a draft PR the moment a branch exists tells the others what you are touching.
 
 ## 4. Commits
