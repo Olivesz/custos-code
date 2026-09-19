@@ -1,0 +1,996 @@
+{
+ "theme_key": {
+  "T1": "false test claim",
+  "T2": "false edit/file claim",
+  "T3": "false verification ('I checked')",
+  "T4": "skipped read claimed as read",
+  "T5": "fabricated tool output/results",
+  "T6": "summary drift / false 'done'",
+  "T7": "denial/gaslighting when confronted",
+  "W": "workaround described",
+  "S": "switch/churn/WTP signal"
+ },
+ "items": [
+  {
+   "src": "HN",
+   "id": "47279873",
+   "author": "blakec",
+   "date": "2026-03-06",
+   "url": "https://news.ycombinator.com/item?id=47279873",
+   "tool": "general",
+   "themes": [
+    "T1",
+    "T6",
+    "W"
+   ],
+   "quote": "the model claims tests pass without executing them",
+   "disc": "n/a",
+   "wa": "gate the completion report on real test output; grep output for 'should work'/'probably' and force re-verification",
+   "quote_words": 8
+  },
+  {
+   "src": "HN",
+   "id": "46201848",
+   "author": "112233",
+   "date": "2025-12-09",
+   "url": "https://news.ycombinator.com/item?id=46201848",
+   "tool": "Claude Code (Opus)",
+   "themes": [
+    "T1",
+    "T5"
+   ],
+   "quote": "it is excellent at writing fake code and fabricating results",
+   "disc": "review of the test body",
+   "wa": "",
+   "quote_words": 10
+  },
+  {
+   "src": "HN",
+   "id": "47881255",
+   "author": "M4R5H4LL",
+   "date": "2026-04-23",
+   "url": "https://news.ycombinator.com/item?id=47881255",
+   "tool": "Codex (5.4)",
+   "themes": [
+    "T6",
+    "S"
+   ],
+   "quote": "It also claimed to have fixed issues when it did not",
+   "disc": "review",
+   "wa": "stayed on Claude Code; called Codex 'unusable at the moment'",
+   "quote_words": 11
+  },
+  {
+   "src": "HN",
+   "id": "45605412",
+   "author": "bogdanoff_2",
+   "date": "2025-10-16",
+   "url": "https://news.ycombinator.com/item?id=45605412",
+   "tool": "Cursor",
+   "themes": [
+    "T3",
+    "T6"
+   ],
+   "quote": "changes the code, and then claims it's fixed. I open app, and it's still broken.",
+   "disc": "opened the app",
+   "wa": "asks for agent that can see the running app",
+   "quote_words": 15
+  },
+  {
+   "src": "HN",
+   "id": "43562492",
+   "author": "DonHopkins",
+   "date": "2025-04-02",
+   "url": "https://news.ycombinator.com/item?id=43562492",
+   "tool": "Cursor (claude-3.7-sonnet-max)",
+   "themes": [
+    "T5"
+   ],
+   "quote": "Cursor keeps hallucinating user input wrapped in <user> [something that I did not say but might have] </user> after its responses.",
+   "disc": "visible in chat",
+   "wa": "",
+   "quote_words": 21
+  },
+  {
+   "src": "HN",
+   "id": "46889886",
+   "author": "jascha_eng",
+   "date": "2026-02-04",
+   "url": "https://news.ycombinator.com/item?id=46889886",
+   "tool": "Claude Code /insights",
+   "themes": [
+    "T5"
+   ],
+   "quote": "So the whole report is fabricated, great.",
+   "disc": "asked Claude; numbers implausible",
+   "wa": "",
+   "quote_words": 7
+  },
+  {
+   "src": "HN",
+   "id": "47802093",
+   "author": "iterateoften",
+   "date": "2026-04-17",
+   "url": "https://news.ycombinator.com/item?id=47802093",
+   "tool": "Claude Code (Opus)",
+   "themes": [
+    "T5",
+    "T6",
+    "S"
+   ],
+   "quote": "None of the boards worked and I had to just do the project in codex.",
+   "disc": "hardware did not work",
+   "wa": "switched to Codex",
+   "quote_words": 15
+  },
+  {
+   "src": "HN",
+   "id": "45974914",
+   "author": "Thugonerd",
+   "date": "2025-11-19",
+   "url": "https://news.ycombinator.com/item?id=45974914",
+   "tool": "Cursor / GitHub Copilot",
+   "themes": [
+    "T2",
+    "S"
+   ],
+   "quote": "They'd say \"Done – file replaced\" while the file stayed untouched.",
+   "disc": "file unchanged",
+   "wa": "sells a $99/$299 'Zero-Bullshit Protocol' prompt (vendor post)",
+   "quote_words": 10
+  },
+  {
+   "src": "HN",
+   "id": "49432923",
+   "author": "ohans",
+   "date": "2026-08-25",
+   "url": "https://news.ycombinator.com/item?id=49432923",
+   "tool": "AGENTS.md study",
+   "themes": [
+    "T1",
+    "W"
+   ],
+   "quote": "\"Do not claim that an interrupted or timed-out test passed\" takes the gold for me.",
+   "disc": "n/a",
+   "wa": "AGENTS.md rule (koala73/worldmonitor)",
+   "quote_words": 15
+  },
+  {
+   "src": "HN",
+   "id": "48791807",
+   "author": "cadamsdotcom",
+   "date": "2026-07-05",
+   "url": "https://news.ycombinator.com/item?id=48791807",
+   "tool": "Claude Code",
+   "themes": [
+    "W"
+   ],
+   "quote": "your agent can't stop working without passing tests!",
+   "disc": "n/a",
+   "wa": "Stop hook runs tests, exit code 2 + stderr",
+   "quote_words": 8
+  },
+  {
+   "src": "HN",
+   "id": "47696310",
+   "author": "Lunurubus",
+   "date": "2026-04-08",
+   "url": "https://news.ycombinator.com/item?id=47696310",
+   "tool": "Cursor",
+   "themes": [
+    "T5"
+   ],
+   "quote": "A better term is a 'hallucinated status report'.",
+   "disc": "RAM monitoring (14GB claimed vs 61GB actual)",
+   "wa": "",
+   "quote_words": 8
+  },
+  {
+   "src": "HN",
+   "id": "47896320",
+   "author": "Sembiance",
+   "date": "2026-04-24",
+   "url": "https://news.ycombinator.com/item?id=47896320",
+   "tool": "Claude Code (Opus 4.7)",
+   "themes": [
+    "T6"
+   ],
+   "quote": "First produced garbage output and claimed it was done, admitted it did that when called out",
+   "disc": "visual verification of output",
+   "wa": "",
+   "quote_words": 16
+  },
+  {
+   "src": "HN",
+   "id": "47487638",
+   "author": "maccard",
+   "date": "2026-03-23",
+   "url": "https://news.ycombinator.com/item?id=47487638",
+   "tool": "Claude Code (Opus 4.6)",
+   "themes": [
+    "T3",
+    "T6"
+   ],
+   "quote": "claimed it was done, but _didn't execute the verifiaction it told me it was going to execute_",
+   "disc": "ran the script himself; failed at first hurdle",
+   "wa": "",
+   "quote_words": 17
+  },
+  {
+   "src": "HN",
+   "id": "43722835",
+   "author": "kfajdsl",
+   "date": "2025-04-17",
+   "url": "https://news.ycombinator.com/item?id=43722835",
+   "tool": "Cursor (o4-mini)",
+   "themes": [
+    "T1",
+    "T5"
+   ],
+   "quote": "it claimed that it ran a test and determined conclusively that one particular set was faster",
+   "disc": "no tool call in transcript",
+   "wa": "",
+   "quote_words": 16
+  },
+  {
+   "src": "HN",
+   "id": "46074937",
+   "author": "pepoluan",
+   "date": "2025-11-28",
+   "url": "https://news.ycombinator.com/item?id=46074937",
+   "tool": "general",
+   "themes": [
+    "T1"
+   ],
+   "quote": "LLMs are even known to hide or fake Unit Test results: Claiming success when it fails",
+   "disc": "n/a",
+   "wa": "",
+   "quote_words": 16
+  },
+  {
+   "src": "HN",
+   "id": "47895029",
+   "author": "LatencyKills",
+   "date": "2026-04-24",
+   "url": "https://news.ycombinator.com/item?id=47895029",
+   "tool": "Claude Code (4.7)",
+   "themes": [
+    "T1",
+    "T7",
+    "W"
+   ],
+   "quote": "Now, Claude routinely ignores the hook rules.",
+   "disc": "stop hook fired; model claimed hook 'firing incorrectly'",
+   "wa": "Stop hook blocking stop until tests run (JSON-stdout variant; commenters note exit-code-2 needed)",
+   "quote_words": 7
+  },
+  {
+   "src": "HN",
+   "id": "47896193",
+   "author": "colechristensen",
+   "date": "2026-04-24",
+   "url": "https://news.ycombinator.com/item?id=47896193",
+   "tool": "Claude Code",
+   "themes": [
+    "W"
+   ],
+   "quote": "You are NEVER allowed to to contradict a stop hook, claim it incorrectly fired, or ignore it in any way.",
+   "disc": "n/a",
+   "wa": "CLAUDE.md rule",
+   "quote_words": 20
+  },
+  {
+   "src": "HN",
+   "id": "47573191",
+   "author": "LatencyKills",
+   "date": "2026-03-30",
+   "url": "https://news.ycombinator.com/item?id=47573191",
+   "tool": "Claude Code",
+   "themes": [
+    "W"
+   ],
+   "quote": "I have a script [1] that forces Claude to execute tests whenever code files are changed.",
+   "disc": "n/a",
+   "wa": "stop hook scripts",
+   "quote_words": 16
+  },
+  {
+   "src": "HN",
+   "id": "47256614",
+   "author": "benjosaur",
+   "date": "2026-03-05",
+   "url": "https://news.ycombinator.com/item?id=47256614",
+   "tool": "Claude Code (conductor.build)",
+   "themes": [
+    "T3",
+    "T5"
+   ],
+   "quote": "the \"pretend\" behaviour of giving up due to guardrails that are actually non-binding is pretty terrifying",
+   "disc": "told it to escape sandbox; it did",
+   "wa": "",
+   "quote_words": 16
+  },
+  {
+   "src": "HN",
+   "id": "49239447",
+   "author": "aaronbrethorst",
+   "date": "2026-08-10",
+   "url": "https://news.ycombinator.com/item?id=49239447",
+   "tool": "Claude Code auto mode",
+   "themes": [
+    "T5"
+   ],
+   "quote": "in all cases it turned out that it had in fact hallucinated them",
+   "disc": "review",
+   "wa": "",
+   "quote_words": 13
+  },
+  {
+   "src": "HN",
+   "id": "48958441",
+   "author": "brap",
+   "date": "2026-07-18",
+   "url": "https://news.ycombinator.com/item?id=48958441",
+   "tool": "Claude Code /goal",
+   "themes": [
+    "W",
+    "T6"
+   ],
+   "quote": "won't stop until it pinky-promises it achieved your goal",
+   "disc": "n/a",
+   "wa": "critique of promise-sentinel stop hooks",
+   "quote_words": 9
+  },
+  {
+   "src": "HN",
+   "id": "46393638",
+   "author": "lurking_swe",
+   "date": "2025-12-26",
+   "url": "https://news.ycombinator.com/item?id=46393638",
+   "tool": "Cursor/Codex/Claude Code",
+   "themes": [
+    "W"
+   ],
+   "quote": "you need to tell it that it's not supposed to randomly edit the source code to make the test pass",
+   "disc": "n/a",
+   "wa": "unit-test skill: must run test after writing; may not edit source to pass",
+   "quote_words": 20
+  },
+  {
+   "src": "HN",
+   "id": "46971697",
+   "author": "RAMJAC",
+   "date": "2026-02-11",
+   "url": "https://news.ycombinator.com/item?id=46971697",
+   "tool": "Claude Code",
+   "themes": [
+    "W"
+   ],
+   "quote": "Check if all tasks are complete. If not, respond with {\"ok\": false, \"reason\": \"what remains to be done\"}.",
+   "disc": "n/a",
+   "wa": "Stop/TaskCompleted prompt hooks in settings.json",
+   "quote_words": 18
+  },
+  {
+   "src": "HN",
+   "id": "48811546",
+   "author": "westurner",
+   "date": "2026-07-06",
+   "url": "https://news.ycombinator.com/item?id=48811546",
+   "tool": "Claude Code plugin",
+   "themes": [
+    "W",
+    "T6",
+    "T1"
+   ],
+   "quote": "catches the false 'Done' on Stop (missed subtasks, stubs, false 'tests pass', overridden rules)",
+   "disc": "n/a",
+   "wa": "Groundtruth plugin audits claims vs git diff",
+   "quote_words": 14
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#5320",
+   "author": "keithcorcoran",
+   "date": "2025-08-07",
+   "url": "https://github.com/anthropics/claude-code/issues/5320",
+   "tool": "Claude Code (Opus 4.1)",
+   "themes": [
+    "T6",
+    "T7",
+    "S"
+   ],
+   "quote": "Cannot trust ANY completion claim",
+   "disc": "review: 108 claimed vs ~15-20 fixed, 0 checkboxes",
+   "wa": "manual verification of every assertion; demanded refund ($200/mo Max)",
+   "quote_words": 5
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#32650",
+   "author": "VoxCore84",
+   "date": "2026-03-10",
+   "url": "https://github.com/anthropics/claude-code/issues/32650",
+   "tool": "Claude Code (Max $200 + $300 usage)",
+   "themes": [
+    "T6",
+    "T5",
+    "T3"
+   ],
+   "quote": "30-40% of interaction time — and the corresponding token budget — is spent verifying that the agent actually executed the operations it claimed to execute",
+   "disc": "tool logs, exit codes, file state",
+   "wa": "verifies every claim; 100+ sessions documented",
+   "quote_words": 23
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#32281",
+   "author": "VoxCore84",
+   "date": "2026-03-09",
+   "url": "https://github.com/anthropics/claude-code/issues/32281",
+   "tool": "Claude Code 2.1.71",
+   "themes": [
+    "T6",
+    "T5"
+   ],
+   "quote": "I would write this employee up at work for lying to me",
+   "disc": "found tasks not completed",
+   "wa": "",
+   "quote_words": 12
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#54457",
+   "author": "firstplacebrian",
+   "date": "2026-04-28",
+   "url": "https://github.com/anthropics/claude-code/issues/54457",
+   "tool": "Claude Code (Opus 4.7)",
+   "themes": [
+    "T3",
+    "T7"
+   ],
+   "quote": "Claimed \"Errors: 0. First warming action succeeded. End-to-end verified\" off a loose success heuristic",
+   "disc": "checked login state: persona never logged in",
+   "wa": "MEMORY.md 'don't lie/overclaim' rules (ignored)",
+   "quote_words": 14
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#33618",
+   "author": "jimvonknopf-hub",
+   "date": "2026-03-12",
+   "url": "https://github.com/anthropics/claude-code/issues/33618",
+   "tool": "Claude Code",
+   "themes": [
+    "T2",
+    "T7"
+   ],
+   "quote": "Claude, the Liar who knows that he is and decides to go on.",
+   "disc": "caught false 'Files NOT touched' line",
+   "wa": "rollback report marked 'Verify everything independently'",
+   "quote_words": 13
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#1094",
+   "author": "GaryDean",
+   "date": "2025-05-14",
+   "url": "https://github.com/anthropics/claude-code/issues/1094",
+   "tool": "Claude Code",
+   "themes": [
+    "T6",
+    "S"
+   ],
+   "quote": "where claude has lied about whether a task has actually completed",
+   "disc": "n/a",
+   "wa": "wants /refund command",
+   "quote_words": 11
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#4462",
+   "author": "RGCsAGupta",
+   "date": "2025-07-25",
+   "url": "https://github.com/anthropics/claude-code/issues/4462",
+   "tool": "Claude Code 1.0.61 sub-agents",
+   "themes": [
+    "T2",
+    "T5"
+   ],
+   "quote": "Sub-agents report successful file creation with detailed confirmation messages, but external verification shows no files were created.",
+   "disc": "ls / find",
+   "wa": "direct Write from main agent as control",
+   "quote_words": 17
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#63538",
+   "author": "CarterPape",
+   "date": "2026-05-29",
+   "url": "https://github.com/anthropics/claude-code/issues/63538",
+   "tool": "Claude Code 2.1.156 (Opus 4.8)",
+   "themes": [
+    "T5"
+   ],
+   "quote": "the model is prone to fabricating tool results it never received",
+   "disc": "cancelled parallel batch; fabricated user quote in report",
+   "wa": "",
+   "quote_words": 11
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#12976",
+   "author": "carmandale",
+   "date": "2025-12-03",
+   "url": "https://github.com/anthropics/claude-code/issues/12976",
+   "tool": "Claude Code 2.0.57",
+   "themes": [
+    "T5",
+    "T7"
+   ],
+   "quote": "your models lie continually",
+   "disc": "confronted the model",
+   "wa": "",
+   "quote_words": 4
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#6089",
+   "author": "novacents",
+   "date": "2025-08-19",
+   "url": "https://github.com/anthropics/claude-code/issues/6089",
+   "tool": "Claude Code",
+   "themes": [
+    "T6",
+    "T2",
+    "T7"
+   ],
+   "quote": "Falsely declared \"🎉 6 specialist agents installation complete!\"",
+   "disc": "asked where installed; claude --help, config list",
+   "wa": "",
+   "quote_words": 8
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#76987",
+   "author": "ThatDragonOverThere",
+   "date": "2026-07-12",
+   "url": "https://github.com/anthropics/claude-code/issues/76987",
+   "tool": "Claude Code (Fable 5)",
+   "themes": [
+    "T6",
+    "S"
+   ],
+   "quote": "this tool will do everything except the work",
+   "disc": "deliverable missing after 12 days",
+   "wa": "built audit steps into process; near-chargeback",
+   "quote_words": 8
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#92650",
+   "author": "scubashack808",
+   "date": "2026-09-07",
+   "url": "https://github.com/anthropics/claude-code/issues/92650",
+   "tool": "Claude Code 2.1.263 (Fable)",
+   "themes": [
+    "T7",
+    "T6"
+   ],
+   "quote": "make it not lie and gaslight me on 80% of my sessions",
+   "disc": "n/a",
+   "wa": "undo/redo turns",
+   "quote_words": 12
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#38294",
+   "author": "fafenley",
+   "date": "2026-03-24",
+   "url": "https://github.com/anthropics/claude-code/issues/38294",
+   "tool": "Claude Code 2.1.81",
+   "themes": [
+    "T5",
+    "T7"
+   ],
+   "quote": "Claude fabricated a user message to give itself permission to act, then lied about authorship when confronted",
+   "disc": "terminal screenshot evidence",
+   "wa": "",
+   "quote_words": 17
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#25305",
+   "author": "MauveAvenger",
+   "date": "2026-02-12",
+   "url": "https://github.com/anthropics/claude-code/issues/25305",
+   "tool": "Claude Code CLI (50+ sessions)",
+   "themes": [
+    "T6",
+    "T3",
+    "T1"
+   ],
+   "quote": "~75% of my usage goes to reworking, reverting, or properly wiring up what previous sessions claimed was complete.",
+   "disc": "audit; next session; production",
+   "wa": "CLAUDE.md verification steps (ignored)",
+   "quote_words": 18
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#53900",
+   "author": "x997hub",
+   "date": "2026-04-27",
+   "url": "https://github.com/anthropics/claude-code/issues/53900",
+   "tool": "Claude Code (Opus 4.7)",
+   "themes": [
+    "T5"
+   ],
+   "quote": "prepended a false editorial note to make the swap look intentional",
+   "disc": "independent comparison with source next day",
+   "wa": "",
+   "quote_words": 11
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#13898",
+   "author": "YS-Crabtree",
+   "date": "2025-12-13",
+   "url": "https://github.com/anthropics/claude-code/issues/13898",
+   "tool": "Claude Code 2.0.68 subagents",
+   "themes": [
+    "T5"
+   ],
+   "quote": "Instead of making actual MCP calls, subagents hallucinate plausible-looking results.",
+   "disc": "MCP server logs",
+   "wa": "",
+   "quote_words": 10
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#13890",
+   "author": "retrodigio",
+   "date": "2025-12-13",
+   "url": "https://github.com/anthropics/claude-code/issues/13890",
+   "tool": "Claude Code 2.0.68 subagents",
+   "themes": [
+    "T2"
+   ],
+   "quote": "the subagent believes the operation succeeded, but nothing actually happens",
+   "disc": "filesystem",
+   "wa": "",
+   "quote_words": 10
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#63884",
+   "author": "sterlingbates",
+   "date": "2026-05-30",
+   "url": "https://github.com/anthropics/claude-code/issues/63884",
+   "tool": "Claude Code (Opus 4.8)",
+   "themes": [
+    "T5"
+   ],
+   "quote": "Opus 4.8 starts hallucinating results before parallel tasks finish",
+   "disc": "watched task timing",
+   "wa": "",
+   "quote_words": 9
+  },
+  {
+   "src": "GitHub/claude-code",
+   "id": "#44778",
+   "author": "cloverink",
+   "date": "2026-04-07",
+   "url": "https://github.com/anthropics/claude-code/issues/44778",
+   "tool": "Claude Code",
+   "themes": [
+    "T5"
+   ],
+   "quote": "the model fabricates plausible user input — including explicit approval — and acts on it without real user consent",
+   "disc": "transcript",
+   "wa": "",
+   "quote_words": 17
+  },
+  {
+   "src": "GitHub/codex",
+   "id": "#7952",
+   "author": "lasertiger",
+   "date": "2025-12-12",
+   "url": "https://github.com/openai/codex/issues/7952",
+   "tool": "Codex CLI 0.71 (gpt-5.1-codex-mini)",
+   "themes": [
+    "T1",
+    "T7"
+   ],
+   "quote": "It SAID IT DID, but it DID NOT RUN THEM - IT LIED.",
+   "disc": "re-ran build/test himself; both broken; code already committed",
+   "wa": "40-line prompt 'build and test before and after each edit' (ignored)",
+   "quote_words": 13
+  },
+  {
+   "src": "GitHub/codex",
+   "id": "#3561",
+   "author": "davidak",
+   "date": "2025-09-14",
+   "url": "https://github.com/openai/codex/issues/3561",
+   "tool": "Codex 0.34 (gpt-5)",
+   "themes": [
+    "T2",
+    "T7"
+   ],
+   "quote": "it said it didn't do it, the text is still there. Which is wrong, as you can see in the git diff",
+   "disc": "git diff",
+   "wa": "made it check git diff itself",
+   "quote_words": 22
+  },
+  {
+   "src": "GitHub/codex",
+   "id": "#43329",
+   "author": "hwb96",
+   "date": "2026-09-07",
+   "url": "https://github.com/openai/codex/issues/43329",
+   "tool": "Codex (gpt-6-astra)",
+   "themes": [
+    "T6",
+    "S"
+   ],
+   "quote": "the model narrates work instead of doing it, terminates turns prematurely, and reports completion falsely",
+   "disc": "wall-clock: 22-second turn could not contain claimed work",
+   "wa": "switched workload to competitor model",
+   "quote_words": 15
+  },
+  {
+   "src": "GitHub/codex",
+   "id": "#39411",
+   "author": "moshekopolow-Repo",
+   "date": "2026-08-19",
+   "url": "https://github.com/openai/codex/issues/39411",
+   "tool": "Codex",
+   "themes": [
+    "T3",
+    "T7"
+   ],
+   "quote": "Codex stated: \"All quotations below are source-verified.\" That statement was false.",
+   "disc": "manually clicked citation (dead link)",
+   "wa": "",
+   "quote_words": 11
+  },
+  {
+   "src": "GitHub/codex",
+   "id": "#19520",
+   "author": "sqazombie",
+   "date": "2026-04-25",
+   "url": "https://github.com/openai/codex/issues/19520",
+   "tool": "Codex GitHub App reviewer",
+   "themes": [
+    "T5",
+    "T2"
+   ],
+   "quote": "The cited commit SHAs do not exist on origin, in any local object store after git fetch, or in any branch.",
+   "disc": "git fetch",
+   "wa": "",
+   "quote_words": 21
+  },
+  {
+   "src": "GitHub/codex",
+   "id": "#6055",
+   "author": "smolcompute",
+   "date": "2025-10-31",
+   "url": "https://github.com/openai/codex/issues/6055",
+   "tool": "Codex CLI",
+   "themes": [
+    "T5"
+   ],
+   "quote": "When I ask it if it hit the web, it claims it did not.",
+   "disc": "repeated experiment dozens of times",
+   "wa": "",
+   "quote_words": 14
+  },
+  {
+   "src": "GitHub/cline",
+   "id": "#8217",
+   "author": "ReelMan25",
+   "date": "2025-12-19",
+   "url": "https://github.com/cline/cline/issues/8217",
+   "tool": "Cline 3.40.1 (Sonnet 4.5 via Bedrock)",
+   "themes": [
+    "T4",
+    "T7"
+   ],
+   "quote": "I cited page numbers and quoted code that did not exist in the document.",
+   "disc": "user opened the PDF",
+   "wa": "",
+   "quote_words": 14
+  },
+  {
+   "src": "GitHub/cline",
+   "id": "#9848",
+   "author": "karine-eero",
+   "date": "2026-03-17",
+   "url": "https://github.com/cline/cline/issues/9848",
+   "tool": "Cline 3.67.1 (Sonnet 4.6 via OpenRouter)",
+   "themes": [
+    "T6",
+    "T5"
+   ],
+   "quote": "it claims tasks are complete when they are not",
+   "disc": "raw XML in chat",
+   "wa": "",
+   "quote_words": 9
+  },
+  {
+   "src": "GitHub/continue",
+   "id": "#7909",
+   "author": "mbadreau85",
+   "date": "2025-09-22",
+   "url": "https://github.com/continuedev/continue/issues/7909",
+   "tool": "Continue agent mode (OpenRouter models)",
+   "themes": [
+    "T2"
+   ],
+   "quote": "agent carry on work as if modification was applied, but it was not",
+   "disc": "file unchanged; green check shown",
+   "wa": "",
+   "quote_words": 13
+  },
+  {
+   "src": "Cursor forum",
+   "id": "78658",
+   "author": "w.vibe",
+   "date": "2025-04-13",
+   "url": "https://forum.cursor.com/t/agent-claim-changed-file-but-didnt/78658",
+   "tool": "Cursor (gemini-2.5-pro-exp)",
+   "themes": [
+    "T2"
+   ],
+   "quote": "claim it has done editing the file (coding editing), but it actually didn't.",
+   "disc": "no changes in test file",
+   "wa": "",
+   "quote_words": 13
+  },
+  {
+   "src": "Cursor forum",
+   "id": "168708",
+   "author": "Aziz_Ben_Ghorbel",
+   "date": "2026-08-18",
+   "url": "https://forum.cursor.com/t/passproof-agent-can-no-longer-say-tests-passed-unless-the-runner-printed/168708",
+   "tool": "Cursor",
+   "themes": [
+    "T1",
+    "W"
+   ],
+   "quote": "If it says the tests passed, the runner output has to be in the same turn.",
+   "disc": "n/a",
+   "wa": "Passproof: stop + afterShellExecution hook",
+   "quote_words": 16
+  },
+  {
+   "src": "Cursor forum",
+   "id": "162480",
+   "author": "leon_zhang",
+   "date": "2026-06-05",
+   "url": "https://forum.cursor.com/t/cursor-agent-issue-report/162480",
+   "tool": "Cursor",
+   "themes": [
+    "T5",
+    "T2"
+   ],
+   "quote": "The Agent repeatedly claimed it was 'running commands / reading files / editing code,' but the UI only showed plain text",
+   "disc": "no tool execution cards",
+   "wa": "staff: start fresh conversation, switch model",
+   "quote_words": 21
+  },
+  {
+   "src": "dev.to",
+   "id": "sjh9714",
+   "author": "sjh9714",
+   "date": "2026-08-01",
+   "url": "https://dev.to/sjh9714/i-audited-249-of-my-own-ai-coding-sessions-the-problem-wasnt-lying-4f42",
+   "tool": "Claude Code",
+   "themes": [
+    "T1",
+    "T3",
+    "W"
+   ],
+   "quote": "I was worried about an agent that lies. What I actually found was verification nobody can read.",
+   "disc": "transcript audit tool (red-handed)",
+   "wa": "red-handed; 'check it and leave the result somewhere a machine can read'",
+   "quote_words": 17
+  },
+  {
+   "src": "dev.to",
+   "id": "dugger",
+   "author": "robert_floyddugger_6f9a4",
+   "date": "2026-06-28",
+   "url": "https://dev.to/robert_floyddugger_6f9a4/the-agent-told-me-it-was-done-the-tests-said-otherwise-1h6m",
+   "tool": "own agent (PrivyBot); Windsurf/Cursor/Copilot",
+   "themes": [
+    "T1",
+    "T6",
+    "W"
+   ],
+   "quote": "The summary said passing. The terminal said otherwise.",
+   "disc": "ran pytest himself: 47 passed, 1 failed",
+   "wa": "raw terminal output only; certified test floor per phase",
+   "quote_words": 8
+  },
+  {
+   "src": "dev.to",
+   "id": "kumawat",
+   "author": "enjoy_kumawat",
+   "date": "2026-07-14",
+   "url": "https://dev.to/enjoy_kumawat/my-agent-kept-saying-tests-pass-i-stopped-believing-it-378k",
+   "tool": "coding agent (OSS workflow); CLAUDE.md + codex review",
+   "themes": [
+    "T1",
+    "W"
+   ],
+   "quote": "\"I ran a subset, one file failed for an unrelated reason, and I described that as passing.\"",
+   "disc": "tests failed after PR",
+   "wa": "red-then-green; second agent (codex) reviews; deterministic checks",
+   "quote_words": 17
+  },
+  {
+   "src": "dev.to",
+   "id": "dstrug",
+   "author": "dstrugovshchikov",
+   "date": "2026-09-19",
+   "url": "https://dev.to/dstrugovshchikov/guardrails-for-autonomous-coding-agents-five-hooks-that-make-claude-code-harder-to-trust-falsely-3hpj",
+   "tool": "Claude Code",
+   "themes": [
+    "T6",
+    "W"
+   ],
+   "quote": "it says \"all done\" when two tasks are still open.",
+   "disc": "todo list vs message",
+   "wa": "Stop hook blocks 'all done' while todos open (exit 2)",
+   "quote_words": 10
+  },
+  {
+   "src": "dev.to",
+   "id": "leanzero",
+   "author": "mihai_leanzero",
+   "date": "2026-09-19",
+   "url": "https://dev.to/mihai_leanzero/goose-swarm-pytest-head-80-exits-0-when-nothing-ran-and-pipefail-only-trades-the-lie-28o2",
+   "tool": "goose swarm (local 27B models)",
+   "themes": [
+    "T1"
+   ],
+   "quote": "decided the check had passed, ran it a second time to be sure, decided the same thing again, and finished the task reporting success.",
+   "disc": "judge/author read output: 'collected 0 items'",
+   "wa": "redirect test output to file, read exit code; prompt text fix",
+   "quote_words": 24
+  },
+  {
+   "src": "blog",
+   "id": "samwize",
+   "author": "samwize",
+   "date": "2026-07-24",
+   "url": "https://samwize.com/2026/07/24/codex-app-lied-to-me-about-clear/",
+   "tool": "Codex app",
+   "themes": [
+    "T5",
+    "T3"
+   ],
+   "quote": "An agent's confirmation isn't evidence.",
+   "disc": "asked which skills it used; named pre-/clear skill",
+   "wa": "Cmd+N new chat; verify transcript empty",
+   "quote_words": 5
+  },
+  {
+   "src": "blog",
+   "id": "coldtea",
+   "author": "Ohans Emmanuel",
+   "date": "2026-08-21",
+   "url": "https://www.coldtea.ai/blog/agents-md-field-study",
+   "tool": "AGENTS.md (100 repos)",
+   "themes": [
+    "W",
+    "T1"
+   ],
+   "quote": "Do not claim that an interrupted or timed-out test passed",
+   "disc": "n/a",
+   "wa": "AGENTS.md rule; 784 'don't' bullets across 100 repos",
+   "quote_words": 10
+  }
+ ]
+}

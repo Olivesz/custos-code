@@ -1,0 +1,21 @@
+# Copy to ~/.receipts/config.toml. Nothing here is secret; keys come from the environment.
+[judge]
+backend = "openai"            # "openai" | "anthropic"  (NEEDS-DECISION(oliver): confirm default per sponsor strategy)
+openai_extractor_model = ""   # NEEDS-DECISION(oliver): smallest current model with structured outputs; check price list
+openai_judge_model = ""       # NEEDS-DECISION(oliver): current reasoning model; check price list
+anthropic_extractor_model = "claude-haiku-4-5"
+anthropic_judge_model = "claude-opus-5"
+temperature = 0.0
+samples = 3                   # majority vote before any judge verdict is shown
+
+[tiers]
+rerun_enabled = true          # Tier 3 on by default for test/build claims
+rerun_timeout_s = 60
+block_on = ["contradicted"]   # NEEDS-DECISION(oliver): P1 — should unwitnessed ever block?
+
+[ledger]
+max_output_bytes = 4096       # beyond this: truncate, keep full-content hash, flag truncated
+redact = true
+
+[upload]
+enabled = false               # local by default; do not change without docs/privacy.md

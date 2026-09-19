@@ -1,0 +1,36 @@
+[project]
+name = "receipts"
+version = "0.0.1"
+description = "Checks a coding agent's final report against the log of what it actually did."
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.7",
+  "typer>=0.12",
+  "rich>=13.7",
+  "openai>=1.40",
+  "anthropic>=0.40",
+  "duckdb>=1.0",
+  "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "hypothesis>=6"]
+
+[project.scripts]
+receipts = "receipts.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

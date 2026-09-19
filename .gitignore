@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.sqlite
+*.duckdb
+.env
+.env.*
+config.toml
+~/.receipts/
+eval/study/sessions/
+bench/runs/
+bench/fixtures/*/.venv/
+.claude/
+CLAUDE.md
+.DS_Store
+docs/research/raw/

@@ -1,0 +1,3 @@
+- `unit/` — rules, parsers (hypothesis property tests), hashing, redaction.
+- `golden/<adapter>/` — a real transcript in, expected ledger JSONL out. Redact before committing.
+- `e2e/` — bench traps run end to end with a stubbed agent; asserts the expected verdict.
