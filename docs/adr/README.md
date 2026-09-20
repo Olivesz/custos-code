@@ -7,3 +7,4 @@ One short file per non-obvious decision: context, decision, consequences. Number
 - 0003-no-kernel-monitoring-for-v0.md
 - 0004-sqlite-per-session.md
 - 0005-openai-default-backend.md
+- 0006-session-source-open-string.md
