@@ -112,6 +112,23 @@ def _load_rc_pending(session_id: str) -> dict[str, str]:
     return data
 
 
+def _unpack_pending(entry: str) -> tuple[str, str | None]:
+    """A pending entry is `{"rc": path, "cmd": original}`; older ones were a bare path string.
+
+    Tolerating the bare form matters because a session in flight when this shipped would otherwise
+    lose its rc files and, worse, keep recording our rewritten command as if the agent had run it.
+    """
+    try:
+        d = json.loads(entry)
+    except (json.JSONDecodeError, TypeError):
+        return entry, None
+    if not isinstance(d, dict):
+        return entry, None
+    rc = d.get("rc")
+    cmd = d.get("cmd")
+    return (rc if isinstance(rc, str) else entry), (cmd if isinstance(cmd, str) else None)
+
+
 def _save_rc_pending(session_id: str, pending: dict[str, str]) -> None:
     with open(_rc_pending_path(session_id), "w", encoding="utf-8") as fh:
         json.dump(pending, fh)
@@ -148,7 +165,13 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     sid = str(payload.get("session_id", "unknown"))
     pending = _load_rc_pending(sid)
-    pending[tool_use_id] = rc_path
+    # Keep the ORIGINAL command beside the rc path. PostToolUse sees our rewritten command, and
+    # recording that would be wrong twice over: the receipt would quote a command the agent never
+    # ran, and the wrapper's own `command -v ... 2>/dev/null` matches the output-filtered detector,
+    # so every wrapped call would be flagged `piped` and its evidence discounted. Observed on
+    # session 21756df4: five true claims came back `unrecorded` for "filtered" output that our own
+    # instrumentation had filtered, and a sixth was contradicted outright.
+    pending[tool_use_id] = json.dumps({"rc": rc_path, "cmd": command})
     _save_rc_pending(sid, pending)
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {"command": wrapped}}}
 
@@ -172,11 +195,17 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
     tool_use_id = payload.get("tool_use_id")
     if isinstance(tool_use_id, str):
         pending = _load_rc_pending(sid)
-        rc_path = pending.pop(tool_use_id, None)
-        if rc_path is not None:
+        entry = pending.pop(tool_use_id, None)
+        if entry is not None:
+            rc_path, original_cmd = _unpack_pending(entry)
             resolved_bin, wrapped_exit_code = parsers.read_rc_file(rc_path)
             if os.path.exists(rc_path):
                 os.remove(rc_path)
+            # Restore the agent's own command. `tool_input` here holds OUR rewrite, which quotes a
+            # command the agent never ran and whose `command -v ... 2>/dev/null` trips the
+            # output-filtered detector below.
+            if original_cmd is not None:
+                inp["command"] = original_cmd
             _save_rc_pending(sid, pending)
     text = redact(text)
     if resolved_bin is not None:

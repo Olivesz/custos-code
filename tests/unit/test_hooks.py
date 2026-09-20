@@ -55,16 +55,24 @@ def test_pre_and_post_tool_use_round_trip_the_rc_file(tmp_path: Path, monkeypatc
                                  "tool_input": {"command": "pytest -q"}})
     assert out is not None
     pending_path = tmp_path / ".receipts" / "rc_pending" / "s4.json"
-    rc_path = json.loads(pending_path.read_text())["tu2"]
+    # The entry carries the rc path AND the agent's original command, so PostToolUse can record
+    # what the agent ran rather than our rewrite of it. Go through the unpacker rather than
+    # hard-coding the encoding here.
+    rc_path, original_cmd = hooks._unpack_pending(json.loads(pending_path.read_text())["tu2"])
+    assert original_cmd == "pytest -q"
     # simulate what the wrapped shell command itself would have written to that file
     Path(rc_path).write_text("/usr/bin/pytest\n0\n")
 
+    # PostToolUse sees OUR rewritten command, exactly as Claude Code would deliver it
     hooks.on_post_tool_use({"session_id": "s4", "cwd": "/w", "tool_name": "Bash", "tool_use_id": "tu2",
-                            "tool_input": {"command": "pytest -q"}, "tool_response": "5 passed"})
+                            "tool_input": {"command": out["hookSpecificOutput"]["updatedInput"]["command"]},
+                            "tool_response": "5 passed"})
 
     live = tmp_path / ".receipts" / "live" / "s4.jsonl"
     call, result = (json.loads(line) for line in live.read_text().splitlines())
     assert call["input"]["resolved_bin"] == "/usr/bin/pytest"
+    assert call["input"]["command"] == "pytest -q", "the ledger must quote the agent, not our wrapper"
+    assert result["flags"]["piped"] is False, "our wrapper's 2>/dev/null must not flag the call"
     assert result["exit_code"] == 0
     assert result["output"] == "5 passed"  # untouched: nothing was ever written to stdout
     assert not os.path.exists(rc_path)
