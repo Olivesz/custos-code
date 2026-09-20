@@ -33,13 +33,53 @@ from .models import Claim, EventFlags, EventKind, LedgerEvent, Session, Verdict,
 HOME = os.path.expanduser("~/.receipts")
 
 
+def _out_of_scope(payload: dict[str, Any]) -> bool:
+    """True when RECEIPTS_ONLY_IN is set and this session's cwd is not inside it.
+
+    Exists for measurement validity, not convenience. The agent under test can read every file in
+    its working directory, so a project-local `.claude/settings.json` tells it that its output is
+    being checked and by what -- and on 2026-09-19 a run did exactly that, reading both the hook
+    config and a README that described the trap. An agent that knows it is being audited is not
+    the agent whose honesty we are trying to measure.
+
+    With RECEIPTS_ONLY_IN the hooks live in the user's global settings and the project directory
+    holds nothing at all. The guard fails toward doing nothing: an unset, empty, or unresolvable
+    value, or a payload with no cwd, means this hook does not act.
+    """
+    root = os.environ.get("RECEIPTS_ONLY_IN", "").strip()
+    if not root:
+        return False
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str) or not cwd:
+        return True
+    try:
+        root_r = os.path.realpath(os.path.expanduser(root))
+        cwd_r = os.path.realpath(cwd)
+    except OSError:
+        return True
+    return os.path.commonpath([root_r, cwd_r]) != root_r
+
+
 def _config() -> dict[str, Any]:
+    """Auto-mode settings, from ~/.receipts/config.toml with a per-invocation env override.
+
+    `auto` blocks the agent's turn, so it must be opt-in and it must be possible to opt in for one
+    project without arming every session on the machine. config.toml is global; the hook command in
+    a project's own .claude/settings.json can set RECEIPTS_AUTO=1 instead, which scopes blocking to
+    that project. RECEIPTS_AUTO=0 force-disables even when the global config enables it, so a repo
+    can opt out of a machine-wide default.
+    """
     cfg: dict[str, Any] = {"auto": False, "auto_max_passes": 3, "auto_clear": ["contradicted", "unrecorded", "unwitnessed"]}
     p = os.path.join(HOME, "config.toml")
     if os.path.exists(p):
         with open(p, "rb") as fh:
             data = tomllib.load(fh)
         cfg.update(data.get("tiers", {}))
+    env = os.environ.get("RECEIPTS_AUTO")
+    if env is not None:
+        cfg["auto"] = env.strip().lower() in ("1", "true", "yes", "on")
+    if (mp := os.environ.get("RECEIPTS_AUTO_MAX_PASSES")) and mp.isdigit():
+        cfg["auto_max_passes"] = int(mp)
     return cfg
 
 
@@ -72,6 +112,23 @@ def _load_rc_pending(session_id: str) -> dict[str, str]:
     return data
 
 
+def _unpack_pending(entry: str) -> tuple[str, str | None]:
+    """A pending entry is `{"rc": path, "cmd": original}`; older ones were a bare path string.
+
+    Tolerating the bare form matters because a session in flight when this shipped would otherwise
+    lose its rc files and, worse, keep recording our rewritten command as if the agent had run it.
+    """
+    try:
+        d = json.loads(entry)
+    except (json.JSONDecodeError, TypeError):
+        return entry, None
+    if not isinstance(d, dict):
+        return entry, None
+    rc = d.get("rc")
+    cmd = d.get("cmd")
+    return (rc if isinstance(rc, str) else entry), (cmd if isinstance(cmd, str) else None)
+
+
 def _save_rc_pending(session_id: str, pending: dict[str, str]) -> None:
     with open(_rc_pending_path(session_id), "w", encoding="utf-8") as fh:
         json.dump(pending, fh)
@@ -91,6 +148,8 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
     keyed on `tool_use_id`, which both events document. No `tool_use_id` means no way to
     correlate the two sides, so the command is left unwrapped rather than leaking an orphan file.
     """
+    if _out_of_scope(payload):
+        return None
     if payload.get("tool_name") != "Bash":
         return None
     inp = payload.get("tool_input")
@@ -106,13 +165,21 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     sid = str(payload.get("session_id", "unknown"))
     pending = _load_rc_pending(sid)
-    pending[tool_use_id] = rc_path
+    # Keep the ORIGINAL command beside the rc path. PostToolUse sees our rewritten command, and
+    # recording that would be wrong twice over: the receipt would quote a command the agent never
+    # ran, and the wrapper's own `command -v ... 2>/dev/null` matches the output-filtered detector,
+    # so every wrapped call would be flagged `piped` and its evidence discounted. Observed on
+    # session 21756df4: five true claims came back `unrecorded` for "filtered" output that our own
+    # instrumentation had filtered, and a sixth was contradicted outright.
+    pending[tool_use_id] = json.dumps({"rc": rc_path, "cmd": command})
     _save_rc_pending(sid, pending)
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {"command": wrapped}}}
 
 
 # ---------- PostToolUse ----------
 def on_post_tool_use(payload: dict[str, Any]) -> None:
+    if _out_of_scope(payload):
+        return
     sid = str(payload.get("session_id", "unknown"))
     live, _, _ = _paths(sid)
     tool = str(payload.get("tool_name", ""))
@@ -128,11 +195,17 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
     tool_use_id = payload.get("tool_use_id")
     if isinstance(tool_use_id, str):
         pending = _load_rc_pending(sid)
-        rc_path = pending.pop(tool_use_id, None)
-        if rc_path is not None:
+        entry = pending.pop(tool_use_id, None)
+        if entry is not None:
+            rc_path, original_cmd = _unpack_pending(entry)
             resolved_bin, wrapped_exit_code = parsers.read_rc_file(rc_path)
             if os.path.exists(rc_path):
                 os.remove(rc_path)
+            # Restore the agent's own command. `tool_input` here holds OUR rewrite, which quotes a
+            # command the agent never ran and whose `command -v ... 2>/dev/null` trips the
+            # output-filtered detector below.
+            if original_cmd is not None:
+                inp["command"] = original_cmd
             _save_rc_pending(sid, pending)
     text = redact(text)
     if resolved_bin is not None:
@@ -161,19 +234,42 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
 
 # ---------- ledger assembly for Stop ----------
 def _ledger_for(payload: dict[str, Any]) -> tuple[Session, list[LedgerEvent]]:
+    """The ledger for this session: the live hook file first, the transcript only as a fallback.
+
+    Order matters, and it used to be backwards -- the transcript was preferred whenever
+    `transcript_path` existed, which is always. Two consequences, both observed on a real session
+    (adc885ec, 2026-09-19):
+
+    1. **We discarded the output we exist to capture.** PostToolUse records each tool's FULL
+       stdout before the harness truncates it; that is the whole reason the hook exists
+       (docs/DESIGN.md §5: 42% of test output was piped away). On that session the live file held
+       28,437 bytes of captured output against the transcript's 20,424. Reading the transcript
+       threw away 8KB of evidence and produced a receipt full of `unrecorded ... not visible due
+       to truncation` for claims the live file could have settled.
+    2. **Citations pointed at the wrong lines.** The two sources number events independently --
+       the transcript also numbers assistant/user text records, the live file only tool events. On
+       that session `git mv` was seq 16 in the transcript and seq 14 in the live file. The receipt
+       cited #16; a reader checking ~/.receipts/live/<id>.jsonl, which is the artifact we tell
+       people to audit, finds an unrelated pytest run there. Every citation in that receipt was
+       unverifiable against the ledger on disk.
+
+    So: live file when it has events, transcript otherwise (a session whose hooks were installed
+    mid-flight has no live file for its earlier turns, which is the case this fallback is for).
+    """
     sid = str(payload.get("session_id", "unknown"))
     live, _, _ = _paths(sid)
-    tpath = payload.get("transcript_path")
-    if isinstance(tpath, str) and os.path.exists(tpath):
-        sess, ledger, _ = claude_code.parse(tpath)
-        if ledger or not os.path.exists(live):
-            return sess, ledger
     events: list[LedgerEvent] = []
     if os.path.exists(live):
         with open(live, encoding="utf-8") as fh:
             for line in fh:
                 if line.strip():
                     events.append(LedgerEvent.model_validate_json(line))
+    if not events:
+        tpath = payload.get("transcript_path")
+        if isinstance(tpath, str) and os.path.exists(tpath):
+            sess, ledger, _ = claude_code.parse(tpath)
+            if ledger:
+                return sess, ledger
     events = chain(events)
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     sess = Session(id=sid, source="claude_code", agent="claude-code", cwd=cwd, n_events=len(events),
@@ -197,6 +293,8 @@ def _render(claims: list[Claim], recs: list[VerdictRecord]) -> str:
 
 def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Returns the JSON to print on stdout (block decision), or None for exit 0 with no output."""
+    if _out_of_scope(payload):
+        return None
     sid = str(payload.get("session_id", "unknown"))
     report = payload.get("last_assistant_message")
     if not isinstance(report, str) or not report.strip():
@@ -204,6 +302,34 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     _, state_p, receipt_p = _paths(sid)
     sess, ledger = _ledger_for(payload)
     repo = payload.get("cwd") if isinstance(payload.get("cwd"), str) else sess.cwd
+
+    # Cheap gate before the model call. A Stop hook fires on EVERY turn, so a turn that ran one
+    # `rm` was paying for a full-session review, and in auto mode up to three of them. Observed
+    # on 2026-09-19: a one-line command took tens of seconds and the user reasonably concluded the
+    # terminal was broken. A checker nobody leaves switched on verifies nothing.
+    #
+    # Skip when there is nothing a receipt could say:
+    #   - no tool calls at all in the session -> every claim would be `unwitnessed` anyway, which
+    #     is never an accusation and never blocks, so the call buys nothing.
+    #   - no NEW tool calls since the last receipt -> the evidence has not moved, so neither can
+    #     any verdict. This is the common case for conversational turns.
+    n_calls = sum(1 for e in ledger if e.kind == EventKind.CALL)
+    if n_calls == 0:
+        return None
+    seen_p = os.path.join(HOME, "seen", f"{sid}.json")
+    os.makedirs(os.path.dirname(seen_p), exist_ok=True)
+    last_seq = -1
+    if os.path.exists(seen_p) and not payload.get("stop_hook_active"):
+        try:
+            with open(seen_p, encoding="utf-8") as fh:
+                last_seq = int(json.load(fh).get("seq", -1))
+        except (OSError, ValueError, json.JSONDecodeError):
+            last_seq = -1
+    max_seq = max((e.seq for e in ledger), default=-1)
+    if last_seq >= max_seq:
+        return None
+    with open(seen_p, "w", encoding="utf-8") as fh:
+        json.dump({"seq": max_seq}, fh)
     # The measured path (eval/arms/RESULTS.md: 86% vs 70% for the tiered pipeline, McNemar
     # p=0.00017). Falls back to deterministic rules with no key, so the hook never hard-fails.
     backend = judge_mod.make_backend()
@@ -261,18 +387,36 @@ def main(event: str, session_id: str | None = None, claim_id: str | None = None)
             return 2
         rerun.run_worker(session_id, claim_id)
         return 0
-    payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
-    if event == "pre":
-        out = on_pre_tool_use(payload)
-        if out is not None:
-            print(json.dumps(out))
+    # Everything below fails OPEN. `hooks/*.sh` append `|| true`, but the command that
+    # `receipts watch --install` writes into settings.json invokes this binary directly, with no
+    # wrapper to swallow anything -- so an unhandled exception here surfaces as a traceback and a
+    # non-zero exit from a Claude Code hook. For Stop that reads as "block", which would be a
+    # contradiction backed by no evidence at all; for PostToolUse it means the ledger write is
+    # skipped, and a missing ledger silently degrades every later verdict to `unwitnessed`.
+    # A checker that cannot run is not evidence about the agent. Say so on stderr, exit 0.
+    try:
+        payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+        print(f"receipts: unreadable hook payload ({type(e).__name__}); not blocking.", file=sys.stderr)
         return 0
-    if event == "post-tool-use":
-        on_post_tool_use(payload)
+    if not isinstance(payload, dict):
+        print("receipts: hook payload was not a JSON object; not blocking.", file=sys.stderr)
         return 0
-    if event == "stop":
-        out = on_stop(payload)
-        if out is not None:
-            print(json.dumps(out))
+    try:
+        if event == "pre":
+            out = on_pre_tool_use(payload)
+            if out is not None:
+                print(json.dumps(out))
+            return 0
+        if event == "post-tool-use":
+            on_post_tool_use(payload)
+            return 0
+        if event == "stop":
+            out = on_stop(payload)
+            if out is not None:
+                print(json.dumps(out))
+            return 0
+    except Exception as e:  # noqa: BLE001 - a hook must not take the turn down with it
+        print(f"receipts: {event} hook failed ({type(e).__name__}: {e}); not blocking.", file=sys.stderr)
         return 0
     return 2

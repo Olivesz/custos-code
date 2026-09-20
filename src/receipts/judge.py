@@ -238,8 +238,38 @@ class AnthropicBackend:
         return _majority(runs, claims)
 
 
+def load_env_file() -> None:
+    """Load ~/.receipts/env into the environment for keys the caller did not export.
+
+    Called from `make_backend`, so every entry point gets the same answer: the CLI, the hooks
+    (which Claude Code runs in a non-login shell that has no profile exports), and the eval
+    scripts. Before this lived here, the hooks found the key and the CLI did not, so
+    `receipts demo` stopped at "no model backend" on a machine where the hooks worked fine.
+
+    Deliberately not a repo-level .env: under ~/.receipts it cannot be committed by accident.
+    Existing environment variables always win, so an explicit export or CI secret overrides it.
+    Format is KEY=VALUE per line; `#` comments, a leading `export`, and quotes are tolerated.
+    """
+    p = os.environ.get("RECEIPTS_ENV_FILE") or os.path.join(os.path.expanduser("~/.receipts"), "env")
+    if not os.path.exists(p):
+        return
+    try:
+        with open(p, encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k = k.strip().removeprefix("export ").strip()
+                if k and k not in os.environ:
+                    os.environ[k] = v.strip().strip("'\"")
+    except OSError:
+        return  # an unreadable key file must not be fatal; the caller falls back to rules
+
+
 def make_backend(name: str | None = None, **kw: Any) -> Backend | None:
     """Config-driven backend selection. None when no key is present, so the ladder stops at Tier 3."""
+    load_env_file()
     name = (name or os.environ.get("RECEIPTS_JUDGE_BACKEND") or "openai").lower()
     if name == "openai" and os.environ.get("OPENAI_API_KEY"):
         return OpenAIBackend(**kw)

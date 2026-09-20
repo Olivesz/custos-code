@@ -20,9 +20,22 @@ _RUNNER_HINT = {
 
 
 def _cmd_of(ledger: list[LedgerEvent], seqs: list[int]) -> str | None:
-    for e in ledger:
-        if e.seq in seqs and e.input and isinstance(e.input.get("command"), str):
+    """The command behind the cited evidence.
+
+    Evidence usually cites RESULT events, which carry no command, so the naive lookup returned
+    None and every nudge degraded to "Re-run `the check` without pipes" -- useless advice that
+    made the tool look broken (session 21756df4). Fall back to the CALL that produced the result.
+    """
+    byseq = {e.seq: e for e in ledger}
+    for s in seqs:
+        e = byseq.get(s)
+        if e is None:
+            continue
+        if e.input and isinstance(e.input.get("command"), str):
             return str(e.input["command"])
+        prev = byseq.get(s - 1)          # a RESULT is written immediately after its CALL
+        if prev is not None and prev.input and isinstance(prev.input.get("command"), str):
+            return str(prev.input["command"])
     return None
 
 
