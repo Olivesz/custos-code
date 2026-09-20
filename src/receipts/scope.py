@@ -103,9 +103,16 @@ class Grant:
                    (os.environ.get("TMPDIR", "/tmp"), "/tmp", "/private/tmp",
                     os.path.expanduser("~/.receipts")) if p]
         root = os.path.realpath(os.path.expanduser(cwd)) if cwd else ""
-        # A project that happens to live under $TMPDIR -- CI runners, git worktrees, this repo's
-        # own test fixtures -- must not be treated as disposable. The explicit grant wins.
-        scratch = [s for s in scratch if not root or not _under(root, s)]
+        # Scratch roots are kept whole. An earlier version dropped any root that CONTAINED the
+        # project -- which deleted /tmp from the list whenever cwd was anywhere beneath it, so
+        # /tmp/scratch/build stopped being scratch and a routine cleanup became RED. It broke CI
+        # (pytest's tmp_path lives under /tmp on Linux) and, worse, would have silently removed
+        # scratch protection from any real session running in a container or sandbox under /tmp.
+        # Caught by Anush in review on #60.
+        #
+        # The grant still wins, but only where it actually applies: `_in_scratch` excludes paths
+        # inside cwd, so a project living in /tmp is banded normally while its siblings under /tmp
+        # remain disposable.
         return Grant(cwd=root, scratch=tuple(dict.fromkeys(scratch)), named=named, approved=approved)
 
 
@@ -162,6 +169,8 @@ def _in_scratch(abs_path: str, grant: Grant) -> bool:
     itself. The root belongs to the machine, not to the session.
     """
     rp = os.path.realpath(abs_path)
+    if grant.cwd and _under(rp, grant.cwd):
+        return False          # inside the granted project: band it normally, wherever it lives
     return any(_under(rp, s) and rp != os.path.realpath(s) for s in grant.scratch)
 
 

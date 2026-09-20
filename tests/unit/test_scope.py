@@ -106,10 +106,15 @@ def test_rm_rf_confined_to_scratch_is_green(repo: pathlib.Path) -> None:
 
 
 def test_a_sibling_directory_is_not_inside_the_grant(tmp_path: pathlib.Path) -> None:
-    """`/x/proj-evil` must not count as inside `/x/proj` -- startswith says it does."""
+    """`/x/proj-evil` must not count as inside `/x/proj` -- startswith says it does.
+
+    Explicit empty scratch: on macOS `tmp_path` sits under $TMPDIR, so the sibling would be
+    legitimately GREEN as scratch and the prefix property would go untested. This asserts the
+    path logic, not the accident of where pytest puts its fixtures.
+    """
     (tmp_path / "proj").mkdir()
     (tmp_path / "proj-evil").mkdir()
-    g = Grant.for_session(str(tmp_path / "proj"))
+    g = Grant(cwd=str(tmp_path / "proj"), scratch=())
     f = classify("Write", {"file_path": str(tmp_path / "proj-evil" / "x.py")}, g,
                  RepoState(str(tmp_path / "proj")))
     assert f.band is Band.YELLOW and f.rule == "write-outside-cwd"
@@ -120,9 +125,9 @@ def test_approved_paths_are_not_asked_about_twice(tmp_path: pathlib.Path) -> Non
     (tmp_path / "proj").mkdir()
     (tmp_path / "other").mkdir()
     target = str(tmp_path / "other" / "x.py")
-    g0 = Grant.for_session(str(tmp_path / "proj"))
+    g0 = Grant(cwd=str(tmp_path / "proj"), scratch=())      # see the sibling test for why
     assert classify("Write", {"file_path": target}, g0, RepoState(str(tmp_path / "proj"))).gates
-    g1 = Grant.for_session(str(tmp_path / "proj"), approved=(str(tmp_path / "other"),))
+    g1 = Grant(cwd=str(tmp_path / "proj"), scratch=(), approved=(str(tmp_path / "other"),))
     assert not classify("Write", {"file_path": target}, g1, RepoState(str(tmp_path / "proj"))).gates
 
 
@@ -177,14 +182,33 @@ def test_a_scratch_root_itself_is_not_disposable() -> None:
 
 
 def test_a_project_living_under_tmpdir_is_not_scratch(tmp_path: pathlib.Path) -> None:
-    """CI runners, git worktrees and this file's own fixtures all sit under $TMPDIR.
+    """CI runners, git worktrees and containers all sit under $TMPDIR or /tmp.
 
     Treating the granted directory as disposable because of where it happens to live would make
-    the whole checker silently inert in exactly those environments.
+    the checker silently inert in exactly those environments. Asserts the BEHAVIOUR -- a write
+    inside the project is banded normally -- not the contents of `grant.scratch`, because the
+    first fix for this dropped whole scratch roots and broke cleanup everywhere else (#60 review).
     """
     proj = tmp_path / "proj"
     proj.mkdir()
     g = Grant.for_session(str(proj))
-    assert not any(str(proj).startswith(s) for s in g.scratch), "cwd was swallowed by scratch"
     f = classify("Write", {"file_path": str(proj / "x.py")}, g, RepoState(str(proj)))
-    assert f.band is Band.YELLOW and f.rule == "unrecoverable-write"
+    assert f.band is Band.YELLOW and f.rule == "unrecoverable-write", \
+        "a project under a scratch root was waved through as disposable"
+
+
+def test_scratch_siblings_survive_a_project_that_lives_under_scratch(tmp_path: pathlib.Path) -> None:
+    """The regression Anush caught: keeping cwd out of scratch must not delete the whole root.
+
+    A project at /tmp/proj must not stop /tmp/scratch/build from being disposable -- that is what
+    turned a routine `rm -rf` of a build dir into RED on Linux CI, and would have done the same in
+    any container running under /tmp.
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    g = Grant.for_session(str(proj))
+    sibling = str(tmp_path / "build-artifacts")
+    assert classify("Bash", {"command": f"rm -rf {sibling}"}, g,
+                    RepoState(str(proj))).band is Band.GREEN
+    assert classify("Write", {"file_path": str(proj / "x.py")}, g,
+                    RepoState(str(proj))).band is Band.YELLOW
