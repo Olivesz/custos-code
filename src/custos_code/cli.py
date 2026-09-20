@@ -801,3 +801,53 @@ def scan(
                                  "marks": [vars(m) for m in s.marks]} for s in done]}
         pathlib.Path(out_path).write_text(_j.dumps(payload, indent=1), encoding="utf-8")
         console.print(f"  [dim]wrote {out_path}[/]")
+
+
+@app.command()
+def arch(
+    repo: str = typer.Option(".", "--repo", help="Repo root to read architecture docs from."),
+    touched: str = typer.Option("", "--touched", metavar="PATHS",
+                                help="Comma-separated paths to test for a crossing."),
+) -> None:
+    """Show the architecture this repo documents, and which paths it maps to.
+
+    The point of printing it is that a boundary check nobody can inspect is a boundary check
+    nobody should trust. A component that resolves to the wrong file will make a confident,
+    wrong claim about someone's code, and the only way to catch that is to look.
+    """
+    from . import arch as arch_mod
+
+    a = arch_mod.load(repo)
+    if not a:
+        console.print("[dim]no architecture found: no mermaid flowchart in this repo's docs[/]")
+        console.print("[dim]add one to docs/*.md and this check starts working; until then it "
+                      "says nothing[/]")
+        raise typer.Exit(code=0)
+
+    console.print(f"[bold]{len(a.components)} components · {len(a.edges)} edges[/] "
+                  f"[dim]from {', '.join(a.sources)}[/]")
+    t = Table(box=None, pad_edge=False)
+    t.add_column("id", style="dim")
+    t.add_column("component")
+    t.add_column("resolves to")
+    for comp in sorted(a.components.values(), key=lambda c: (not c.paths, c.id)):
+        t.add_row(comp.id, comp.label[:38],
+                  ", ".join(comp.paths[:2]) if comp.paths
+                  else "[dim]— nothing in this repo[/]")
+    console.print(t)
+
+    unmapped = sum(1 for c in a.components.values() if not c.paths)
+    if unmapped:
+        console.print(f"[dim]{unmapped} declared component(s) match no path. That is information: "
+                      f"the diagram names something this repo does not obviously contain.[/]")
+    paths = [p.strip() for p in touched.split(",") if p.strip()]
+    if paths:
+        found = arch_mod.crossings(a, paths)
+        console.print()
+        if not found:
+            console.print("[green]no crossing[/] — every pair of components touched has a "
+                          "declared edge")
+        for c in found:
+            console.print(f"[yellow]crossing[/] {c.a_label} ↔ {c.b_label}")
+            console.print(f"  [dim]{c.paths_a[0]} + {c.paths_b[0]} — "
+                          f"no edge between them in {', '.join(a.sources)}[/]")

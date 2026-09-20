@@ -27,6 +27,7 @@ from . import judge as judge_mod
 from . import review as review_mod
 from . import scope as scope_mod
 from . import verdicts as verdicts_mod
+from . import watchdog as watchdog_mod
 from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
 from .models import Claim, EventFlags, EventKind, LedgerEvent, Session, Verdict, VerdictRecord
@@ -122,20 +123,45 @@ def _scope_grant(payload: dict[str, Any], policy: scope_mod.Policy) -> scope_mod
     return scope_mod.Grant.for_session(cwd or os.getcwd(), approved=approved, policy=policy)
 
 
-def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Band this call and, if the mode allows, stop it before it happens.
+def _written_paths(session_id: str) -> list[str]:
+    """Paths this session has already written, from the live ledger.
 
-    docs/SCOPE.md §5: scope is checked at PreToolUse, BEFORE the action -- "ask before doing
-    something irreversible" is what every permission system does, not halting on an opinion. And
-    the cost asymmetry inverts against integrity: a scope false positive costs one pause, a scope
-    false negative costs a force-push.
+    Read rather than remembered: the hook is a fresh process on every tool call, so anything held
+    in memory is gone. The ledger is the only state that survives, which is also why it is the only
+    state worth trusting here.
+    """
+    live, _, _ = _paths(session_id)
+    out: list[str] = []
+    if not os.path.exists(live):
+        return out
+    try:
+        with open(live, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("kind") != "call":
+                    continue
+                for p in row.get("paths") or []:
+                    if isinstance(p, str):
+                        out.append(p)
+    except (OSError, ValueError):
+        return out
+    return out
 
-    The mode decides the response, because a flag is a message to a human and an unattended run has
-    nobody reading it:
 
-                GREEN     YELLOW    RED
-      attended  pass      ask       deny
-      unattended pass     deny      deny
+def _watchdog_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Run every boundary detector and return the hook response, or None to allow.
+
+    docs/SCOPE.md §5: this is checked at PreToolUse, BEFORE the action -- "ask before doing
+    something irreversible" is what every permission system does, not halting on an opinion. The
+    cost asymmetry inverts against integrity here: a false positive costs one pause, a false
+    negative costs a force-push.
+
+    Policy lives in `watchdog.decide` and detection in `scope` and `arch`, so this function has no
+    rules of its own. It used to be two gates -- one for blast radius, one for documented
+    boundaries -- which meant two mode checks, two fail-open paths and two copies of the
+    attended/unattended rule. They were always answering the same question.
 
     Fails OPEN on any error. A checker that cannot run is not evidence about the agent.
     """
@@ -143,38 +169,30 @@ def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
     if mode == "off":
         return None
     try:
-        raw = payload.get("tool_input")
-        inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
         policy = scope_mod.Policy.load()
-        f = scope_mod.classify(str(payload.get("tool_name", "")), inp,
-                                _scope_grant(payload, policy), policy=policy)
-    except Exception as e:  # noqa: BLE001 - never take the turn down over a scope check
-        print(f"receipts: scope check failed ({type(e).__name__}); allowing.", file=sys.stderr)
+        obs = watchdog_mod.observe(
+            payload,
+            _scope_grant(payload, policy),
+            policy,
+            _written_paths(str(payload.get("session_id", ""))),
+        )
+    except Exception as e:  # noqa: BLE001 - never take the turn down over a boundary check
+        print(f"custos-code: watchdog failed ({type(e).__name__}); allowing.", file=sys.stderr)
         return None
-    if not f.gates or mode == "warn":
+    if not obs:
         return None
-    unattended = bool(_config().get("auto"))
-    decision = "deny" if (f.band is scope_mod.Band.RED or unattended) else "ask"
+    if mode == "warn":
+        for ob in obs:
+            print(f"custos-code: {ob.detector} · {ob.rule}: {ob.detail}", file=sys.stderr)
+        return None
+    verdict = watchdog_mod.decide(obs, unattended=bool(_config().get("auto")))
+    if verdict.decision == "allow":
+        return None
     return {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "permissionDecision": decision,
-        "permissionDecisionReason": _scope_reason(f, decision),
+        "permissionDecision": verdict.decision,
+        "permissionDecisionReason": verdict.reason,
     }}
-
-
-def _scope_reason(f: scope_mod.Finding, decision: str) -> str:
-    """Say why, in terms of the actual finding. A generic reason trains people to click through."""
-    if f.band is scope_mod.Band.RED:
-        why = "this cannot be undone"
-    elif f.rule == "write-outside-cwd":
-        why = "this writes outside the directory this session was started in"
-    elif f.rule == "unrecoverable-write":
-        why = "there is no git work tree here, so this cannot be reverted"
-    else:
-        why = "this reaches outside the workspace"
-    tail = ("" if decision == "deny"
-            else " Approve it and it will not be asked again this session.")
-    return f"receipts/scope [{f.band.value}] {f.rule} — {why}: {f.detail}.{tail}"
 
 
 def _paths(session_id: str) -> tuple[str, str, str]:
@@ -246,7 +264,7 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     # Scope first: a RED action must never get wrapped and run. The E5 rewrite below only makes a
     # command observable; it does not make it safe.
-    if (gate := _scope_gate(payload)) is not None:
+    if (gate := _watchdog_gate(payload)) is not None:
         return gate
     if payload.get("tool_name") != "Bash":
         return None
