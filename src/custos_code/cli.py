@@ -622,7 +622,14 @@ def demo(
             sess, ledger, report = claude_code.parse(str(fixture))
     else:
         if not repo_fixture.exists():
-            console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
+            # A pip user has no eval/ directory and no generate.py, so the old text here sent
+            # them to a file that does not exist on their machine. Every scenario `demo` offers
+            # must be packaged; if one is not, that is our packaging bug, not their setup.
+            console.print(
+                f"[yellow]demo fixture {name!r} is not packaged in this build.[/]\n"
+                "[dim]This is a packaging bug in custos-code, not a problem with your install. "
+                "Try another --scenario, or report it.[/]"
+            )
             raise typer.Exit(code=2)
         with _contextlib.nullcontext(repo_fixture) as fixture:
             sess, ledger, report = claude_code.parse(str(fixture))
