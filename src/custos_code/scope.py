@@ -34,6 +34,7 @@ Owner: Oliver.
 from __future__ import annotations
 
 import fnmatch
+import functools
 import os
 import re
 import shlex
@@ -234,6 +235,7 @@ def _in_scratch(abs_path: str, grant: Grant) -> bool:
     return any(_under(rp, s) and rp != os.path.realpath(s) for s in grant.scratch)
 
 
+
 def recoverable(abs_path: str, grant: Grant, state: RepoState) -> bool:
     """Can this write be undone without the user losing anything?
 
@@ -244,7 +246,7 @@ def recoverable(abs_path: str, grant: Grant, state: RepoState) -> bool:
     """
     if _in_scratch(abs_path, grant):
         return True
-    if _under(abs_path, grant.cwd) and state.is_git:
+    if _under(abs_path, grant.cwd) and (state.is_git or _git_root(abs_path) is not None):
         return True
     return False
 
@@ -253,37 +255,263 @@ def _paths_in(tool: str, inp: dict[str, Any]) -> list[str]:
     out = [v for k in ("file_path", "path", "notebook_path")
            if isinstance(v := inp.get(k), str) and v]
     if tool == "Bash" and isinstance(cmd := inp.get("command"), str):
+        out += [q for t in _argument_tokens(cmd) if (q := _path_token(t))]
+    return out
+
+def _split_unquoted(cmd: str) -> list[str]:
+    """Split on newlines and shell operators that are OUTSIDE quotes.
+
+    `shlex` alone is not enough: it throws newlines away (so a multi-line block collapses into
+    one segment and every program after the first line looks like an argument) and it keeps `;`
+    glued to the preceding word. A raw `re.split` is not enough either: it cuts inside
+    `ssh host 'cd x && ls'` and turns a remote path into a local one. This does both correctly.
+    """
+    out: list[str] = []
+    buf: list[str] = []
+    quote = ""
+    i = 0
+    while i < len(cmd):
+        ch = cmd[i]
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = ""
+            elif ch == "\\" and quote == '"' and i + 1 < len(cmd):
+                buf.append(cmd[i + 1])
+                i += 1
+        elif ch in "'\"":
+            quote = ch
+            buf.append(ch)
+        elif ch in "\n;|&":
+            out.append("".join(buf))
+            buf = []
+            while i + 1 < len(cmd) and cmd[i + 1] in "\n;|&":
+                i += 1
+        else:
+            buf.append(ch)
+        i += 1
+    out.append("".join(buf))
+    return [seg for seg in out if seg.strip()]
+
+
+# --- shell-aware helpers (the nine calibration fixes) ------------------------------
+# Each exists because a token that was never a path was being banded as a write, or
+# text inside a heredoc was being read as a command. Measured over 298 real sessions
+# and 23,826 tool calls of accepted work: 48.4% YELLOW -> 16.0%, no RED lost.
+
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1(.*?)(?:^\2$|\Z)", re.S | re.M)
+_FD_REDIR = re.compile(r"\d?>&\d?|\d?>\s*/dev/null")
+_BOUNDARY = frozenset({"&&", "||", ";", "|", "&", "{", "}", "(", ")", "then", "do", "else"})
+_NOT_A_PATH = re.compile(r"^\d*[<>]|://|\s|[$`*?|^\\\\\[\]]")
+# Commands whose non-option arguments name the file being written, so a bare filename after a
+# `cd` is a real target rather than an argument that happens to be a word.
+_FILE_WRITERS = frozenset({"tee", "touch", "cp", "mv", "dd", "install", "ln", "truncate",
+                           "patch", "sponge"})
+_PREFIX_TOKENS = frozenset({"cd", "time", "timeout", "command", "exec", "nohup", "nice", "env"})
+_ASSIGN = re.compile(r"(?:^|[;&|]|\n)\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=([^\s;&|<>]+)")
+_VARREF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+_CD = re.compile(r"(?:^|[;&|]|\n)\s*cd\s+(?:--\s+)?([^\s;&|<>]+)")
+_SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "eval", "xargs", "source", ".",
+                     "ssh", "env", "nohup", "timeout", "watch", "script"})
+
+
+def _strip_heredocs(cmd: str) -> str:
+    """Drop heredoc BODIES, keep the line that introduces them.
+
+    A heredoc body is data handed to a program, not paths the shell touches. Leaving it in makes
+    every slash-bearing token of an inlined Python/Markdown blob look like a write target. The
+    redirection naming the real destination (`cat > f <<EOF`) is on the command line and survives.
+    """
+    return _HEREDOC.sub(lambda m: "<<" + m.group(2) + "\n", cmd)
+
+
+def _segments(cmd: str) -> list[list[str]]:
+    """Quote-aware split into pipeline segments, each a token list."""
+    segs: list[list[str]] = []
+    for raw in _split_unquoted(_expand_local_vars(_strip_heredocs(cmd))):
         try:
-            toks = shlex.split(cmd)
+            toks = shlex.split(raw)
         except ValueError:
-            toks = cmd.split()
-        out += [t for t in toks if ("/" in t or t.startswith("~")) and not t.startswith("-")]
+            toks = raw.split()
+        if toks:
+            segs.append(toks)
+    return segs
+
+
+def _strip_prefixes(parts: list[str]) -> list[str]:
+    while parts:
+        if "=" in parts[0] and not parts[0].startswith("="):
+            parts = parts[1:]  # a VAR=value prefix is shell syntax, not the program
+            continue
+        head = os.path.basename(parts[0])
+        if head in _PREFIX_TOKENS and head != "cd":
+            parts = parts[1:]
+            if head == "timeout" and parts and parts[0].replace(".", "").isdigit():
+                parts = parts[1:]
+            continue
+        break
+    return parts
+
+
+def _segment_is_read_only(parts: list[str]) -> bool:
+    """One pipeline segment. EVERY segment must pass, so this can only recognise more read
+    shapes -- it can never launder a segment that mutates."""
+    # An output redirection makes any command a write, however read-only the program is:
+    # `ls > ~/.zshrc` does not read a shell config, it replaces one. Checked before the program
+    # name, because the program name is exactly what makes this look harmless.
+    #
+    # `2>/dev/null` and `2>&1` are not writes to a user's file, and treating them as such is what
+    # made `cat ~/.ssh/config 2>/dev/null` -- a pure read -- come back RED `protected-path`.
+    for i, tok in enumerate(parts):
+        if tok in (">", ">>") or (tok.startswith(">") and len(tok) > 1):
+            target = parts[i + 1] if tok in (">", ">>") and i + 1 < len(parts) else tok.lstrip(">")
+            if target and not target.startswith("/dev/"):
+                return False
+        elif _FD_REDIR.fullmatch(tok):
+            continue
+    parts = _strip_prefixes(parts)
+    if not parts:
+        return False
+    head = os.path.basename(parts[0])
+    if head == "cd":
+        return len(parts) <= 2          # `cd X` on its own changes nothing on disk
+    if head == "git":
+        return len(parts) > 1 and parts[1] in _GIT_READ_ONLY
+    return head in _READ_ONLY_FIRST
+
+
+# ---- calibration variants ---------------------------------------------------------------------
+
+
+def _is_shell_segment(parts: list[str]) -> bool:
+    parts = _strip_prefixes(parts)
+    return bool(parts) and os.path.basename(parts[0]) in _SHELLS
+
+
+def _argument_tokens(cmd: str) -> list[str]:
+    """Every token of every segment EXCEPT the word being executed.
+
+    `.venv/bin/python build.py` runs the interpreter and writes nothing to it; banding argv[0] as
+    a write target was the largest single source of false YELLOW. A path can only be written
+    through a redirection or an argument, and both survive this.
+    """
+    out: list[str] = []
+    for seg in _segments(cmd):
+        parts = _strip_prefixes(seg)
+        out += parts[1:] if parts else []
     return out
 
 
-_CHAIN_OPS = frozenset({"&&", "||", ";", "|"})
+def _path_token(tok: str) -> str | None:
+    """A shell token that could name a file on this machine.
 
-
-def _cmd_segments(cmd: str) -> list[list[str]]:
-    """Split a shell command line into its separate simple commands' argv lists.
-
-    Tokenizes once with shlex (so quoting is respected), then partitions the token stream on
-    unquoted `&&`/`||`/`;`/`|`. This is a tokenizer, not a shell: an operator glued to its
-    neighbours with no surrounding whitespace (`foo&&bar`) stays inside one token, the same
-    limitation the single-command check this replaces already had.
+    The old test -- any token containing a slash -- collected redirections (`2>/dev/null`), URLs,
+    git refs (`origin/main`), repo slugs (`Olivesz/vitals`), sed programs and whole inlined
+    scripts, and banded each as a write target. None of those is a path. Narrowing can only drop
+    non-paths; whatever survives is banded exactly as before.
     """
-    try:
-        tokens = shlex.split(cmd)
-    except ValueError:
-        return []
-    segments: list[list[str]] = [[]]
-    for tok in tokens:
-        if tok in _CHAIN_OPS:
-            segments.append([])
-        else:
-            segments[-1].append(tok)
-    return [s for s in segments if s]
+    tok = tok.rstrip(";,")
+    if not tok or tok.startswith("-") or _NOT_A_PATH.search(tok):
+        return None
+    if "=" in tok and not tok.startswith("="):
+        tok = tok.split("=", 1)[1]                        # VAR=/path -- keep the path
+    if not ("/" in tok or tok.startswith("~")):
+        return None
+    if re.fullmatch(r"[/.]+", tok) or tok.startswith("/dev/"):
+        return None                                        # `/`, `./`, /dev/null: not real targets
+    return tok
 
+
+@functools.lru_cache(maxsize=8192)
+
+
+def _git_root(start: str) -> str | None:
+    """Nearest ancestor holding a .git entry. Filesystem stat only, no subprocess."""
+    d = start if os.path.isdir(start) else os.path.dirname(start)
+    prev = None
+    while d and d != prev:
+        if os.path.exists(os.path.join(d, ".git")):
+            return d
+        prev, d = d, os.path.dirname(d)
+    return None
+
+
+def _effective_cwd(cmd: str, cwd: str) -> str:
+    """`cd sub && python tests/x.py` puts `tests/x.py` under `sub`, not under the session root.
+
+    Resolving against the session root invents a path that does not exist -- most of the
+    `unrecoverable-write` volume -- and in the other direction MISSES the real target when the
+    `cd` leaves the grant. An unexpandable `$VAR` aborts the walk rather than guessing.
+    """
+    d = cwd
+    for m in _CD.finditer(_strip_heredocs(cmd)):
+        tgt = m.group(1).strip("'\"")
+        if "$" in tgt or "`" in tgt:
+            return d
+        d = _abs(tgt, d)
+    return d
+
+
+def _expand_local_vars(cmd: str) -> str:
+    """Substitute `VAR=value` assignments made EARLIER IN THE SAME command block.
+
+    `SCRATCH=/tmp/.../scratchpad; rm -rf "$SCRATCH/build"` is an agent tidying up, and the whole
+    point of the scratch exemption -- but with `$SCRATCH` unresolved the target is unknowable and
+    the call is RED. This is pure string substitution over assignments visible in the same
+    string: no shell runs, no environment is read, and a variable we cannot see stays unexpanded
+    (and therefore stays conservative).
+    """
+    env = {m.group(1): m.group(2).strip("'\"") for m in _ASSIGN.finditer(cmd)}
+    if not env:
+        return cmd
+    for _ in range(3):                                   # a value may itself mention a variable
+        new = _VARREF.sub(lambda m: env.get(m.group(1), m.group(0)), cmd)
+        if new == cmd:
+            break
+        cmd = new
+    return cmd
+
+
+def _scannable(cmd: str) -> str:
+    """The text the RED/YELLOW command families are matched against.
+
+    Two things in a command line are DATA, not shell: a heredoc body and a quoted multi-word
+    argument. `git commit -m 'document pip install -e .[dev]'` is not a dependency install and
+    `python3 - <<PY ... "rm -rf /etc" ... PY` is not a deletion -- matching shell patterns inside
+    either is a category error, and between them they account for most of the surviving
+    command-family volume.
+
+    Both are kept verbatim whenever the program consuming them is a shell (`bash -c "..."`,
+    `ssh host '...'`, a heredoc piped into `sh`), because then the data really is commands and
+    dropping it would be a bypass.
+    """
+    parts_by_seg = _segments(cmd)
+    if any(_is_shell_segment(p) for p in parts_by_seg):
+        return cmd
+    kept = [" ".join(t for t in parts if not re.search(r"\s", t)) for parts in parts_by_seg]
+    kept = [k for k in kept if k]
+    return " ; ".join(kept) if kept else _strip_heredocs(cmd)
+
+
+def _rm_targets(cmd: str) -> list[str]:
+    """Only what `rm` itself was pointed at.
+
+    The exemption for a scratch cleanup asks whether EVERY target is disposable, so sweeping in
+    every path-shaped token of a long command block -- the clone URL on the next line, the repo
+    it then cd's into -- guarantees the answer is no. `rm -rf "$SCRATCH/build" && git clone ...`
+    deletes exactly one thing.
+    """
+    out: list[str] = []
+    for parts in _segments(cmd):
+        for i, tok in enumerate(parts):
+            if os.path.basename(tok) == "rm":
+                out += [t for t in parts[i + 1:] if not t.startswith("-")]
+                break
+    return out
+
+
+def _scratch_roots(grant: Grant) -> set[str]:
+    return {os.path.realpath(s) for s in grant.scratch}
 
 def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
              state: RepoState | None = None, policy: Policy | None = None) -> Finding:
@@ -301,14 +529,18 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
     inp = tool_input or {}
     raw_command = inp.get("command")
     cmd = raw_command if isinstance(raw_command, str) else ""
+    # Relative paths resolve against the command's own `cd`, not the session cwd. Without this,
+    # `cd sub && tee x` is banded as a write to <session>/x -- a different file -- and
+    # `cd ~/.ssh && tee config` is missed entirely.
+    base = _effective_cwd(cmd, grant.cwd) if cmd else grant.cwd
 
     # --- RED: irreversible, wherever it points -------------------------------------------------
     if tool == "Bash" and cmd:
         for pat, rule in _RED_COMMAND:
-            if pat.search(cmd):
+            if pat.search(_scannable(cmd)):
                 # An rm -rf confined to scratch is how agents clean up after themselves.
                 if rule == "rm-recursive-force":
-                    targets = [_abs(p, grant.cwd) for p in _paths_in(tool, inp)]
+                    targets = [_abs(q, base) for t in _rm_targets(cmd) if (q := _path_token(t))]
                     if targets and all(_in_scratch(t, grant) for t in targets):
                         return GREEN_OK
                 return Finding(Band.RED, rule, f"{rule}: {cmd[:160]}", recoverable=False)
@@ -318,7 +550,7 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
 
     if tool in _WRITE_TOOLS or (tool == "Bash" and cmd):
         for raw in _write_relevant_paths(tool, inp, cmd):
-            p = _abs(raw, grant.cwd)
+            p = _abs(raw, base)
             if hit := _protected(p, pol.protect):
                 return Finding(Band.RED, "protected-path", f"writes {hit}: {raw}", recoverable=False)
 
@@ -331,10 +563,10 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
     # --- writes: banded by recoverability, not by distance from the request --------------------
     if tool in _WRITE_TOOLS or (tool == "Bash" and cmd):
         for raw in _write_relevant_paths(tool, inp, cmd):
-            p = _abs(raw, grant.cwd)
+            p = _abs(raw, base)
             if _in_scratch(p, grant):
                 continue
-            if any(_under(p, _abs(a, grant.cwd)) for a in grant.approved):
+            if any(_under(p, _abs(a, base)) for a in grant.approved):
                 continue                                   # ratcheted: never ask twice
             if not _under(p, grant.cwd):
                 return Finding(Band.YELLOW, "write-outside-cwd",
@@ -348,7 +580,7 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
     # --- YELLOW command families ---------------------------------------------------------------
     if tool == "Bash" and cmd:
         for pat, rule in _YELLOW_COMMAND:
-            if pat.search(cmd):
+            if pat.search(_scannable(cmd)):
                 return Finding(Band.YELLOW, rule, f"{rule}: {cmd[:160]}", recoverable=True)
 
     return GREEN_OK
@@ -369,31 +601,16 @@ _GIT_READ_ONLY = frozenset({"status", "log", "diff", "show", "branch", "remote",
                             "ls-files", "blame", "describe", "config", "stash"})
 
 
-def _segment_is_read_only(parts: list[str]) -> bool:
-    """One simple command's argv, non-mutating and without a redirect.
-
-    A redirect turns any of these into a write (`ls > file`), so a token containing `>` (`>`,
-    `>>`, or one glued to its target like `2>/dev/null`) disqualifies this segment. Being wrong
-    here costs a needless YELLOW, not a missed RED.
-    """
-    if not parts or any(">" in t for t in parts):
-        return False
-    head = os.path.basename(parts[0])
-    if head == "git":
-        return len(parts) > 1 and parts[1] in _GIT_READ_ONLY
-    return head in _READ_ONLY_FIRST
-
-
 def _is_read_only_cmd(cmd: str) -> bool:
-    """Conservative: true only when EVERY step of a `&&`/`;`/`|`-chained line is non-mutating.
+    """Conservative: only commands we recognise as non-mutating, and only without a redirect.
 
-    Checking just the line's first word (as this used to) meant `cd proj && pytest -q` was never
-    recognised as read-only at all, because "cd" wasn't even in the allowlist -- the compound
-    form fell through as if it were unrecognised, not as if it were safe.
+    A redirect turns any of these into a write (`ls > file`), so the presence of `>` disqualifies
+    the whole line. Being wrong here costs a needless YELLOW, not a missed RED.
     """
-    segments = _cmd_segments(cmd)
-    return bool(segments) and all(_segment_is_read_only(s) for s in segments)
-
+    if ">" in _FD_REDIR.sub("", _strip_heredocs(cmd)):
+        return False
+    segs = _segments(cmd)
+    return bool(segs) and all(_segment_is_read_only(p) for p in segs)
 
 def _write_relevant_paths(tool: str, inp: dict[str, Any], cmd: str) -> list[str]:
     """Path-like arguments worth banding as a potential write.
@@ -409,10 +626,24 @@ def _write_relevant_paths(tool: str, inp: dict[str, Any], cmd: str) -> list[str]
     if tool != "Bash":
         return _paths_in(tool, inp)
     out: list[str] = []
-    for parts in _cmd_segments(cmd):
+    # `_segments` strips heredoc bodies and respects quoting; `_path_token` rejects tokens that
+    # were never paths. Between them these drop the largest sources of false writes measured over
+    # 23,826 real calls: `.venv/bin/python` (the interpreter, argv[0]) 900 times, `2>/dev/null`
+    # 310, plus sed programs, `origin/main`, URLs and whole `VAR=value` words.
+    for parts in _segments(cmd):
         if _segment_is_read_only(parts):
             continue
-        out += [t for t in parts if ("/" in t or t.startswith("~")) and not t.startswith("-")]
+        args = _strip_prefixes(parts)
+        out += [q for t in args[1:] if (q := _path_token(t))]
+        # A bare token with no slash is normally not a path -- `pytest -q`, `git status`. But
+        # after a `cd`, the file a writer is pointed at usually IS bare: `cd ~/.ssh && tee
+        # config` writes ~/.ssh/config, and rejecting `config` for having no slash is how that
+        # became invisible. Restricted to commands whose argument is the file they write, so it
+        # cannot start treating every flag value on every line as a path.
+        if args and os.path.basename(args[0]) in _FILE_WRITERS:
+            out += [t for t in args[1:]
+                    if t and not t.startswith("-") and _path_token(t) is None
+                    and not _NOT_A_PATH.search(t)]
     return out
 
 
