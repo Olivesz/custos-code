@@ -1,0 +1,103 @@
+{
+  "sources": {
+    "claude_code": {
+      "counts": {
+        "files": 10,
+        "parsed_files": 10,
+        "parsed_calls": 1393,
+        "unique_calls": 1206,
+        "evaluated_calls": 1002,
+        "files_with_evaluated_calls": 10,
+        "files_with_flags": 6,
+        "duplicate_calls": 187,
+        "duplicate_cwd_disagreements": 183,
+        "parse_errors": 0,
+        "files_without_calls": 0
+      },
+      "bands": {
+        "green": 945,
+        "yellow": 48,
+        "red": 9
+      },
+      "rules": {
+        "write-outside-cwd": 32,
+        "git-push": 16,
+        "rm-recursive-force": 7,
+        "remote-mutation": 1,
+        "protected-path": 1
+      },
+      "excluded_calls": {
+        "ambiguous-cwd": 183,
+        "unsupported-tool": 21
+      },
+      "per_file_bands": [
+        {
+          "green": 440,
+          "yellow": 29,
+          "red": 4
+        },
+        {
+          "green": 7
+        },
+        {
+          "green": 11
+        },
+        {
+          "green": 161,
+          "yellow": 15,
+          "red": 1
+        },
+        {
+          "green": 72,
+          "yellow": 2
+        },
+        {
+          "green": 25,
+          "yellow": 1
+        },
+        {
+          "green": 14
+        },
+        {
+          "green": 37,
+          "yellow": 1
+        },
+        {
+          "green": 34
+        },
+        {
+          "green": 144,
+          "red": 4
+        }
+      ],
+      "flag_rate": 0.05688622754491018,
+      "flagged_file_rate": 0.6
+    },
+    "codex": {
+      "counts": {
+        "files": 12,
+        "parsed_files": 12,
+        "parsed_calls": 48,
+        "files_without_calls": 10,
+        "unique_calls": 48,
+        "parse_errors": 0,
+        "evaluated_calls": 0,
+        "duplicate_calls": 0,
+        "duplicate_cwd_disagreements": 0,
+        "files_with_evaluated_calls": 0,
+        "files_with_flags": 0
+      },
+      "bands": {},
+      "rules": {},
+      "excluded_calls": {
+        "unsupported-tool": 48
+      },
+      "per_file_bands": [],
+      "flag_rate": null,
+      "flagged_file_rate": null
+    }
+  },
+  "code_commit": "a0d1c73ba6660ecbc851066e227e389c581b9891",
+  "instrument_sha256": "c24da4adbf388689a2f40e5d544f2196bfe66296cacf84c562b288edf469a5f8",
+  "method": "offline, default grant, current repository state, no approval replay"
+}
