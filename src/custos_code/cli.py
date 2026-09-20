@@ -21,6 +21,7 @@ from . import claims as claims_mod
 from . import judge as judge_mod
 from . import report as report_mod
 from . import review as review_mod
+from . import scope as scope_mod
 from . import verdicts as verdicts_mod
 from .adapters import claude_code, codex, machine
 from .models import Claim, EventKind, Verdict, VerdictRecord
@@ -31,6 +32,7 @@ MARK = {
     Verdict.UNWITNESSED: ("?", "yellow"),
     Verdict.UNRECORDED: ("○", "bright_black"),
     Verdict.QUALIFIED: ("≈", "cyan"),
+    Verdict.OUT_OF_SCOPE: ("⚠", "magenta"),
 }
 
 app = typer.Typer(
@@ -129,6 +131,15 @@ def check(
             if backend is None
             else f"rules + judge · {backend.usage.requests} requests"
         )
+
+    # Scope (SCOPE.md §4, issue #64): a second, independent pass over the same ledger. It never
+    # reads or touches the claim verdicts above -- neither checker reads the other's output -- and
+    # only reports on tool calls that actually ran (a call PreToolUse denied leaves no CALL event).
+    grant = scope_mod.Grant.for_session(repo or sess.cwd or "", policy=scope_mod.Policy.load())
+    for scope_event, finding in scope_mod.scan(ledger, grant):
+        scope_claim, scope_rec = scope_mod.to_verdict(scope_event, finding)
+        claims.append(scope_claim)
+        recs.append(scope_rec)
 
     if fmt == "markdown":
         text = report_mod.markdown(claims, recs, source=f"{sess.source} session {sess.id[:8]}")

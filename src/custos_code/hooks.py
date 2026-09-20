@@ -106,7 +106,7 @@ def _scope_mode() -> str:
     return v if v in ("off", "warn", "on") else "off"
 
 
-def _scope_grant(payload: dict[str, Any]) -> scope_mod.Grant:
+def _scope_grant(payload: dict[str, Any], policy: scope_mod.Policy) -> scope_mod.Grant:
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else ""
     sid = str(payload.get("session_id", "unknown"))
     approved: tuple[str, ...] = ()
@@ -119,7 +119,7 @@ def _scope_grant(payload: dict[str, Any]) -> scope_mod.Grant:
                 approved = tuple(str(x) for x in got)
         except (OSError, ValueError, json.JSONDecodeError):
             pass
-    return scope_mod.Grant.for_session(cwd or os.getcwd(), approved=approved)
+    return scope_mod.Grant.for_session(cwd or os.getcwd(), approved=approved, policy=policy)
 
 
 def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -145,7 +145,9 @@ def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
     try:
         raw = payload.get("tool_input")
         inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
-        f = scope_mod.classify(str(payload.get("tool_name", "")), inp, _scope_grant(payload))
+        policy = scope_mod.Policy.load()
+        f = scope_mod.classify(str(payload.get("tool_name", "")), inp,
+                                _scope_grant(payload, policy), policy=policy)
     except Exception as e:  # noqa: BLE001 - never take the turn down over a scope check
         print(f"receipts: scope check failed ({type(e).__name__}); allowing.", file=sys.stderr)
         return None

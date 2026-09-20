@@ -81,7 +81,7 @@ class Claim(BaseModel):
     type: ClaimType
     objects: list[str] = Field(default_factory=list)  # paths, commands, test names, URLs
     polarity: Literal["did", "did_not"] = "did"
-    source: Literal["report", "plan", "request"] = "report"
+    source: Literal["report", "plan", "request", "scope"] = "report"
 
 
 class Verdict(StrEnum):
@@ -90,6 +90,7 @@ class Verdict(StrEnum):
     UNWITNESSED = "unwitnessed"
     UNRECORDED = "unrecorded"
     QUALIFIED = "qualified"
+    OUT_OF_SCOPE = "out_of_scope"  # scope.py only: an action against a boundary, not a false claim
 
 
 class VerdictRecord(BaseModel):
@@ -103,6 +104,7 @@ class VerdictRecord(BaseModel):
     )  # ledger seq numbers; required unless unwitnessed/unrecorded
     rationale: str = ""  # one sentence
     qualifier: str | None = None  # for QUALIFIED: what changed under the claim
+    band: str | None = None  # OUT_OF_SCOPE only: scope.Band value (green/yellow/red), SCOPE.md §4
 
 
 class Coverage(BaseModel):
