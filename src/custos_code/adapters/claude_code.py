@@ -77,6 +77,51 @@ def _result_text(block: dict[str, Any], tur: Any) -> str:
     return ""
 
 
+_EXIT_RE = re.compile(r"\AExit code (\d+)\b")
+
+
+def _exit_code_from(block: dict[str, Any], text: str) -> int | None:
+    """The exit status, only when the transcript states it.
+
+    Claude Code does not record an exit code field -- but a failing Bash result is delivered as
+    `is_error` with content that begins `Exit code 1`, and 1055 results in a 40-session sample
+    carry it. The adapter hardcoded None, which left `review._corroborate` with one of its three
+    grounding paths dead by construction: no cited event could ever show a non-zero exit, so that
+    branch never fired on this adapter.
+
+    A success is NOT inferred. `is_error` being absent is the harness saying it did not flag the
+    call, which is not the same as the process returning 0, and this project does not get to
+    promote an absence into a witnessed fact -- that is the move it marks `unwitnessed`.
+    """
+    if not block.get("is_error"):
+        return None
+    m = _EXIT_RE.match(text.lstrip())
+    return int(m.group(1)) if m else None
+
+
+def _patch_text(tur: Any) -> str:
+    """The lines an Edit/Write changed, from `structuredPatch`.
+
+    Without this the judge sees `The file ... has been updated successfully.` and nothing else, so
+    every claim about *what* an edit said is unverifiable by construction -- 1369 Edit calls across
+    29 of 96 real sessions. The patch is already in the transcript; we were discarding it.
+
+    Redacted like any other recorded content, because a diff carries file contents.
+    """
+    if not isinstance(tur, dict):
+        return ""
+    hunks = tur.get("structuredPatch")
+    if not isinstance(hunks, list) or not hunks:
+        return ""
+    out: list[str] = []
+    for h in hunks:
+        if not isinstance(h, dict):
+            continue
+        out.append(f"@@ -{h.get('oldStart')},{h.get('oldLines')} +{h.get('newStart')},{h.get('newLines')} @@")
+        out += [str(ln) for ln in h.get("lines", []) if isinstance(ln, str)]
+    return redact("\n".join(out)) if out else ""
+
+
 def _flags_from_result(tool: str | None, inp: dict[str, Any] | None, block: dict[str, Any], tur: Any, sidechain: bool) -> EventFlags:
     f = EventFlags(sidechain=sidechain)
     if bool(block.get("is_error")):
@@ -155,13 +200,15 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
                             fp = tur["file"].get("filePath")
                         if isinstance(fp, str):
                             paths.append(fp)
+                    if (patch := _patch_text(tur)):
+                        full = f"{full}\n{patch}" if full.strip() else patch
                     if len(full.encode()) > MAX_OUTPUT_BYTES:
                         flags.truncated = True
                     events.append(LedgerEvent(
                         seq=seq, ts=ts, session_id=session_id, kind=EventKind.RESULT, tool=rtool,
                         output=full.encode()[:MAX_OUTPUT_BYTES].decode(errors="ignore"),
                         output_hash=hashlib.sha256(full.encode()).hexdigest(),
-                        exit_code=None, paths=paths, cwd=rec_cwd, flags=flags,
+                        exit_code=_exit_code_from(block, full), paths=paths, cwd=rec_cwd, flags=flags,
                     ))
                     seq += 1
                 elif rec["type"] == "assistant" and kind == "text":
