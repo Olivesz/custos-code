@@ -121,3 +121,31 @@ def test_the_test_count_pattern_only_matches_a_tally() -> None:
                  "added 12 tests in tests/test_rate_limit.py", "updated 3 test suites",
                  "across 15 of 96 sessions", "2 test modules", "took 0.42s"):
         assert found(text) == [], f"would accuse on {text!r}"
+
+
+def test_path_matches_pins_what_six_rules_depend_on() -> None:
+    """`path_matches` is the primitive six of the seven Tier 1/2 rules resolve claims through.
+
+    Its guard used to read `obj.startswith(("/", ".")) is None`, which is dead code: `startswith`
+    returns a bool and is never None, so the clause was always False and the condition was only
+    `not obj`. Nothing tested it either way, so neither the bug nor a repair would have shown up.
+
+    The `./` cases are the part that changed. `./src/x.py` and `src/x.py` are the same file and
+    agents write both; a leading `./` cannot change which file is meant, so normalising it is not
+    a judgement call. Everything else here pins the behaviour the rules were measured with.
+    """
+    from custos_code.rules import path_matches
+
+    for ledger_path, obj in [("src/cart.py", "src/cart.py"),
+                             ("src/cart.py", "cart.py"),          # bare basename
+                             ("src/cart.py", "./src/cart.py"),    # was False before
+                             ("./src/cart.py", "src/cart.py"),
+                             ("src/cart.py", "src/cart.py/")]:    # trailing slash
+        assert path_matches(ledger_path, obj), (ledger_path, obj)
+
+    for ledger_path, obj in [("src/cart.py", ""),
+                             ("src/cart.py", "./"),
+                             ("src/cart.py", "other.py"),
+                             ("src/cart.py", "/abs/src/cart.py"),
+                             ("src/cart.py", "cart")]:
+        assert not path_matches(ledger_path, obj), (ledger_path, obj)

@@ -64,10 +64,27 @@ def _first_tool(command: str, tools: tuple[str, ...]) -> str | None:
 
 
 def path_matches(ledger_path: str, obj: str) -> bool:
-    if not obj or obj.startswith(("/", ".")) is None:
+    """Does a path named in a claim refer to the path recorded in the ledger?
+
+    The guard used to read `obj.startswith(("/", ".")) is None`, which is dead: `startswith`
+    returns a bool and is never None, so the whole clause was always False and the condition was
+    only `not obj`. Removed rather than repaired -- repairing it would have to guess whether the
+    intent was to accept or reject prefixed paths, and either guess silently changes what six
+    rules consider a match. This keeps the behaviour the rules were measured with.
+
+    `./src/x.py` and `src/x.py` are the same file, and agents write both. Normalising the `./`
+    is not a guess: a leading `./` cannot change which file is meant.
+    """
+    if not obj:
         return False
     o = obj.strip().rstrip("/")
-    p = ledger_path.rstrip("/")
+    p = ledger_path.strip().rstrip("/")
+    while o.startswith("./"):
+        o = o[2:]
+    while p.startswith("./"):
+        p = p[2:]
+    if not o:
+        return False
     return p == o or p.endswith("/" + o) or (("/" not in o) and os.path.basename(p) == o)
 
 
