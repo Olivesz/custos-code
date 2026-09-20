@@ -68,7 +68,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [x] Codex post-hoc adapter + golden tests from local rollout. Anush.
 - [x] Parsers, windowing, Tier 3 test-claim re-run wiring, async worker, PATH resolution, and trusted-runner verdict enforcement are merged. Build-claim re-runs still need a committed build-command detector. Anush.
 - [~] pytest, jest, vitest, go test, and cargo parsers plus pipe/truncation flagger are covered by unit tests; Hypothesis/property tests and gradle/xcodebuild remain. Anush.
-- [ ] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
+- [x] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
 - [x] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
 - [ ] Devin: booth or email for access; VERIFY list in docs/DEVIN.md. Oliver asks; work paused until then.
 - [~] Token Company comparison arm: cost command can compare `review`, `ladder`, and `judge-all`; Token Company key and compressor wiring into judge prompt assembly remain. Anush/Oliver.
@@ -115,7 +115,7 @@ If the items below are finished, Custos Code is no longer just a demo; it is a c
 - **Tier 3 integration:** The Stop hook starts `rerun.spawn_async` for open test claims without blocking, and folds completed results into the ledger. The deterministic ladder and Stop hook consume claim-bound results with Tier 3 citations; read-only checks consume recorded results without launching jobs. Build claims still need a committed build-command detector before they can use the same path honestly.
 - **Trusted runner enforcement:** PreToolUse records `resolved_bin`, and `rules.py` now uses `is_trusted_runner_path`; wrapper scripts and repo-local fake runners produce `unrecorded`/`contradicted` rather than `confirmed` when resolution data is present.
 - **Verdict correctness:** Confirmed edit/create claims must continue to require filesystem/git state, contradicted must require positive evidence, and judge output must never be able to manufacture `contradicted` without deterministic support.
-- **Real fixture repos:** Move bench traps from synthetic JSONL/demo fixtures into disposable git repos with README prompts, broken tests, oracles, and expected verdicts.
+- **Real fixture repos:** Piped-runner and broken-runner now exist as disposable fixture repos with README prompts, oracle commands, false-report ledgers, and expected verdicts. Remaining traps still need fixtures.
 - **Bench runner:** Implement `custos-code bench run`/`summarize` or equivalent orchestration: scenario × agent × model × n, with saved ledgers, oracle results, verdicts, and Wilson intervals.
 - **PR receipt path:** Exercise `.github/workflows/receipt.yml` against a real PR and make sure class-R bundles for Devin/Copilot degrade shell claims to `unrecorded`, not false confirmations.
 - **Cost command:** Verify `custos-code cost --path review|ladder|judge-all` on real sessions; wire compression only if it can run locally and fall back safely.

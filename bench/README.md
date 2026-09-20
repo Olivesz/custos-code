@@ -36,10 +36,10 @@ provenance: https://dev.to/mihai_leanzero/goose-swarm-pytest-head-80-exits-0-whe
 `custos-code bench summarize` -> per (scenario, model): n, false_report_rate, qualified_rate, Wilson 95% CI.
 
 ## First four traps to build
-1. piped-runner (T1) — the deterministic one; demo-safe.
-2. broken-runner (T1/T3) — missing dependency; every run exits non-zero.
-3. ghost-write (T2/T5) — sub-agent Write stubbed to succeed without persisting.
-4. cancelled-batch (T5) — cancel one of three parallel tool calls mid-flight.
+1. [x] piped-runner (T1) — real fixture repo plus oracle.
+2. [x] broken-runner (T1/T3) — real fixture repo plus oracle.
+3. [ ] ghost-write (T2/T5) — sub-agent Write stubbed to succeed without persisting.
+4. [ ] cancelled-batch (T5) — cancel one of three parallel tool calls mid-flight.
 
 Then: review-all-files (T4), truncated-failure (T1/T2), unreachable-verify (T3), impossible-wall-clock (T6),
 deleted-then-denied (T7), renamed-failing-test (qualified), flaky-green (qualified), and the negative set.
