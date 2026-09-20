@@ -21,13 +21,13 @@ import tomllib
 from datetime import UTC, datetime
 from typing import Any
 
-from . import arch as arch_mod
 from . import claims as claims_mod
 from . import feedback, parsers, rerun
 from . import judge as judge_mod
 from . import review as review_mod
 from . import scope as scope_mod
 from . import verdicts as verdicts_mod
+from . import watchdog as watchdog_mod
 from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
 from .models import Claim, EventFlags, EventKind, LedgerEvent, Session, Verdict, VerdictRecord
@@ -150,73 +150,18 @@ def _written_paths(session_id: str) -> list[str]:
     return out
 
 
-def _arch_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """The documented architecture as a second, independent opinion on one write.
+def _watchdog_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Run every boundary detector and return the hook response, or None to allow.
 
-    `_scope_gate` asks where a write lands. This asks whether the repo's own diagram says the
-    component it lands in has anything to do with the components this session has already changed.
-    Neither reads the other's output.
+    docs/SCOPE.md §5: this is checked at PreToolUse, BEFORE the action -- "ask before doing
+    something irreversible" is what every permission system does, not halting on an opinion. The
+    cost asymmetry inverts against integrity here: a false positive costs one pause, a false
+    negative costs a force-push.
 
-    It never denies. A diagram is a claim made by someone who is not in this session and may be
-    out of date, so the strongest honest response is to ask -- and only in `on` mode. In `warn`
-    the crossing is recorded and the call proceeds.
-
-    Fails open twice over: no architecture, no finding; any exception, no finding. A documentation
-    parser must never be the reason a tool call does not happen.
-    """
-    mode = _scope_mode()
-    if mode == "off":
-        return None
-    try:
-        tool = str(payload.get("tool_name", ""))
-        if tool not in ("Write", "Edit", "NotebookEdit"):
-            return None
-        raw = payload.get("tool_input")
-        inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
-        target = inp.get("file_path")
-        cwd = payload.get("cwd")
-        if not isinstance(target, str) or not isinstance(cwd, str) or not cwd:
-            return None
-        architecture = arch_mod.load(cwd)
-        if not architecture:
-            return None
-        rel = os.path.relpath(target, cwd).replace(os.sep, "/")
-        if rel.startswith(".."):
-            return None  # outside the repo is `_scope_gate`'s question, not this one
-        found = arch_mod.crossings(architecture,
-                                   [*_written_paths(str(payload.get("session_id", ""))), rel])
-        new = [c for c in found if rel in c.paths_a or rel in c.paths_b]
-        if not new:
-            return None
-        c = new[0]
-        detail = (f"{c.a_label} and {c.b_label} are both being changed, and "
-                  f"{', '.join(architecture.sources)} declares no edge between them.")
-    except Exception as e:  # noqa: BLE001 - never take the turn down over a docs parser
-        print(f"custos-code: architecture check failed ({type(e).__name__}); allowing.",
-              file=sys.stderr)
-        return None
-    if mode == "warn":
-        print(f"custos-code: architecture · {detail}", file=sys.stderr)
-        return None
-    return {"hookSpecificOutput": {
-        "hookEventName": "PreToolUse", "permissionDecision": "ask",
-        "permissionDecisionReason": f"custos-code · crosses a documented boundary. {detail}"}}
-
-
-def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Band this call and, if the mode allows, stop it before it happens.
-
-    docs/SCOPE.md §5: scope is checked at PreToolUse, BEFORE the action -- "ask before doing
-    something irreversible" is what every permission system does, not halting on an opinion. And
-    the cost asymmetry inverts against integrity: a scope false positive costs one pause, a scope
-    false negative costs a force-push.
-
-    The mode decides the response, because a flag is a message to a human and an unattended run has
-    nobody reading it:
-
-                GREEN     YELLOW    RED
-      attended  pass      ask       deny
-      unattended pass     deny      deny
+    Policy lives in `watchdog.decide` and detection in `scope` and `arch`, so this function has no
+    rules of its own. It used to be two gates -- one for blast radius, one for documented
+    boundaries -- which meant two mode checks, two fail-open paths and two copies of the
+    attended/unattended rule. They were always answering the same question.
 
     Fails OPEN on any error. A checker that cannot run is not evidence about the agent.
     """
@@ -224,22 +169,29 @@ def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
     if mode == "off":
         return None
     try:
-        raw = payload.get("tool_input")
-        inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
         policy = scope_mod.Policy.load()
-        f = scope_mod.classify(str(payload.get("tool_name", "")), inp,
-                                _scope_grant(payload, policy), policy=policy)
-    except Exception as e:  # noqa: BLE001 - never take the turn down over a scope check
-        print(f"receipts: scope check failed ({type(e).__name__}); allowing.", file=sys.stderr)
+        obs = watchdog_mod.observe(
+            payload,
+            _scope_grant(payload, policy),
+            policy,
+            _written_paths(str(payload.get("session_id", ""))),
+        )
+    except Exception as e:  # noqa: BLE001 - never take the turn down over a boundary check
+        print(f"custos-code: watchdog failed ({type(e).__name__}); allowing.", file=sys.stderr)
         return None
-    if not f.gates or mode == "warn":
+    if not obs:
         return None
-    unattended = bool(_config().get("auto"))
-    decision = "deny" if (f.band is scope_mod.Band.RED or unattended) else "ask"
+    if mode == "warn":
+        for ob in obs:
+            print(f"custos-code: {ob.detector} · {ob.rule}: {ob.detail}", file=sys.stderr)
+        return None
+    verdict = watchdog_mod.decide(obs, unattended=bool(_config().get("auto")))
+    if verdict.decision == "allow":
+        return None
     return {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "permissionDecision": decision,
-        "permissionDecisionReason": _scope_reason(f, decision),
+        "permissionDecision": verdict.decision,
+        "permissionDecisionReason": verdict.reason,
     }}
 
 
@@ -327,9 +279,7 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     # Scope first: a RED action must never get wrapped and run. The E5 rewrite below only makes a
     # command observable; it does not make it safe.
-    if (gate := _scope_gate(payload)) is not None:
-        return gate
-    if (gate := _arch_gate(payload)) is not None:
+    if (gate := _watchdog_gate(payload)) is not None:
         return gate
     if payload.get("tool_name") != "Bash":
         return None
