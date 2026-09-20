@@ -114,7 +114,8 @@ class Coverage(BaseModel):
 
 class Session(BaseModel):
     id: str
-    source: Literal["claude_code", "codex", "copilot", "devin", "machine", "otel"]
+    source: str  # adapter name, e.g. "claude_code"/"codex"/"copilot"/"devin"/"machine"/"otel" (ADR 0006):
+                 # open, not a closed Literal, so a new adapter never has to touch this shared-seam file
     agent: str
     model: str | None = None
     started: datetime | None = None
