@@ -310,7 +310,7 @@ _FILE_WRITERS = frozenset({"tee", "touch", "cp", "mv", "dd", "install", "ln", "t
 _PREFIX_TOKENS = frozenset({"cd", "time", "timeout", "command", "exec", "nohup", "nice", "env"})
 _ASSIGN = re.compile(r"(?:^|[;&|]|\n)\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=([^\s;&|<>]+)")
 _VARREF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
-_CD = re.compile(r"(?:^|[;&|]|\n)\s*cd\s+(?:--\s+)?([^\s;&|<>]+)")
+_CD = re.compile(r"""(?:^|[;&|]|\n)\s*cd\s+(?:--\s+)?(?:"([^"]*)"|'([^']*)'|([^\s;&|<>]+))""")
 _SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "eval", "xargs", "source", ".",
                      "ssh", "env", "nohup", "timeout", "watch", "script"})
 
@@ -442,10 +442,18 @@ def _effective_cwd(cmd: str, cwd: str) -> str:
     Resolving against the session root invents a path that does not exist -- most of the
     `unrecoverable-write` volume -- and in the other direction MISSES the real target when the
     `cd` leaves the grant. An unexpandable `$VAR` aborts the walk rather than guessing.
+
+    `_CD` has three alternative groups -- double-quoted, single-quoted, bare -- because a bare
+    `[^\\s...]+` capture stops at the first space, and a path with a space in it is not a rare
+    edge case: `cd "/Users/x/Documents/HackMIT 2026/receipts" && ...` is what every compound
+    command in *this project's own checkout* looks like. Truncating the quoted target at that
+    space silently rebased every subsequent path in the command onto a directory one level up
+    that happens not to exist, which made `write-outside-cwd` fire on commands that never left
+    the grant at all.
     """
     d = cwd
     for m in _CD.finditer(_strip_heredocs(cmd)):
-        tgt = m.group(1).strip("'\"")
+        tgt = next(g for g in m.groups() if g is not None)
         if "$" in tgt or "`" in tgt:
             return d
         d = _abs(tgt, d)
