@@ -154,30 +154,59 @@ def check(
         raise typer.Exit(code=1)
 
 
-HOOKS_SNIPPET = {
-    "hooks": {
-        "PreToolUse": [
-            {
-                "matcher": "Bash",
-                "hooks": [{"type": "command", "command": "receipts _hook pre", "timeout": 5}],
-            }
-        ],
-        "PostToolUse": [
-            {
-                "matcher": "",
-                "hooks": [
-                    {"type": "command", "command": "receipts _hook post-tool-use", "timeout": 10}
-                ],
-            }
-        ],
-        "Stop": [
-            {
-                "matcher": "",
-                "hooks": [{"type": "command", "command": "receipts _hook stop", "timeout": 120}],
-            }
-        ],
+def _hook_command(event: str) -> str:
+    """An absolutely-resolved command line for one hook event.
+
+    Claude Code runs hooks through a shell that does not inherit this process's PATH, so a bare
+    `receipts _hook stop` only works when receipts is installed globally. It is not when the repo
+    is used from a checkout with a virtualenv -- the common case for this team, and the reason the
+    hooks were silently not running on Oliver's laptop on 2026-09-19. Resolve now, at install time.
+
+    Same resolution order as `rerun._worker_argv`, for the same reason and deliberately identical.
+    """
+    import shlex
+    import shutil as _sh
+    import sys as _sys
+
+    args = ["_hook", event]
+    script = _sh.which("receipts")
+    if script:
+        return shlex.join([script, *args])
+    return shlex.join([_sys.executable, "-c", "from receipts.cli import app; app()", *args])
+
+
+def hooks_snippet() -> dict[str, object]:
+    """The settings.json fragment that installs the three hooks, with commands already resolved."""
+    return {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": _hook_command("pre"), "timeout": 5}],
+                }
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": _hook_command("post-tool-use"),
+                            "timeout": 10,
+                        }
+                    ],
+                }
+            ],
+            "Stop": [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {"type": "command", "command": _hook_command("stop"), "timeout": 120}
+                    ],
+                }
+            ],
+        }
     }
-}
 
 
 @app.command()
@@ -192,7 +221,7 @@ def watch(
     import shutil as _shutil
 
     if not install:
-        console.print(_json.dumps(HOOKS_SNIPPET, indent=2))
+        console.print(_json.dumps(hooks_snippet(), indent=2))
         console.print(
             "[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `receipts watch --install`.[/]"
         )
@@ -205,10 +234,15 @@ def watch(
             data = _json.load(fh)
     hooks = data.setdefault("hooks", {})
     assert isinstance(hooks, dict)
-    for ev, entries in HOOKS_SNIPPET["hooks"].items():
+    snippet = hooks_snippet()["hooks"]
+    assert isinstance(snippet, dict)
+    for ev, entries in snippet.items():
         existing = hooks.setdefault(ev, [])
         assert isinstance(existing, list)
-        if not any("receipts _hook" in _json.dumps(e) for e in existing):
+        # Idempotence: match on the two stable tokens, not the literal command line. The command is
+        # now an absolute path that varies per machine and per install layout, so the old
+        # `"receipts _hook" in ...` test silently stopped matching and stacked duplicate hooks.
+        if not any(("_hook" in (blob := _json.dumps(e)) and "receipts" in blob) for e in existing):
             existing.extend(entries)
     with open(path, "w", encoding="utf-8") as fh:
         _json.dump(data, fh, indent=2)
