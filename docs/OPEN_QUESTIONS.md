@@ -67,7 +67,7 @@ Status: `open` · `decided` · `deferred (post-event)`
 | L3 | Token Company sign-in (opens Friday the 18th) | Anush | open | Needed for the compressor comparison. |
 | L4 | Maximor: staff it (needs cross-run memory, 4–5 h) or one slide? | All | open | Default: one slide unless a fourth person appears. |
 | L5 | Repo public or private, and when | Oliver | open | Private until the attribution and secrets scan passes; public for the OSS-maintainer angle. |
-| L6 | License | Oliver | open | MIT proposed. |
+| L6 | License | Oliver | decided | MIT. `LICENSE` already exists at the repo root (Oliver's copyright) and has been in effect; this row just hadn't been flipped to match. |
 
 ## Research gaps carried forward
 - Reddit was unreachable from our tooling; the complaint corpus skews to GitHub and HN. Post manually if we want Reddit voice.
