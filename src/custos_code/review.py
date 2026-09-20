@@ -184,7 +184,7 @@ def _veto(rec: VerdictRecord, ledger: list[LedgerEvent]) -> VerdictRecord:
     """A `confirmed` resting on evidence we cannot actually read becomes `unrecorded`.
 
     Narrowed on 2026-09-19. It used to fire on any `piped` or `truncated` flag, which produced
-    receipts that contradicted themselves: "cannot be verified: Evidence at #17 was filtered or
+    custos-code that contradicted themselves: "cannot be verified: Evidence at #17 was filtered or
     truncated. `git status --short` shows the rename exactly as stated." If the captured output
     settles the claim, the fact that a pipe was *present* is irrelevant -- the harm from a pipe is
     losing the output, and here we still have it.

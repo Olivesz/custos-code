@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from receipts.judge import window
-from receipts.models import Claim, ClaimType, EventFlags, EventKind, LedgerEvent
+from custos_code.judge import window
+from custos_code.models import Claim, ClaimType, EventFlags, EventKind, LedgerEvent
 
 
 def _event(
@@ -74,7 +74,7 @@ from dataclasses import dataclass, field  # noqa: E402
 
 import pytest  # noqa: E402
 
-from receipts.judge import (  # noqa: E402
+from custos_code.judge import (  # noqa: E402
     SYSTEM,
     Usage,
     _majority,
@@ -82,8 +82,8 @@ from receipts.judge import (  # noqa: E402
     render_window,
     window_for_all,
 )
-from receipts.models import Verdict, VerdictRecord  # noqa: E402
-from receipts.verdicts import run  # noqa: E402
+from custos_code.models import Verdict, VerdictRecord  # noqa: E402
+from custos_code.verdicts import run  # noqa: E402
 
 
 def _claim(cid: str = "c1", ctype: ClaimType = ClaimType.VERIFY, objects: list[str] | None = None) -> Claim:
@@ -188,7 +188,7 @@ def test_judge_cannot_overturn_a_deterministic_contradiction() -> None:
 
 
 def test_enforce_rejects_a_judge_contradiction() -> None:
-    from receipts.verdicts import _enforce
+    from custos_code.verdicts import _enforce
 
     with pytest.raises(AssertionError):
         _enforce(VerdictRecord(claim_id="c", verdict=Verdict.CONTRADICTED, tier=4, method="judge", confidence=1.0))

@@ -11,10 +11,10 @@ import os
 
 import pytest
 
-from receipts.adapters import claude_code
-from receipts.claims import extract_regex
-from receipts.models import EventFlags, EventKind, Verdict
-from receipts.verdicts import run
+from custos_code.adapters import claude_code
+from custos_code.claims import extract_regex
+from custos_code.models import EventFlags, EventKind, Verdict
+from custos_code.verdicts import run
 
 SESSIONS = sorted(glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")), key=os.path.getmtime)[-120:]
 pytestmark = pytest.mark.skipif(not SESSIONS, reason="no local transcripts (CI)")
@@ -77,7 +77,7 @@ def test_mr1_removing_all_evidence_of_that_class_never_leaves_it_confirmed() -> 
 def test_mr4_appending_an_unrelated_event_never_changes_a_verdict() -> None:
     from datetime import datetime
 
-    from receipts.models import LedgerEvent
+    from custos_code.models import LedgerEvent
 
     changed = 0
     for cwd, claim, ledger in CASES[:40]:
@@ -110,7 +110,7 @@ def test_mr6_moving_evidence_into_a_sidechain_never_leaves_it_confirmed() -> Non
 
 
 def test_mr7_marking_cited_output_truncated_never_leaves_a_runner_claim_confirmed() -> None:
-    from receipts.models import ClaimType
+    from custos_code.models import ClaimType
 
     checked = violations = 0
     for cwd, claim, ledger in CASES:

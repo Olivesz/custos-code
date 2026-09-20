@@ -2,10 +2,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from receipts import compress
-from receipts.cost import PriceEntry, compute, load_prices
-from receipts.judge import Usage as JudgeUsage
-from receipts.models import EventFlags, EventKind, LedgerEvent, Verdict, VerdictRecord
+from custos_code import compress
+from custos_code.cost import PriceEntry, compute, load_prices
+from custos_code.judge import Usage as JudgeUsage
+from custos_code.models import EventFlags, EventKind, LedgerEvent, Verdict, VerdictRecord
 
 Method = Literal["rule", "rerun", "judge", "state"]
 

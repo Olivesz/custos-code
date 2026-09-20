@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>Receipts Prototype</title>
+<title>Custos Code Prototype</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root{
@@ -130,8 +130,8 @@ h2{font-size:1.25rem;margin:36px 0 8px}
 
 <div class="wrap">
 <div class="eyebrow">Prototype · non-functional · static data</div>
-<h1>Receipts in the editor</h1>
-<p class="sub">The agent extension stays exactly as it is. Receipts is a second extension that reads the harness log the agent cannot write, marks every claim in the agent's message, and puts the evidence one click away. Click any mark or claim; hover for the tier and ledger lines.</p>
+<h1>Custos Code in the editor</h1>
+<p class="sub">The agent extension stays exactly as it is. Custos Code is a second extension that reads the harness log the agent cannot write, marks every claim in the agent's message, and puts the evidence one click away. Click any mark or claim; hover for the tier and ledger lines.</p>
 
 <div class="scen" role="tablist" aria-label="Scenario">
   <button role="tab" aria-pressed="true" data-scen="live">1 · Agent finishes, receipt appears</button>
@@ -162,7 +162,7 @@ h2{font-size:1.25rem;margin:36px 0 8px}
       <div class="f">&nbsp;&nbsp;&nbsp;&nbsp;test_session.py</div>
       <div class="f">&nbsp;&nbsp;README.md</div>
       <div class="f">&nbsp;&nbsp;pyproject.toml</div>
-      <div class="hd" style="margin-top:14px">RECEIPTS</div>
+      <div class="hd" style="margin-top:14px">CUSTOS CODE</div>
       <div class="f" id="ex-sum">&nbsp;&nbsp;session 4f2a · <span id="ex-counts">3 ✓ · 1 ✗ · 1 ? · 1 ○</span></div>
       <div class="f" style="color:var(--ide-dim)">&nbsp;&nbsp;ledger: 42 events · chain ok</div>
     </div>
@@ -170,33 +170,33 @@ h2{font-size:1.25rem;margin:36px 0 8px}
       <div class="tabs"><div class="on" data-file="mw">auth/middleware.py</div><div data-file="test">tests/test_rate_limit.py</div></div>
       <div class="editor" id="editor"></div>
       <div class="panel">
-        <div class="ptabs"><div class="on" data-p="claims">Claims <span class="cnt" id="ccount">6</span></div><div data-p="ledger">Ledger <span class="cnt" id="lcount">42</span></div><div data-p="cost">Cost</div><div style="margin-left:auto;text-transform:none;letter-spacing:0;color:var(--ide-dim)">receipts · rules 4 · re-run 0 · judge 1</div></div>
+        <div class="ptabs"><div class="on" data-p="claims">Claims <span class="cnt" id="ccount">6</span></div><div data-p="ledger">Ledger <span class="cnt" id="lcount">42</span></div><div data-p="cost">Cost</div><div style="margin-left:auto;text-transform:none;letter-spacing:0;color:var(--ide-dim)">custos-code · rules 4 · re-run 0 · judge 1</div></div>
         <div class="pbody" id="pbody"></div>
       </div>
     </div>
     <div class="chat">
-      <div class="hd"><span class="dot"></span><span id="agentname">Claude Code</span><span class="rx">receipts on · auto: <span id="automode">off</span></span></div>
+      <div class="hd"><span class="dot"></span><span id="agentname">Claude Code</span><span class="rx">custos-code on · auto: <span id="automode">off</span></span></div>
       <div class="msgs" id="msgs"></div>
     </div>
   </div>
-  <div class="status"><span>⎇ feat/rate-limit</span><span id="st-rc">receipts: 6 claims · 3 ✓ · 1 ✗ · 1 ? · 1 ○</span><span class="r" id="st-r">Python 3.12 · Ln 24</span></div>
+  <div class="status"><span>⎇ feat/rate-limit</span><span id="st-rc">custos-code: 6 claims · 3 ✓ · 1 ✗ · 1 ? · 1 ○</span><span class="r" id="st-r">Python 3.12 · Ln 24</span></div>
 </div>
 
-<div class="note" id="scen-note">Scenario 1: the agent has just finished. Receipts read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.</div>
+<div class="note" id="scen-note">Scenario 1: the agent has just finished. Custos Code read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.</div>
 
 <h2>How it runs</h2>
 <div class="arch">
-  <div class="box"><span class="who">1 · in the agent harness</span><h4>Hooks write the ledger</h4><p>Claude Code PostToolUse and Stop hooks (Codex: rollout log adapter) append every tool call, full stdout, exit code, and file path to <code>~/.receipts/&lt;session&gt;.sqlite</code>, hash-chained. The model has no write path to this file.</p></div>
-  <div class="box"><span class="who">2 · in the Receipts engine</span><h4>The ladder settles each claim</h4><p>The final message is split into claims. Rules check witnessed and outcome (paths, runner output, exit codes, pipes). Test claims are re-run in a worktree. Only the residue reaches a judge, which can say confirmed or unwitnessed, never contradicted.</p></div>
-  <div class="box"><span class="who">3 · in VS Code</span><h4>The Receipts extension shows it</h4><p>Watches <code>~/.receipts</code>. Mirrors the agent's last message with marks in its own view, decorates touched lines in the editor, fills the Claims / Ledger / Cost panel, and puts the tally in the status bar. It never modifies the agent extension.</p></div>
+  <div class="box"><span class="who">1 · in the agent harness</span><h4>Hooks write the ledger</h4><p>Claude Code PostToolUse and Stop hooks (Codex: rollout log adapter) append every tool call, full stdout, exit code, and file path to <code>~/.custos-code/&lt;session&gt;.sqlite</code>, hash-chained. The model has no write path to this file.</p></div>
+  <div class="box"><span class="who">2 · in the Custos Code engine</span><h4>The ladder settles each claim</h4><p>The final message is split into claims. Rules check witnessed and outcome (paths, runner output, exit codes, pipes). Test claims are re-run in a worktree. Only the residue reaches a judge, which can say confirmed or unwitnessed, never contradicted.</p></div>
+  <div class="box"><span class="who">3 · in VS Code</span><h4>The Custos Code extension shows it</h4><p>Watches <code>~/.custos-code</code>. Mirrors the agent's last message with marks in its own view, decorates touched lines in the editor, fills the Claims / Ledger / Cost panel, and puts the tally in the status bar. It never modifies the agent extension.</p></div>
   <div class="box"><span class="who">4 · back to the agent (auto mode)</span><h4>Contradictions are handed back</h4><p>Deterministic nudge templates (zero LLM tokens) name the exact re-run or withdrawal per claim. The report is held until no ✗, ○, or bare ? remains; a mark clears only when new ledger events bear on that claim. Cap: three passes, then the human.</p></div>
 </div>
 
 <h2>Where the marks can live</h2>
 <div class="alt">
-  <div class="box"><span class="pill">shown above</span><h4>Mirrored message in the Receipts view</h4><p>Always possible: our own sidebar view re-renders the agent's last message with marks. Works with any agent extension, no cooperation needed.</p></div>
+  <div class="box"><span class="pill">shown above</span><h4>Mirrored message in the Custos Code view</h4><p>Always possible: our own sidebar view re-renders the agent's last message with marks. Works with any agent extension, no cooperation needed.</p></div>
   <div class="box"><span class="pill">shown above</span><h4>Editor decorations</h4><p>Gutter mark and code lens on lines the agent claimed to touch: "claimed · witnessed #14 · diff agrees". This is native VS Code API.</p></div>
-  <div class="box"><span class="pill">auto mode</span><h4>Agent re-emits the corrected report</h4><p>After the nudges, the agent's next message is the corrected one; Receipts marks it and shows it only when clean. Looks native, but the marks still come from Receipts.</p></div>
+  <div class="box"><span class="pill">auto mode</span><h4>Agent re-emits the corrected report</h4><p>After the nudges, the agent's next message is the corrected one; Custos Code marks it and shows it only when clean. Looks native, but the marks still come from Custos Code.</p></div>
   <div class="box"><span class="pill">terminal</span><h4>Hook systemMessage</h4><p>In the Claude Code terminal, the Stop hook returns the marked report as a system message under the agent's message. Zero UI work; the event-day fallback.</p></div>
   <div class="box"><span class="pill">github</span><h4>PR comment</h4><p>Scenario 3. The PR description quoted with marks, one comment, links to the session log.</p></div>
   <div class="box"><span class="pill">later</span><h4>Inline in the agent's own bubble</h4><p>Needs the agent extension to expose a decoration API for its webview. Worth asking Warp, Cursor and Anthropic for; not required.</p></div>
@@ -232,7 +232,7 @@ const ledgerBase=[
  [42,'RESULT','Bash','collected 0 items\n(no tests ran)',0,['piped','runner: 0 collected']],
 ];
 const ledgerAuto=[
- [43,'STOP','receipts','blocked · 1 contradicted → returned as tool evidence',null,[]],
+ [43,'STOP','custos-code','blocked · 1 contradicted → returned as tool evidence',null,[]],
  [44,'CALL','Bash','pytest -q',1,[]],
  [45,'RESULT','Bash','11 passed, 1 failed  test_burst_window',1,[]],
  [46,'CALL','Edit','auth/middleware.py  +3 −1  (window arithmetic)',null,[]],
@@ -253,7 +253,7 @@ const claimsV2=[
  {id:'d1',text:'Implemented sliding-window rate limiting in auth/middleware.py',v:'ok',tier:1,method:'rule',ev:[14,15,46],why:'Edit on the claimed path (twice); git diff agrees.',file:'mw',line:24},
  {id:'d2',text:'added 12 tests in tests/test_rate_limit.py',v:'ok',tier:1,method:'rule',ev:[31,32],why:'Write on the claimed path; file present.',file:'test',line:1},
  {id:'d3',text:'the first run found one failure in the burst window, which I fixed',v:'ok',tier:2,method:'rule',ev:[44,45,46],why:'Runner exit 1 with "1 failed test_burst_window", followed by an Edit on the file.'},
- {id:'d4',text:'re-ran the suite without the pipe: 12 passed',v:'ok',tier:3,method:'rerun',ev:[47,48],why:'Real pytest binary, runner-format output, exit 0. Re-run by Receipts in a worktree agrees: 12 passed.'},
+ {id:'d4',text:'re-ran the suite without the pipe: 12 passed',v:'ok',tier:3,method:'rerun',ev:[47,48],why:'Real pytest binary, runner-format output, exit 0. Re-run by Custos Code in a worktree agrees: 12 passed.'},
  {id:'d5',text:'lint is clean',v:'ok',tier:2,method:'rule',ev:[49,50],why:'Re-run unpiped after the nudge: known ruff binary, runner-format output, exit 0.'},
 ];
 
@@ -307,7 +307,7 @@ function renderEditor(){
    let mk='';
    if(lens&&(!lens.auto||auto)) mk=`<span class="mk" style="color:var(--${lens.cls})" title="${lens.lens}">${lens.cls==='ok'?'✓':'✗'}</span>`;
    const hl=state.sel&&state.sel.file===state.file&&state.sel.line===n?' hl':'';
-   const lensRow=lens&&(!lens.auto||auto)?`<div class="lens">receipts · <b class="${lens.cls}">${lens.lens}</b></div>`:'';
+   const lensRow=lens&&(!lens.auto||auto)?`<div class="lens">custos-code · <b class="${lens.cls}">${lens.lens}</b></div>`:'';
    return lensRow+`<div class="ln ${cls}${hl}"><span class="mk">${mk}</span><span class="g">${n}</span><pre>${code}</pre></div>`;
  }).join('');
  $$('.tabs div').forEach(t=>t.classList.toggle('on',t.dataset.file===state.file));
@@ -356,12 +356,12 @@ function renderChat(){
  const work=`<div class="msg"><div class="who">AGENT</div>I'll read the middleware, add a <code>RateLimiter</code>, wire it in, and add tests.
    <div class="tool"><b>Read</b> auth/middleware.py</div><div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Write</b> tests/test_rate_limit.py</div><div class="tool"><b>Bash</b> ruff check . 2>/dev/null | head -3</div><div class="tool"><b>Bash</b> pytest | tail -5</div></div>`;
  const v1=(clsRx)=>`<div class="msg"><div class="who">AGENT · final report${clsRx||''}</div>${sentence(c.c1||claimsV1[0])} and ${sentence(c.c2||claimsV1[1])}. I ${sentence(c.c3||claimsV1[2])}, ${sentence(c.c4||claimsV1[3])}, and ${sentence(c.c5||claimsV1[4])}. ${sentence(c.c6||claimsV1[5])}. Ready to merge.
-   <div class="trail">receipts · 6 claims · 3 ✓ · 1 ✗ · 1 ? · 1 ○ · rules 4 · judge 1 · $0.009</div></div>`;
+   <div class="trail">custos-code · 6 claims · 3 ✓ · 1 ✗ · 1 ? · 1 ○ · rules 4 · judge 1 · $0.009</div></div>`;
  let html=user+work;
  if(state.scen==='live'){ html+=v1(); }
  if(state.scen==='auto'){
-   html+=`<details class="held"${state.step===0?' open':''}><summary><b>receipts · report held</b> · pass 1 · 6 claims · 3 need work · not shown to you</summary><div class="msg" style="opacity:.55;margin-top:8px"><div class="who">AGENT · attempt 1 (held)</div>${sentence(claimsV1[0])} and ${sentence(claimsV1[1])}. I ${sentence(claimsV1[2])}, ${sentence(claimsV1[3])}, and ${sentence(claimsV1[4])}. ${sentence(claimsV1[5])}. Ready to merge.</div></details>`;
-   if(state.step>=1) html+=`<div class="block"><b>receipts · auto mode · pass 1 of 3</b> · 3 claims need work · nudges are templates, 0 LLM tokens
+   html+=`<details class="held"${state.step===0?' open':''}><summary><b>custos-code · report held</b> · pass 1 · 6 claims · 3 need work · not shown to you</summary><div class="msg" style="opacity:.55;margin-top:8px"><div class="who">AGENT · attempt 1 (held)</div>${sentence(claimsV1[0])} and ${sentence(claimsV1[1])}. I ${sentence(claimsV1[2])}, ${sentence(claimsV1[3])}, and ${sentence(claimsV1[4])}. ${sentence(claimsV1[5])}. Ready to merge.</div></details>`;
+   if(state.step>=1) html+=`<div class="block"><b>custos-code · auto mode · pass 1 of 3</b> · 3 claims need work · nudges are templates, 0 LLM tokens
      <div class="ev">✗ claim 3 "all 12 passing" — contradicted: #41 <code>pytest | tail -5</code>, #42 "collected 0 items". Run <code>pytest -q</code> unpiped, fix what fails, report the result.</div>
      <div class="ev">○ claim 4 "lint is clean" — unrecorded: #38 dropped stderr and truncated stdout. Run <code>ruff check .</code> unpiped and report the result.</div>
      <div class="ev">? claim 5 "verified the endpoint with curl" — no evidence. Run the check as a tool call so it is recorded, or withdraw the claim.</div>
@@ -369,7 +369,7 @@ function renderChat(){
    if(state.step>=2) html+=`<div class="msg"><div class="who">AGENT</div>The test command was piped and collected nothing. Re-running without the pipe.
      <div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--bad)">exit 1 · 11 passed, 1 failed</span></div>One test fails: the burst window slides one second early. Fixing the arithmetic.<div class="tool"><b>Edit</b> auth/middleware.py</div><div class="tool"><b>Bash</b> pytest -q &nbsp;<span style="color:var(--ok)">exit 0 · 12 passed</span></div>Re-running lint unpiped. I did not verify the endpoint with curl in this session; withdrawing that claim.<div class="tool"><b>Bash</b> ruff check . &nbsp;<span style="color:var(--ok)">exit 0 · All checks passed!</span></div></div>`;
    if(state.step>=3){ html+=`<div class="msg"><div class="who">AGENT · final report · verified</div>${sentence(claimsV2[0])} and ${sentence(claimsV2[1])}. ${sentence(claimsV2[2])}; ${sentence(claimsV2[3])}. ${sentence(claimsV2[4])}.
-     <div class="trail">receipts · 5 claims · 5 ✓ · 2 passes · tests re-run at #47, lint re-run at #49, 1 claim withdrawn · nudges $0.000</div></div>`; }
+     <div class="trail">custos-code · 5 claims · 5 ✓ · 2 passes · tests re-run at #47, lint re-run at #49, 1 claim withdrawn · nudges $0.000</div></div>`; }
  }
  if(state.scen==='pr'){ html+=v1(); }
  $('#msgs').innerHTML=html;
@@ -385,7 +385,7 @@ function select(id){
 }
 // ---------- scenarios ----------
 const steps=[
- 'Pass 1. The agent says "all 12 passing". Receipts finds the runner was piped and collected nothing, so the report is held, not shown. Expand the dashed card to see what was caught.',
+ 'Pass 1. The agent says "all 12 passing". Custos Code finds the runner was piped and collected nothing, so the report is held, not shown. Expand the dashed card to see what was caught.',
  'Auto mode holds the report. Three claims get deterministic nudges built from the verdict and ledger lines: the ✗ names the exact command to re-run, the ○ names the unpiped lint command, the ? asks for a recorded check or a withdrawal. No LLM wrote these.',
  'The agent re-runs tests unpiped, sees a real failure, fixes it, re-runs, re-runs lint, and withdraws the curl claim. New ledger events #44–#50 appear. A mark clears only because these events exist.',
  'Pass 2 is clean: every remaining claim is ✓, the unverifiable one is gone. The developer sees only this report, with a trailer citing what was re-run and withdrawn.'
@@ -395,7 +395,7 @@ function setScen(s){
  $$('.scen button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scen===s)));
  $('#stepper').hidden=s!=='auto';
  $('#automode').textContent=s==='auto'?'on':'off';
- $('#scen-note').textContent=s==='live'?'Scenario 1: the agent has just finished. Receipts read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.'
+ $('#scen-note').textContent=s==='live'?'Scenario 1: the agent has just finished. Custos Code read the 42-event ledger, extracted 6 claims from the message, and settled 4 by rules, 1 by flagging the record as incomplete, and 1 by a grounded judge that could only say "unwitnessed". Nothing here came from asking the agent whether it was telling the truth.'
    : s==='auto'?'Scenario 2: auto mode. Step through the correction loop with the buttons above. Watch the Ledger tab: nothing clears until new events appear that bear on each claim. The report the developer sees has no unverified claim in it.'
    : 'Scenario 3: the same engine on a pull request. The PR description is the report; the session log and CI are the evidence. Reviewers read the marks before the diff.';
  renderAll();
@@ -404,17 +404,17 @@ function renderAll(){
  renderEditor(); renderPanel(); renderChat();
  const cl=curClaims(); const cnt=v=>cl.filter(c=>c.v===v).length;
  const s=`${cl.length} claims · ${cnt('ok')} ✓${cnt('bad')?' · '+cnt('bad')+' ✗':''}${cnt('warn')?' · '+cnt('warn')+' ?':''}${cnt('unr')?' · '+cnt('unr')+' ○':''}`;
- $('#st-rc').textContent='receipts: '+s; $('#ex-counts').textContent=s.replace(/^\d+ claims · /,'');
+ $('#st-rc').textContent='custos-code: '+s; $('#ex-counts').textContent=s.replace(/^\d+ claims · /,'');
  if(state.scen==='auto'){ $('#cap').innerHTML=`<b>Step ${state.step+1} of ${steps.length}.</b> ${steps[state.step]}`; $('#prev').disabled=state.step===0; $('#next').disabled=state.step===steps.length-1; }
  if(state.scen==='pr'){ renderPR(); }
 }
 function renderPR(){
  const c=claimsV1;
  $('#msgs').innerHTML=`<div class="msg user"><div class="who">PULL REQUEST #212 · feat: sliding-window rate limiting</div><div style="color:#DDD;margin-top:4px">opened by agent-bot · Copilot session #8812</div></div>
- <div class="msg"><div class="who">receipts-bot commented · 2 min ago</div><b>Receipt for this PR's description</b> · 6 claims · source: Copilot session log #8812, CI run #5531
+ <div class="msg"><div class="who">custos-code-bot commented · 2 min ago</div><b>Receipt for this PR's description</b> · 6 claims · source: Copilot session log #8812, CI run #5531
  <div style="margin-top:8px;display:grid;gap:6px">${c.map(x=>`<div style="display:grid;grid-template-columns:22px 1fr;gap:6px"><span style="color:var(--${x.v});font-family:'JetBrains Mono',monospace">${MK[x.v][0]}</span><span>${x.text}<br><span style="color:var(--ide-dim);font-size:11.5px">${x.ev.length?'log '+x.ev.map(e=>'#'+e).join(', ')+' · ':''}tier ${x.tier} · ${x.method}</span></span></div>`).join('')}</div>
  <div class="trail">intent coverage: 2 of 2 requested items claimed · 0 unrequested changes · <u>open full receipt</u></div></div>
- <div class="block"><b>merge check · receipts</b><div class="ev">1 contradicted claim. Label <code>needs-receipt</code> applied. Re-run tests in CI without the pipe to clear.</div></div>`;
+ <div class="block"><b>merge check · custos-code</b><div class="ev">1 contradicted claim. Label <code>needs-receipt</code> applied. Re-run tests in CI without the pipe to clear.</div></div>`;
  $$('.sent').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
  $('#agentname').textContent='GitHub · PR #212';
 }

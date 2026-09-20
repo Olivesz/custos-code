@@ -6,9 +6,9 @@ import subprocess
 
 import pytest
 
-from receipts.adapters import machine
-from receipts.ledger import verify_chain
-from receipts.models import EventKind
+from custos_code.adapters import machine
+from custos_code.ledger import verify_chain
+from custos_code.models import EventKind
 
 
 def _log(tmp_path, rows: list[dict]) -> str:
@@ -18,24 +18,24 @@ def _log(tmp_path, rows: list[dict]) -> str:
 
 
 def _row(**kw) -> dict:
-    return {"recorder": "receipts-machine", "v": 1, "cwd": "/srv/app", "pid": 100, **kw}
+    return {"recorder": "custos-code-machine", "v": 1, "cwd": "/srv/app", "pid": 100, **kw}
 
 
 def test_record_line_is_one_wire_object_with_status_and_duration() -> None:
     line = json.loads(
         machine.record_line(
             {
-                "RECEIPTS_EVENT": "end",
-                "RECEIPTS_CMD": "pytest -q",
-                "RECEIPTS_RC": "1",
-                "RECEIPTS_T0": "1000.0",
-                "RECEIPTS_TS": "1002.5",
+                "CUSTOS_CODE_EVENT": "end",
+                "CUSTOS_CODE_CMD": "pytest -q",
+                "CUSTOS_CODE_RC": "1",
+                "CUSTOS_CODE_T0": "1000.0",
+                "CUSTOS_CODE_TS": "1002.5",
                 "PWD": "/srv/app",
-                "RECEIPTS_PID": "42",
+                "CUSTOS_CODE_PID": "42",
             }
         )
     )
-    assert line["recorder"] == "receipts-machine" and line["v"] == machine.WIRE_VERSION
+    assert line["recorder"] == "custos-code-machine" and line["v"] == machine.WIRE_VERSION
     assert line == {
         **line,
         "event": "end",
@@ -49,17 +49,19 @@ def test_record_line_is_one_wire_object_with_status_and_duration() -> None:
 
 def test_record_line_redacts_secrets_in_the_command() -> None:
     line = machine.record_line(
-        {"RECEIPTS_EVENT": "start", "RECEIPTS_CMD": "deploy --key sk-abcdefghijklmnopqrstuvwx"}
+        {"CUSTOS_CODE_EVENT": "start", "CUSTOS_CODE_CMD": "deploy --key sk-abcdefghijklmnopqrstuvwx"}
     )
     assert "sk-abcdefghijklmnopqrstuvwx" not in line
 
 
-def test_parse_pairs_start_and_end_and_keeps_the_exit_code(tmp_path) -> None:
+@pytest.mark.parametrize("recorder", ["custos-code-machine", "receipts-machine"])
+def test_parse_pairs_start_and_end_and_keeps_the_exit_code(tmp_path, recorder) -> None:
     path = _log(
         tmp_path,
         [
-            _row(event="start", ts=1_758_276_000.0, cmd="pytest -q | tail -1"),
-            _row(event="end", ts=1_758_276_002.5, cmd="pytest -q | tail -1", exit=1, dur_ms=2500),
+            _row(recorder=recorder, event="start", ts=1_758_276_000.0, cmd="pytest -q | tail -1"),
+            _row(recorder=recorder, event="end", ts=1_758_276_002.5,
+                 cmd="pytest -q | tail -1", exit=1, dur_ms=2500),
         ],
     )
     sess, ledger, report = machine.parse(path)
@@ -113,7 +115,7 @@ def test_no_cross_ledger_merge_is_exposed() -> None:
 
 
 def test_record_line_falls_back_to_the_calling_shell_for_pid() -> None:
-    line = json.loads(machine.record_line({"RECEIPTS_EVENT": "start", "RECEIPTS_CMD": "ls"}))
+    line = json.loads(machine.record_line({"CUSTOS_CODE_EVENT": "start", "CUSTOS_CODE_CMD": "ls"}))
     assert line["pid"] == os.getppid() and line["ppid"] is None
 
 
@@ -129,7 +131,7 @@ def test_pairing_survives_a_repeated_command(tmp_path) -> None:
 
 
 def test_snippets_exist_for_supported_shells_only() -> None:
-    assert "receipts _record-line" in machine.install_snippet("bash")
+    assert "custos-code _record-line" in machine.install_snippet("bash")
     assert "add-zsh-hook" in machine.install_snippet("zsh")
     with pytest.raises(ValueError, match="no recorder snippet"):
         machine.install_snippet("fish")
@@ -143,12 +145,12 @@ def test_bash_snippet_is_syntactically_valid() -> None:
 
 
 def test_bash_snippet_does_not_word_split_the_command() -> None:
-    # RECEIPTS_CMD=$__RECEIPTS_CMD unquoted would record `pytest` and drop `-q` into argv
-    script = machine.install_snippet("bash").replace("receipts _record-line", "env")
+    # CUSTOS_CODE_CMD=$__CUSTOS_CODE_CMD unquoted would record `pytest` and drop `-q` into argv
+    script = machine.install_snippet("bash").replace("custos-code _record-line", "env")
     proc = subprocess.run(
-        ["bash", "-c", f'{script}\n__RECEIPTS_CMD="pytest -q"; __receipts_precmd'],
+        ["bash", "-c", f'{script}\n__CUSTOS_CODE_CMD="pytest -q"; __custos_code_precmd'],
         text=True,
         capture_output=True,
-        env={**os.environ, "RECEIPTS_MACHINE_LOG": "/dev/stdout"},
+        env={**os.environ, "CUSTOS_CODE_MACHINE_LOG": "/dev/stdout"},
     )
-    assert "RECEIPTS_CMD=pytest -q" in proc.stdout, proc.stdout or proc.stderr
+    assert "CUSTOS_CODE_CMD=pytest -q" in proc.stdout, proc.stdout or proc.stderr

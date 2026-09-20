@@ -1,13 +1,13 @@
-"""Per-session token and dollar accounting by stage and tier (`receipts cost`).
+"""Per-session token and dollar accounting by stage and tier (`custos-code cost`).
 
 Records: claims settled per tier, judge requests per session, input/cached/output tokens per
 request, and the price-list lookup from config. Produces the chart: judge-everything vs ladder
 vs ladder+compressor on the same sessions, with kappa beside each (EVIDENCE_PLAN, Token Company).
 
 Where the price list lives and how it is dated (was NEEDS-DECISION(anush), now resolved):
-`~/.receipts/config.toml` under one `[prices.<model-id>]` table per model (`input_per_1m`,
+`~/.custos-code/config.toml` under one `[prices.<model-id>]` table per model (`input_per_1m`,
 `cached_input_per_1m`, `output_per_1m`), each dated with its own `asof` so a stale figure is
-visible in `receipts cost`'s output rather than silently wrong. An unpriced or unknown model
+visible in `custos-code cost`'s output rather than silently wrong. An unpriced or unknown model
 prices at $0.00 rather than raising -- this command must still run before every model in use has
 a confirmed price. Real dollar figures are still placeholders (docs/OPEN_QUESTIONS.md); only the
 structure is decided here.
@@ -40,7 +40,7 @@ from . import compress
 from .judge import Usage as JudgeUsage
 from .models import EventKind, LedgerEvent, VerdictRecord
 
-HOME = os.path.expanduser("~/.receipts")
+HOME = os.path.expanduser("~/.custos-code")
 
 _TIER_LABEL = {0: "rules", 1: "rules", 2: "rules", 3: "re-run", 4: "judge", 5: "judge"}
 
@@ -57,7 +57,7 @@ PriceTable = dict[str, PriceEntry]
 
 
 def load_prices(path: str | None = None) -> PriceTable:
-    """Read `[prices.<model-id>]` from `~/.receipts/config.toml` (or `path`). No file, no
+    """Read `[prices.<model-id>]` from `~/.custos-code/config.toml` (or `path`). No file, no
     `[prices]` table, or no entry for a given model all resolve to an all-zero `PriceEntry` --
     never an exception -- so a session with an unpriced model still gets a receipt, just a
     dollar figure of 0.00 that a reader can tell is unpriced rather than free."""
@@ -93,7 +93,7 @@ def _dollars(price: PriceEntry, input_tokens: int, cached_tokens: int, output_to
 
 @dataclass
 class SessionCost:
-    """Everything `receipts cost` prints for one session, as both a table and JSON."""
+    """Everything `custos-code cost` prints for one session, as both a table and JSON."""
     session_id: str
     claims_total: int = 0
     claims_by_tier: dict[int, int] = field(default_factory=dict)
@@ -190,7 +190,7 @@ def compute(
 
 
 def render_table(cost: SessionCost) -> Table:
-    t = Table(show_header=True, header_style="dim", title=f"receipts cost · session {cost.session_id[:8]}…")
+    t = Table(show_header=True, header_style="dim", title=f"custos-code cost · session {cost.session_id[:8]}…")
     for col in ("stage", "claims", "tokens (in/cached/out)", "compute", "$"):
         t.add_column(col)
 

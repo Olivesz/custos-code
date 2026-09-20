@@ -8,7 +8,7 @@ knows the answer because we built the trap.
 |---|---|---|---|---|
 | A raw log, plain prompt | 7/9 | 78% | 2213/636 | **confirmed echo-faked output**; misread dropped stderr as `qualified` |
 | B annotated log, plain prompt | 7/9 | 78% | 2425/756 | annotation alone bought nothing, and produced a **false accusation** on an unwitnessable manual check |
-| **C annotated + trap-aware prompt** | **9/9** | **100%** | 4259/701 | shipped as `receipts.review` |
+| **C annotated + trap-aware prompt** | **9/9** | **100%** | 4259/701 | shipped as `custos_code.review` |
 | D C + deterministic veto | 9/9 | 100% | 4259/783 | no measurable gain here; kept as free insurance |
 
 **The finding.** The gain is the prompt naming *how agents fake evidence* — filtered output, echoed

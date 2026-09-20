@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from receipts.models import (
+from custos_code.models import (
     Claim,
     ClaimType,
     Coverage,
@@ -12,7 +12,7 @@ from receipts.models import (
     Verdict,
     VerdictRecord,
 )
-from receipts.report import MARKER, pr_comment
+from custos_code.report import MARKER, pr_comment
 
 TS = datetime(2025, 9, 19, 12, 0, tzinfo=UTC)
 

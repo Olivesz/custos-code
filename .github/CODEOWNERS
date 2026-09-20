@@ -3,22 +3,22 @@
 # a change in someone else's area, open a small PR against it and tag them.
 
 # Shared seams: change only via PR reviewed by both other people
-/src/receipts/models.py        @Olivesz @anushmainali @AnanyaGuntur8
+/src/custos_code/models.py        @Olivesz @anushmainali @AnanyaGuntur8
 /AGENTS.md                     @Olivesz @anushmainali @AnanyaGuntur8
 /docs/OPEN_QUESTIONS.md        @Olivesz @anushmainali @AnanyaGuntur8
 /docs/adr/                     @Olivesz @anushmainali @AnanyaGuntur8
 /pyproject.toml                @Olivesz @anushmainali @AnanyaGuntur8
 
 # Oliver: core engine, correction loop, CLI, design and pitch
-/src/receipts/ledger.py        @Olivesz
-/src/receipts/claims.py        @Olivesz
-/src/receipts/rules.py         @Olivesz
-/src/receipts/verdicts.py      @Olivesz
-/src/receipts/feedback.py      @Olivesz
-/src/receipts/judge.py         @Olivesz
-/src/receipts/cli.py           @Olivesz
-/src/receipts/report.py        @Olivesz
-/src/receipts/adapters/claude_code.py @Olivesz
+/src/custos_code/ledger.py        @Olivesz
+/src/custos_code/claims.py        @Olivesz
+/src/custos_code/rules.py         @Olivesz
+/src/custos_code/verdicts.py      @Olivesz
+/src/custos_code/feedback.py      @Olivesz
+/src/custos_code/judge.py         @Olivesz
+/src/custos_code/cli.py           @Olivesz
+/src/custos_code/report.py        @Olivesz
+/src/custos_code/adapters/claude_code.py @Olivesz
 /hooks/                        @Olivesz
 /docs/DESIGN.md                @Olivesz
 /docs/design-doc.html          @Olivesz
@@ -28,22 +28,22 @@
 /docs/prototype/               @Olivesz
 
 # Anush: parsers, integrity, re-run, bench, eval, cost
-/src/receipts/parsers.py       @anushmainali
-/src/receipts/rerun.py         @anushmainali
-/src/receipts/cost.py          @anushmainali
-/src/receipts/compress.py      @anushmainali
+/src/custos_code/parsers.py       @anushmainali
+/src/custos_code/rerun.py         @anushmainali
+/src/custos_code/cost.py          @anushmainali
+/src/custos_code/compress.py      @anushmainali
 /bench/                        @anushmainali
 /eval/                         @anushmainali
 
 # Ananya: infra, adapters, Action, evidence track
 /.github/workflows/            @AnanyaGuntur8
-/src/receipts/adapters/__init__.py @AnanyaGuntur8
-/src/receipts/adapters/codex.py    @AnanyaGuntur8
-/src/receipts/adapters/copilot.py  @AnanyaGuntur8
-/src/receipts/adapters/devin.py    @AnanyaGuntur8
-/src/receipts/adapters/machine.py  @AnanyaGuntur8
-/src/receipts/adapters/otel.py     @AnanyaGuntur8
-/src/receipts/adapters/state.py    @AnanyaGuntur8
+/src/custos_code/adapters/__init__.py @AnanyaGuntur8
+/src/custos_code/adapters/codex.py    @AnanyaGuntur8
+/src/custos_code/adapters/copilot.py  @AnanyaGuntur8
+/src/custos_code/adapters/devin.py    @AnanyaGuntur8
+/src/custos_code/adapters/machine.py  @AnanyaGuntur8
+/src/custos_code/adapters/otel.py     @AnanyaGuntur8
+/src/custos_code/adapters/state.py    @AnanyaGuntur8
 /docs/ADAPTERS.md              @AnanyaGuntur8
 /docs/DEVIN.md                 @AnanyaGuntur8
 /docs/EVIDENCE_PLAN.md         @AnanyaGuntur8

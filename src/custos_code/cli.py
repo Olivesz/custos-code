@@ -80,7 +80,7 @@ def check(
 
     if fmt == "terminal":
         console.print(
-            f"[bold]receipts[/] session {sess.id[:8]}… · {sess.n_events} events · {calls} tool calls · "
+            f"[bold]custos-code[/] session {sess.id[:8]}… · {sess.n_events} events · {calls} tool calls · "
             f"{flagged} flagged · chain {sess.ledger_root_hash[:8]}… · cwd {sess.cwd}"
         )
         if events:
@@ -159,7 +159,7 @@ def _hook_command(event: str) -> str:
     """An absolutely-resolved command line for one hook event.
 
     Claude Code runs hooks through a shell that does not inherit this process's PATH, so a bare
-    `receipts _hook stop` only works when receipts is installed globally. It is not when the repo
+    `custos-code _hook stop` only works when custos-code is installed globally. It is not when the repo
     is used from a checkout with a virtualenv -- the common case for this team, and the reason the
     hooks were silently not running on Oliver's laptop on 2026-09-19. Resolve now, at install time.
 
@@ -170,10 +170,10 @@ def _hook_command(event: str) -> str:
     import sys as _sys
 
     args = ["_hook", event]
-    script = _sh.which("receipts")
+    script = _sh.which("custos-code")
     if script:
         return shlex.join([script, *args])
-    return shlex.join([_sys.executable, "-c", "from receipts.cli import app; app()", *args])
+    return shlex.join([_sys.executable, "-c", "from custos_code.cli import app; app()", *args])
 
 
 def hooks_snippet() -> dict[str, object]:
@@ -210,6 +210,34 @@ def hooks_snippet() -> dict[str, object]:
     }
 
 
+def _is_installed_hook(hook: object) -> bool:
+    """Recognize our console and Python fallback hooks, including pre-rename installs."""
+    import shlex
+
+    if not isinstance(hook, dict) or hook.get("type") != "command":
+        return False
+    command = hook.get("command")
+    if not isinstance(command, str):
+        return False
+    try:
+        args = shlex.split(command)
+    except ValueError:
+        return False
+    if len(args) < 3:
+        return False
+    if pathlib.Path(args[0]).name in ("receipts", "custos-code"):
+        return args[1] == "_hook"
+    return (
+        len(args) >= 5
+        and args[1] == "-c"
+        and args[2] in (
+            "from receipts.cli import app; app()",
+            "from custos_code.cli import app; app()",
+        )
+        and args[3] == "_hook"
+    )
+
+
 @app.command()
 def watch(
     install: bool = typer.Option(
@@ -224,7 +252,7 @@ def watch(
     if not install:
         console.print(_json.dumps(hooks_snippet(), indent=2))
         console.print(
-            "[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `receipts watch --install`.[/]"
+            "[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `custos-code watch --install`.[/]"
         )
         return
     path = _os.path.expanduser("~/.claude/settings.json")
@@ -240,11 +268,19 @@ def watch(
     for ev, entries in snippet.items():
         existing = hooks.setdefault(ev, [])
         assert isinstance(existing, list)
-        # Idempotence: match on the two stable tokens, not the literal command line. The command is
-        # now an absolute path that varies per machine and per install layout, so the old
-        # `"receipts _hook" in ...` test silently stopped matching and stacked duplicate hooks.
-        if not any(("_hook" in (blob := _json.dumps(e)) and "receipts" in blob) for e in existing):
-            existing.extend(entries)
+        # Replace our old/current commands, including stale absolute paths. A group may also
+        # contain other tools' hooks; retain those and all of their matcher/metadata fields.
+        retained = []
+        for entry in existing:
+            if not isinstance(entry, dict) or not isinstance(entry.get("hooks"), list):
+                retained.append(entry)
+                continue
+            remaining = [h for h in entry["hooks"] if not _is_installed_hook(h)]
+            if len(remaining) == len(entry["hooks"]):
+                retained.append(entry)
+            elif remaining:
+                retained.append({**entry, "hooks": remaining})
+        hooks[ev] = [*retained, *entries]
     with open(path, "w", encoding="utf-8") as fh:
         _json.dump(data, fh, indent=2)
     console.print(f"installed into {path} (backup at {path}.bak)")
@@ -341,12 +377,12 @@ def record(
         if install:
             rc = _os.path.expanduser(rc_files[shell])
             existing = open(rc, encoding="utf-8").read() if _os.path.exists(rc) else ""
-            if "receipts recorder (class M) wrapper" not in existing:
+            if "custos-code recorder (class M) wrapper" not in existing:
                 with open(rc, "a", encoding="utf-8") as fh:
                     fh.write(
-                        "\n# >>> receipts recorder (class M) wrapper >>>\n"
+                        "\n# >>> custos-code recorder (class M) wrapper >>>\n"
                         f"{path_line}"
-                        "# <<< receipts recorder (class M) wrapper <<<\n"
+                        "# <<< custos-code recorder (class M) wrapper <<<\n"
                     )
                 console.print(
                     f"[dim]PATH updated in {rc} -- takes effect in new shells launched from an "
@@ -366,13 +402,13 @@ def record(
     if not install:
         print(snippet)
         console.print(
-            f"[dim]Append to your rc file, or run `receipts record --shell {shell} --install`. "
+            f"[dim]Append to your rc file, or run `custos-code record --shell {shell} --install`. "
             f"Log: {machine.default_log()}[/]"
         )
         return
     rc = _os.path.expanduser(rc_files[shell])
     if _os.path.exists(rc):
-        if "receipts recorder" in open(rc, encoding="utf-8").read():
+        if "custos-code recorder" in open(rc, encoding="utf-8").read():
             console.print(f"already installed in {rc}")
             return
         _shutil.copy(rc, rc + ".bak")
@@ -407,7 +443,7 @@ def cost(
     compress: bool = typer.Option(
         False, "--compress",
         help="Measure a real bear-2 pass on the judge window and report projected savings "
-             "(ladder/judge-all only; needs [compress].enabled and RECEIPTS_TTC_API_KEY).",
+             "(ladder/judge-all only; needs [compress].enabled and CUSTOS_CODE_TTC_API_KEY).",
     ),
     json_out: bool = typer.Option(False, "--json", help="Print JSON instead of a table."),
 ) -> None:
@@ -433,7 +469,7 @@ def cost(
 
     backend = judge_mod.make_backend()
     if backend is None and path != "ladder":
-        console.print(f"[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic); "
+        console.print(f"[yellow]no judge backend: set OPENAI_API_KEY (or CUSTOS_CODE_JUDGE_BACKEND=anthropic); "
                        f"falling back to the rules ladder instead of --path {path}[/]")
         path = "ladder"
 
@@ -463,7 +499,7 @@ def cost(
         else:
             compressor = compress_mod.make_compressor()
             if compressor is None:
-                console.print("[yellow]compressor off: set [compress].enabled and RECEIPTS_TTC_API_KEY[/]")
+                console.print("[yellow]compressor off: set [compress].enabled and CUSTOS_CODE_TTC_API_KEY[/]")
             else:
                 # ladder: only the residue that actually reached the judge, same as eval/cost_report.py's
                 # arm_ladder_compressed; judge-all: the whole ledger, matching what judge-all actually sent.
@@ -492,7 +528,9 @@ def demo(
     Everything on screen is produced live from the fixture's own tool log. Nothing is pre-rendered,
     and the fixture is in the repo so anyone can read what the agent actually did.
     """
+    import contextlib as _contextlib
     import json as _json
+    from importlib import resources as _resources
 
     from . import feedback as feedback_mod
 
@@ -505,14 +543,19 @@ def demo(
     name = picks.get(scenario)
     if name is None:
         raise typer.BadParameter(f"scenario must be one of {', '.join(picks)}")
-    fixture = (
+    packaged = _resources.files("custos_code.demo_fixtures").joinpath(f"{name}.jsonl")
+    repo_fixture = (
         pathlib.Path(__file__).resolve().parents[2] / "eval" / "arms" / "fixtures" / f"{name}.jsonl"
     )
-    if not fixture.exists():
-        console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
-        raise typer.Exit(code=2)
-
-    sess, ledger, report = claude_code.parse(str(fixture))
+    if packaged.is_file():
+        with _resources.as_file(packaged) as fixture:
+            sess, ledger, report = claude_code.parse(str(fixture))
+    else:
+        if not repo_fixture.exists():
+            console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
+            raise typer.Exit(code=2)
+        with _contextlib.nullcontext(repo_fixture) as fixture:
+            sess, ledger, report = claude_code.parse(str(fixture))
     task = next((e.output for e in ledger if e.kind == EventKind.USER), "")
 
     console.rule("[bold]1. what the developer asked for")
@@ -539,7 +582,7 @@ def demo(
         tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
     else:
         console.print("\n[yellow]no model backend — running the deterministic rules instead.[/]")
-        console.print("[dim]  set OPENAI_API_KEY, or put it in ~/.receipts/env, for the full review.[/]")
+        console.print("[dim]  set OPENAI_API_KEY, or put it in ~/.custos-code/env, for the full review.[/]")
         dclaims = claims_mod.extract(report or "", sess.id)
         drecs = verdicts_mod.run(dclaims, ledger, sess.cwd, None)
         tail = "rules only · 0 tokens"
@@ -620,7 +663,7 @@ def scan(
 
     backend = judge_mod.make_backend()
     if backend is None:
-        console.print("[yellow]scan needs a model backend: set OPENAI_API_KEY or ~/.receipts/env[/]")
+        console.print("[yellow]scan needs a model backend: set OPENAI_API_KEY or ~/.custos-code/env[/]")
         raise typer.Exit(code=2)
 
     paths = find_sessions()

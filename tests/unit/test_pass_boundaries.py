@@ -12,8 +12,8 @@ real non-stationarity risk in the auto-mode design (docs/SCOPE.md §2), so it ge
 """
 from __future__ import annotations
 
-from receipts.models import EventFlags, EventKind, LedgerEvent
-from receipts.review import SYSTEM, annotate
+from custos_code.models import EventFlags, EventKind, LedgerEvent
+from custos_code.review import SYSTEM, annotate
 
 BOUNDARY = "everything below is NEW"
 

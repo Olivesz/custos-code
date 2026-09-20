@@ -15,8 +15,8 @@ import subprocess
 
 import pytest
 
-from receipts.models import Claim, ClaimType, Verdict, VerdictRecord
-from receipts.verdicts import RERUN_BUDGET_PER_SESSION, rerun_key, should_rerun
+from custos_code.models import Claim, ClaimType, Verdict, VerdictRecord
+from custos_code.verdicts import RERUN_BUDGET_PER_SESSION, rerun_key, should_rerun
 
 
 def _claim(t: ClaimType = ClaimType.RUN_TESTS, cid: str = "c1") -> Claim:
@@ -117,7 +117,7 @@ def test_the_budget_stops_a_spin(repo: pathlib.Path) -> None:
 def test_the_gate_launches_nothing_by_itself(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """It is a predicate. If deciding could execute, a bug in the decision would be a bug that
     runs commands."""
-    import receipts.rerun as rerun_mod
+    import custos_code.rerun as rerun_mod
 
     def boom(*a: object, **k: object) -> object:
         raise AssertionError("the gate executed something while deciding")

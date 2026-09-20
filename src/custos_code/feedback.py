@@ -72,7 +72,7 @@ def nudge(claim: Claim, rec: VerdictRecord, ledger: list[LedgerEvent]) -> str | 
 
 def build_block_reason(pairs: list[tuple[Claim, VerdictRecord]], ledger: list[LedgerEvent], pass_no: int, max_passes: int) -> str:
     """The text the Stop hook returns as the blocking reason. External evidence framing, one nudge per claim."""
-    lines = [f"receipts · auto mode · pass {pass_no} of {max_passes} · {len(pairs)} claim(s) need work. "
+    lines = [f"custos-code · auto mode · pass {pass_no} of {max_passes} · {len(pairs)} claim(s) need work. "
              "These are checks against the harness log, not opinions. A mark clears only when new tool calls bear on the claim; rewording does not clear it."]
     for i, (c, r) in enumerate(pairs, 1):
         n = nudge(c, r, ledger)

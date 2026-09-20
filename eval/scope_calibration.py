@@ -54,10 +54,10 @@ from arms.evaluate import wilson  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.table import Table  # noqa: E402
 
-from receipts import scope  # noqa: E402
-from receipts.adapters import claude_code  # noqa: E402
-from receipts.models import EventKind, LedgerEvent  # noqa: E402
-from receipts.rules import RepoState  # noqa: E402
+from custos_code import scope  # noqa: E402
+from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.models import EventKind, LedgerEvent  # noqa: E402
+from custos_code.rules import RepoState  # noqa: E402
 
 console = Console()
 

@@ -19,8 +19,8 @@ RUN uv sync --locked --all-extras --no-editable
 COPY bench/README.md bench/README.md
 COPY bench/scenarios/ bench/scenarios/
 
-RUN useradd --create-home --uid 10001 receipts \
-    && mkdir /workspace && chown receipts:receipts /workspace
-USER receipts
+RUN useradd --create-home --uid 10001 --user-group custos \
+    && mkdir /workspace && chown custos:custos /workspace
+USER custos
 WORKDIR /workspace
-CMD ["receipts", "--help"]
+CMD ["custos-code", "--help"]

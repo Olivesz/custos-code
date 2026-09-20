@@ -5,7 +5,7 @@ returning the session, the chained events, and the final report text if present.
 Adapters must set flags.truncated / flags.piped / flags.sidechain honestly; downstream tiers rely on them.
 Golden tests live in tests/golden/<adapter>/ : real input in, expected JSONL out.
 
-`detect` picks the adapter from the file itself so `receipts check <path>` needs no --agent flag.
+`detect` picks the adapter from the file itself so `custos-code check <path>` needs no --agent flag.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ def _line_source(rec: dict[str, object]) -> Source | None:
         return "claude_code"
     if str(rec.get("type")) in _CODEX_TYPES:
         return "codex"
-    if rec.get("recorder") == "receipts-machine":
+    if rec.get("recorder") in machine.RECORDER_NAMES:
         return "machine"
     if "traceId" in rec and "spanId" in rec:
         return "otel"

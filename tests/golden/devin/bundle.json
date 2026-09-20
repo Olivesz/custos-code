@@ -4,7 +4,7 @@
     "status_enum": "finished",
     "created_at": "2025-09-19T09:00:00+00:00",
     "snapshot_id": "snapshot-7",
-    "playbook_id": "playbook-receipts",
+    "playbook_id": "playbook-custos-code",
     "model": "devin-2",
     "structured_output": {
       "summary": "Added the retry wrapper and ran the unit suite.",

@@ -81,7 +81,7 @@ def redact(value: str | dict[str, object]) -> str | dict[str, object]:
 
 
 class LedgerStore:
-    """SQLite per session at ~/.receipts/sessions/<id>.sqlite. NEEDS-DECISION(anush): DuckDB for cross-session."""
+    """SQLite per session at ~/.custos-code/sessions/<id>.sqlite. NEEDS-DECISION(anush): DuckDB for cross-session."""
 
     def __init__(self, path: str) -> None:
         self.path = path

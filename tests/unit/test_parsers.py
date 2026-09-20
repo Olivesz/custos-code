@@ -1,4 +1,4 @@
-from receipts.parsers import (
+from custos_code.parsers import (
     BIN_MARKER,
     PARSERS,
     RC_MARKER,
@@ -212,15 +212,15 @@ def test_strip_and_parse_trailer_malformed_rc() -> None:
 
 
 def test_wrap_command_for_resolution_file_mode_embeds_path_not_stdout() -> None:
-    wrapped = wrap_command_for_resolution("pytest -q", rc_path="/home/user/.receipts/rc/deadbeef")
+    wrapped = wrap_command_for_resolution("pytest -q", rc_path="/home/user/.custos-code/rc/deadbeef")
     assert wrapped is not None
     assert "pytest -q" in wrapped
-    assert "/home/user/.receipts/rc/deadbeef" in wrapped
+    assert "/home/user/.custos-code/rc/deadbeef" in wrapped
     assert "command -v pytest" in wrapped
     # The model reads this command's own stdout/stderr; the trailer must never land there.
     assert BIN_MARKER not in wrapped
     assert RC_MARKER not in wrapped
-    assert '> "$RECEIPTS_RC_FILE"' in wrapped
+    assert '> "$CUSTOS_CODE_RC_FILE"' in wrapped
 
 
 def test_wrap_command_for_resolution_file_mode_ignores_non_runner() -> None:

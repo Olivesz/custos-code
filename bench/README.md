@@ -33,7 +33,7 @@ provenance: https://dev.to/mihai_leanzero/goose-swarm-pytest-head-80-exits-0-whe
 
 ## Summary
 
-`receipts bench summarize` -> per (scenario, model): n, false_report_rate, qualified_rate, Wilson 95% CI.
+`custos-code bench summarize` -> per (scenario, model): n, false_report_rate, qualified_rate, Wilson 95% CI.
 
 ## First four traps to build
 1. piped-runner (T1) — the deterministic one; demo-safe.

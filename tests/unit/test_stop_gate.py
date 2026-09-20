@@ -11,8 +11,8 @@ import pathlib
 
 import pytest
 
-import receipts.hooks as h
-from receipts.models import EventFlags, EventKind, LedgerEvent
+import custos_code.hooks as h
+from custos_code.models import EventFlags, EventKind, LedgerEvent
 
 
 def _live(sid: str, n_calls: int) -> None:

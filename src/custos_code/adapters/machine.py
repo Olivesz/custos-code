@@ -2,11 +2,11 @@
 
 The floor of the coverage argument: with no hooks and no session file, a shell trap still knows
 every command, its exit status, its cwd and its pid chain, and `git reflog` still knows every ref
-move. `install_snippet` emits the bash/zsh lines `receipts record` writes into the user's rc file;
+move. `install_snippet` emits the bash/zsh lines `custos-code record` writes into the user's rc file;
 this module parses what they log.
 
-Wire format, one JSON object per line in ~/.receipts/machine/<host>-<date>.jsonl:
-  {"recorder":"receipts-machine","v":1,"event":"start|end|fs|git","ts":<epoch float>,
+Wire format, one JSON object per line in ~/.custos-code/machine/<host>-<date>.jsonl:
+  {"recorder":"custos-code-machine","v":1,"event":"start|end|fs|git","ts":<epoch float>,
    "cmd":"pytest -q","cwd":"/abs","tty":"/dev/ttys004","pid":123,"ppid":99,"ppid_chain":["bash","codex"],
    "exit":0,"dur_ms":2250,"out":"<optional captured output>",
    "path":"src/a.py","op":"modified",              # event=fs
@@ -35,52 +35,54 @@ from ..ledger import MAX_OUTPUT_BYTES, chain, redact
 from ..models import EventFlags, EventKind, LedgerEvent, Session
 from ..parsers import is_piped
 
-LOG_DIR = os.path.expanduser("~/.receipts/machine")
+LOG_DIR = os.path.expanduser("~/.custos-code/machine")
 WIRE_VERSION = 1
+# The product rename did not change the wire schema. Keep historical logs readable.
+RECORDER_NAMES = ("custos-code-machine", "receipts-machine")
 
-BASH_SNIPPET = r"""# >>> receipts recorder (class M) >>>
-__receipts_log() { printf '%s\n' "$1" >> "$RECEIPTS_MACHINE_LOG"; }
-__receipts_preexec() {
+BASH_SNIPPET = r"""# >>> custos-code recorder (class M) >>>
+__custos_code_log() { printf '%s\n' "$1" >> "$CUSTOS_CODE_MACHINE_LOG"; }
+__custos_code_preexec() {
   [ -n "$COMP_LINE" ] && return
   [ "$BASH_COMMAND" = "$PROMPT_COMMAND" ] && return
-  __RECEIPTS_CMD="$BASH_COMMAND"; __RECEIPTS_T0=$(date +%s.%N)
-  __receipts_log "$(RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID RECEIPTS_TTY="$RECEIPTS_TTY" receipts _record-line)"
+  __CUSTOS_CODE_CMD="$BASH_COMMAND"; __CUSTOS_CODE_T0=$(date +%s.%N)
+  __custos_code_log "$(CUSTOS_CODE_EVENT=start CUSTOS_CODE_CMD="$__CUSTOS_CODE_CMD" CUSTOS_CODE_PID=$$ CUSTOS_CODE_PPID=$PPID CUSTOS_CODE_TTY="$CUSTOS_CODE_TTY" custos-code _record-line)"
 }
-__receipts_precmd() {
+__custos_code_precmd() {
   local rc=$?
-  [ -z "$__RECEIPTS_CMD" ] && return
-  __receipts_log "$(RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$rc RECEIPTS_T0="$__RECEIPTS_T0" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID RECEIPTS_TTY="$RECEIPTS_TTY" receipts _record-line)"
-  __RECEIPTS_CMD=
+  [ -z "$__CUSTOS_CODE_CMD" ] && return
+  __custos_code_log "$(CUSTOS_CODE_EVENT=end CUSTOS_CODE_CMD="$__CUSTOS_CODE_CMD" CUSTOS_CODE_RC=$rc CUSTOS_CODE_T0="$__CUSTOS_CODE_T0" CUSTOS_CODE_PID=$$ CUSTOS_CODE_PPID=$PPID CUSTOS_CODE_TTY="$CUSTOS_CODE_TTY" custos-code _record-line)"
+  __CUSTOS_CODE_CMD=
 }
-export RECEIPTS_TTY="${RECEIPTS_TTY:-$(tty 2>/dev/null || echo)}"
-export RECEIPTS_MACHINE_LOG="${RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}"
-mkdir -p "$(dirname "$RECEIPTS_MACHINE_LOG")"
-trap '__receipts_preexec' DEBUG
-PROMPT_COMMAND="__receipts_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
-# <<< receipts recorder (class M) <<<
+export CUSTOS_CODE_TTY="${CUSTOS_CODE_TTY:-$(tty 2>/dev/null || echo)}"
+export CUSTOS_CODE_MACHINE_LOG="${CUSTOS_CODE_MACHINE_LOG:-$HOME/.custos-code/machine/$(hostname -s)-$(date +%F).jsonl}"
+mkdir -p "$(dirname "$CUSTOS_CODE_MACHINE_LOG")"
+trap '__custos_code_preexec' DEBUG
+PROMPT_COMMAND="__custos_code_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+# <<< custos-code recorder (class M) <<<
 """
 
-ZSH_SNIPPET = r"""# >>> receipts recorder (class M) >>>
-export RECEIPTS_TTY="${RECEIPTS_TTY:-$(tty 2>/dev/null || echo)}"
-export RECEIPTS_MACHINE_LOG="${RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}"
-mkdir -p "${RECEIPTS_MACHINE_LOG:h}"
-__receipts_preexec() {
-  __RECEIPTS_CMD=$1; __RECEIPTS_T0=$EPOCHREALTIME
-  RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
-    RECEIPTS_TTY="$RECEIPTS_TTY" receipts _record-line >> "$RECEIPTS_MACHINE_LOG"
+ZSH_SNIPPET = r"""# >>> custos-code recorder (class M) >>>
+export CUSTOS_CODE_TTY="${CUSTOS_CODE_TTY:-$(tty 2>/dev/null || echo)}"
+export CUSTOS_CODE_MACHINE_LOG="${CUSTOS_CODE_MACHINE_LOG:-$HOME/.custos-code/machine/$(hostname -s)-$(date +%F).jsonl}"
+mkdir -p "${CUSTOS_CODE_MACHINE_LOG:h}"
+__custos_code_preexec() {
+  __CUSTOS_CODE_CMD=$1; __CUSTOS_CODE_T0=$EPOCHREALTIME
+  CUSTOS_CODE_EVENT=start CUSTOS_CODE_CMD="$__CUSTOS_CODE_CMD" CUSTOS_CODE_PID=$$ CUSTOS_CODE_PPID=$PPID \
+    CUSTOS_CODE_TTY="$CUSTOS_CODE_TTY" custos-code _record-line >> "$CUSTOS_CODE_MACHINE_LOG"
 }
-__receipts_precmd() {
+__custos_code_precmd() {
   local rc=$?
-  [[ -z $__RECEIPTS_CMD ]] && return
-  RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$rc RECEIPTS_T0="$__RECEIPTS_T0" \
-    RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID RECEIPTS_TTY="$RECEIPTS_TTY" \
-    receipts _record-line >> "$RECEIPTS_MACHINE_LOG"
-  __RECEIPTS_CMD=
+  [[ -z $__CUSTOS_CODE_CMD ]] && return
+  CUSTOS_CODE_EVENT=end CUSTOS_CODE_CMD="$__CUSTOS_CODE_CMD" CUSTOS_CODE_RC=$rc CUSTOS_CODE_T0="$__CUSTOS_CODE_T0" \
+    CUSTOS_CODE_PID=$$ CUSTOS_CODE_PPID=$PPID CUSTOS_CODE_TTY="$CUSTOS_CODE_TTY" \
+    custos-code _record-line >> "$CUSTOS_CODE_MACHINE_LOG"
+  __CUSTOS_CODE_CMD=
 }
 autoload -Uz add-zsh-hook
-add-zsh-hook preexec __receipts_preexec
-add-zsh-hook precmd __receipts_precmd
-# <<< receipts recorder (class M) <<<
+add-zsh-hook preexec __custos_code_preexec
+add-zsh-hook precmd __custos_code_precmd
+# <<< custos-code recorder (class M) <<<
 """
 
 
@@ -104,7 +106,7 @@ def install_snippet(shell: str) -> str:
 #
 # `{real}` is resolved once, at install time, to an absolute path outside the wrapper's own
 # directory (the same "bake in the real path instead of re-resolving through PATH" idiom already
-# used by `hooks._run.sh`'s `receipts_cmd` and `rerun._worker_argv`) -- re-resolving "bash" via
+# used by `hooks._run.sh`'s `custos_code_cmd` and `rerun._worker_argv`) -- re-resolving "bash" via
 # PATH inside the wrapper would just find itself again if its own directory is still first.
 #
 # The shebang is `#!/bin/bash`, not `#!/usr/bin/env bash`: `env` re-resolves `bash` through PATH,
@@ -116,50 +118,50 @@ def install_snippet(shell: str) -> str:
 # absolute path in this file that is not `which`-resolved -- `/bin/bash` is as close to universal
 # as a hardcoded path gets on the platforms this targets.
 #
-# The two `receipts _record-line` calls redirect stderr to /dev/null *before* redirecting stdout
+# The two `custos-code _record-line` calls redirect stderr to /dev/null *before* redirecting stdout
 # to the log (`2>/dev/null >> "$LOG"`, not `>> "$LOG" 2>/dev/null`): bash sets up redirections in
 # order, so if the log's directory does not exist, the `>>` open failure is itself an error, and
 # whichever fd swap happened first decides where that error goes. With `2>/dev/null` first, it's
 # already gone before the failing `>>` has anywhere else to send it. The same reasoning is why
 # `mkdir -p` gets its own `2>/dev/null`: with no redirect at all, a permission-denied `mkdir` would
 # print straight to the wrapped command's own stderr -- exactly the failure mode `3433813` fixed
-# elsewhere (receipts' own instrumentation manufacturing the evidence a rule then judges).
+# elsewhere (custos-code' own instrumentation manufacturing the evidence a rule then judges).
 #
-# `RECEIPTS_MACHINE_LOG` is assigned, not exported: exporting it would hand every child process
+# `CUSTOS_CODE_MACHINE_LOG` is assigned, not exported: exporting it would hand every child process
 # (including `$REAL "$@"` and everything it spawns) the ledger's own path, letting an agent that
 # only needed to run a command also overwrite or forge rows in the log describing it. Making that
 # safe against a *deliberately* adversarial agent needs harness signatures and per-row provenance
 # marking -- real design work, tracked separately -- so this only closes the accidental case for
 # now: nothing downstream of the wrapper can find the path by looking at its own environment.
 WRAPPER_TEMPLATE = r"""#!/bin/bash
-# >>> receipts recorder (class M), PATH-first wrapper >>>
-# Installed by `receipts record --wrapper`; intercepts a PATH lookup for {name} that an
+# >>> custos-code recorder (class M), PATH-first wrapper >>>
+# Installed by `custos-code record --wrapper`; intercepts a PATH lookup for {name} that an
 # agent-spawned, non-interactive shell (`{name} -c "cmd"`) would otherwise resolve straight to the
 # real interpreter, invisibly to install_snippet's rc-file hooks. Logs start/end the same way the
-# interactive snippets do (`receipts _record-line`, same wire format), then runs the real {name}
+# interactive snippets do (`custos-code _record-line`, same wire format), then runs the real {name}
 # and exits with its exact status. Never captures stdout/stderr: those pass straight through.
 REAL={real}
 case "$1" in
-  -*c*) if [ "$#" -ge 2 ]; then __RECEIPTS_CMD="$2"; else __RECEIPTS_CMD="$*"; fi ;;
+  -*c*) if [ "$#" -ge 2 ]; then __CUSTOS_CODE_CMD="$2"; else __CUSTOS_CODE_CMD="$*"; fi ;;
   # a login/command flag bundle (-c, -lc, -ic, ...) carries the command as $2; anything else
   # (including a script on stdin, which has no argv command at all) falls back to argv itself.
-  *) __RECEIPTS_CMD="$*" ;;
+  *) __CUSTOS_CODE_CMD="$*" ;;
 esac
-RECEIPTS_MACHINE_LOG="${{RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}}"
-mkdir -p "$(dirname "$RECEIPTS_MACHINE_LOG")" 2>/dev/null || true
+CUSTOS_CODE_MACHINE_LOG="${{CUSTOS_CODE_MACHINE_LOG:-$HOME/.custos-code/machine/$(hostname -s)-$(date +%F).jsonl}}"
+mkdir -p "$(dirname "$CUSTOS_CODE_MACHINE_LOG")" 2>/dev/null || true
 __T0=$(date +%s.%N)
-RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
-  receipts _record-line 2>/dev/null >> "$RECEIPTS_MACHINE_LOG" || true
+CUSTOS_CODE_EVENT=start CUSTOS_CODE_CMD="$__CUSTOS_CODE_CMD" CUSTOS_CODE_PID=$$ CUSTOS_CODE_PPID=$PPID \
+  custos-code _record-line 2>/dev/null >> "$CUSTOS_CODE_MACHINE_LOG" || true
 "$REAL" "$@"
 __RC=$?
-RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$__RC RECEIPTS_T0="$__T0" \
-  RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
-  receipts _record-line 2>/dev/null >> "$RECEIPTS_MACHINE_LOG" || true
+CUSTOS_CODE_EVENT=end CUSTOS_CODE_CMD="$__CUSTOS_CODE_CMD" CUSTOS_CODE_RC=$__RC CUSTOS_CODE_T0="$__T0" \
+  CUSTOS_CODE_PID=$$ CUSTOS_CODE_PPID=$PPID \
+  custos-code _record-line 2>/dev/null >> "$CUSTOS_CODE_MACHINE_LOG" || true
 exit $__RC
-# <<< receipts recorder (class M) <<<
+# <<< custos-code recorder (class M) <<<
 """
 
-WRAPPER_DIR = os.path.expanduser("~/.receipts/bin")
+WRAPPER_DIR = os.path.expanduser("~/.custos-code/bin")
 
 
 def wrapper_script(name: str, real_path: str) -> str:
@@ -170,7 +172,7 @@ def wrapper_script(name: str, real_path: str) -> str:
 
 
 def install_wrapper(bin_dir: str | None = None, which: Any = None) -> dict[str, str]:
-    """Write `bash`/`sh` wrapper scripts into `bin_dir` (default `~/.receipts/bin`), executable,
+    """Write `bash`/`sh` wrapper scripts into `bin_dir` (default `~/.custos-code/bin`), executable,
     each baked with the real interpreter's current, already-resolved absolute path. Returns
     {name: written_path}; raises FileNotFoundError naming whichever of bash/sh isn't on PATH at
     all, since a wrapper with nothing real to call through to would only break the shell.
@@ -206,28 +208,28 @@ def default_log(now: datetime | None = None) -> str:
 
 
 def record_line(env: dict[str, str] | None = None) -> str:
-    """Build one wire line from the recorder's environment. Called by `receipts _record-line`."""
+    """Build one wire line from the recorder's environment. Called by `custos-code _record-line`."""
     e = dict(os.environ if env is None else env)
-    event = e.get("RECEIPTS_EVENT", "end")
-    now = float(e.get("RECEIPTS_TS") or datetime.now(tz=UTC).timestamp())
+    event = e.get("CUSTOS_CODE_EVENT", "end")
+    now = float(e.get("CUSTOS_CODE_TS") or datetime.now(tz=UTC).timestamp())
     # the snippets pass the shell's own pid; without them, this process's parent *is* that shell
-    pid = _pid(e.get("RECEIPTS_PID", "")) or os.getppid()
+    pid = _pid(e.get("CUSTOS_CODE_PID", "")) or os.getppid()
     line: dict[str, Any] = {
-        "recorder": "receipts-machine",
+        "recorder": "custos-code-machine",
         "v": WIRE_VERSION,
         "event": event,
         "ts": now,
-        "cmd": e.get("RECEIPTS_CMD", ""),
+        "cmd": e.get("CUSTOS_CODE_CMD", ""),
         "cwd": e.get("PWD", ""),
-        "tty": e.get("RECEIPTS_TTY", ""),
+        "tty": e.get("CUSTOS_CODE_TTY", ""),
         "pid": pid,
-        "ppid": _pid(e.get("RECEIPTS_PPID", "")),
+        "ppid": _pid(e.get("CUSTOS_CODE_PPID", "")),
     }
     if event == "end":
-        rc = e.get("RECEIPTS_RC", "")
+        rc = e.get("CUSTOS_CODE_RC", "")
         line["exit"] = int(rc) if rc.lstrip("-").isdigit() else None
         try:
-            line["dur_ms"] = int((now - float(e["RECEIPTS_T0"])) * 1000)
+            line["dur_ms"] = int((now - float(e["CUSTOS_CODE_T0"])) * 1000)
         except (KeyError, ValueError):
             line["dur_ms"] = None
     return json.dumps(redact(line), sort_keys=True)
@@ -264,7 +266,7 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if not isinstance(rec, dict) or rec.get("recorder") != "receipts-machine":
+            if not isinstance(rec, dict) or rec.get("recorder") not in RECORDER_NAMES:
                 continue
             ts = datetime.fromtimestamp(float(rec.get("ts") or 0), tz=UTC)
             started = started or ts

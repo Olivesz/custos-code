@@ -1,5 +1,5 @@
 # Normalises the GitHub REST shapes into the class-R bundle the Devin/Copilot adapters read
-# (see src/receipts/adapters/state.py). Used by .github/workflows/receipt.yml when the PR carries
+# (see src/custos_code/adapters/state.py). Used by .github/workflows/receipt.yml when the PR carries
 # no session log; tested in tests/unit/test_pr_bundle_jq.py so the Action's one piece of logic is
 # not first exercised in production.
 #

@@ -150,7 +150,7 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
 
 
 def find_last_session(sessions_dir: str | None = None) -> str:
-    root = sessions_dir or os.path.expanduser("~/.receipts/copilot")
+    root = sessions_dir or os.path.expanduser("~/.custos-code/copilot")
     bundles = [os.path.join(root, f) for f in os.listdir(root)] if os.path.isdir(root) else []
     files = [p for p in bundles if p.endswith(".json") and os.path.isfile(p)]
     if not files:
