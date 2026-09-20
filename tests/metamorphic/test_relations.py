@@ -7,10 +7,19 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
-from receipts.models import Claim, ClaimType, EventFlags, EventKind, LedgerEvent, Verdict
+from receipts.models import (
+    Claim,
+    ClaimType,
+    EventFlags,
+    EventKind,
+    LedgerEvent,
+    Verdict,
+    VerdictRecord,
+)
 from receipts.verdicts import run
 
 TS = datetime(2026, 9, 19)
@@ -130,3 +139,64 @@ def test_mr9_an_accusation_requires_a_resolvable_path() -> None:
     claim = Claim(id="c1", session_id="s", text="created accomplishments.json",
                   type=ClaimType.CREATE, objects=["accomplishments.json"])
     assert _verdict(claim, []) != Verdict.CONTRADICTED
+
+
+# --- liveness relations added for docs/GAPS.md G2: a do-nothing "always unwitnessed" checker
+# fails every one of these, because each asserts a *specific* non-unwitnessed verdict for a
+# seed where the evidence is unambiguous. Added after eval/mutation/run.py found each one's
+# matching mutant surviving the suite (i.e. a real hole: the mutant introduced the exact wrong
+# behavior described and nothing here noticed).
+
+
+def test_mr10_a_bare_filename_stays_unwitnessed_even_with_a_real_missing_file(tmp_path: Path) -> None:
+    """Kills 'the accusable() guard is disabled' and 'a bare filename becomes accusable':
+    with either mutation, this bare name would wrongly become an accusation."""
+    claim = Claim(id="c1", session_id="s", text="created config.json",
+                  type=ClaimType.CREATE, objects=["config.json"])
+    rec = run([claim], [], str(tmp_path))[0]
+    assert rec.verdict != Verdict.CONTRADICTED
+
+
+def test_mr11_a_resolvable_missing_path_is_contradicted(tmp_path: Path) -> None:
+    """The liveness half of MR10: a directory-qualified path that genuinely does not exist under
+    a real repo root is unambiguous absence, and must produce CONTRADICTED specifically -- not
+    merely 'not confirmed'. A do-nothing checker (always unwitnessed) fails this."""
+    claim = Claim(id="c1", session_id="s", text="created src/module.py",
+                  type=ClaimType.CREATE, objects=["src/module.py"])
+    rec = run([claim], [], str(tmp_path))[0]
+    assert rec.verdict == Verdict.CONTRADICTED
+
+
+def test_mr12_an_interrupted_run_is_contradicted_not_merely_unconfirmed() -> None:
+    """Kills 'an interrupted run is not contradicted'. A do-nothing checker fails this too."""
+    claim, ledger = _seed()
+    ledger[2].flags = EventFlags(interrupted=True)
+    assert _verdict(claim, ledger) == Verdict.CONTRADICTED
+
+
+def test_mr13_a_failing_exit_code_with_unparseable_output_is_contradicted() -> None:
+    """Kills 'a non-zero exit code is ignored'. Output that no runner parser recognises and that
+    contains no obvious failure text still must not let a non-zero exit code pass as success."""
+    claim = Claim(id="c1", session_id="s", text="lint is clean", type=ClaimType.BUILD, objects=[])
+    ledger = [
+        LedgerEvent(seq=0, ts=TS, session_id="s", kind=EventKind.CALL, tool="Bash", input={"command": "mypy ."}),
+        LedgerEvent(seq=1, ts=TS, session_id="s", kind=EventKind.RESULT, tool="Bash",
+                    exit_code=2, output="something odd happened"),
+    ]
+    assert _verdict(claim, ledger) == Verdict.CONTRADICTED
+
+
+def test_mr14_the_judge_may_only_upgrade_unwitnessed_to_confirmed() -> None:
+    """Kills 'the judge may overturn a deterministic verdict'. A claim with no matching rule at
+    all escalates to the judge (tier 4, unwitnessed); a judge that tries to hand back anything
+    other than CONFIRMED must not move the settled verdict off UNWITNESSED."""
+
+    class _StubBackend:
+        def judge(self, claims: list[Claim], window: list[LedgerEvent]) -> list[VerdictRecord]:
+            return [VerdictRecord(claim_id=c.id, verdict=Verdict.QUALIFIED, tier=4, method="judge",
+                                  confidence=0.5, evidence=[], rationale="a judge should not be able to do this")
+                    for c in claims]
+
+    claim = Claim(id="c1", session_id="s", text="deployed to production", type=ClaimType.OTHER, objects=[])
+    rec = run([claim], [], None, _StubBackend())[0]
+    assert rec.verdict == Verdict.UNWITNESSED

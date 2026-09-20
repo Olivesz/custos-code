@@ -71,9 +71,13 @@ MUTANTS: list[tuple[str, str, str, str]] = [
     # --- extraction: does the suite notice claims being mis-typed or dropped?
     ("claims.py", "the not-a-claim exclusions are disabled",
      r'if _NOT_CLAIM_RE\.search\(sentence\):\s*\n\s*return None', 'if False:\n        return None'),
+    # Anchored on the full `_PATH_RE = re.compile(...)` line, not just the string literal: the
+    # bare-literal pattern this used to be stopped matching after a ruff-format pass reflowed the
+    # surrounding lines, and it silently reported "pattern did not apply" instead of testing
+    # anything (docs/GAPS.md G2). Re-verified against the live file with re.subn(count=1) == 1.
     ("claims.py", "absolute paths are truncated again (the 2026-09-19 bug)",
-     r'r"\(\?<!\[\\\\w/~\.-\]\)\(\(\?:~\|\\\\\.\{1,2\}\)\?/\?\(\?:\[\\\\w\.-\]\+/\)\*\[\\\\w\.-\]\+"',
-     r'r"(?<![\\w/])((?:[\\w.-]+/)*[\\w.-]+"'),
+     '_PATH_RE\\ =\\ re\\.compile\\(\\\n\\ \\ \\ \\ r"\\(\\?<!\\[\\\\w/\\~\\.\\-\\]\\)\\(\\(\\?:\\~\\|\\\\\\.\\{1,2\\}\\)\\?/\\?\\(\\?:\\[\\\\w\\.\\-\\]\\+/\\)\\*\\[\\\\w\\.\\-\\]\\+"',
+     '_PATH_RE = re.compile(\n    r"(?<![\\\\w/])((?:[\\\\w.-]+/)*[\\\\w.-]+"\n'),
     ("claims.py", "polarity is always 'did' (did_not claims are inverted)",
      r'polarity: Literal\["did", "did_not"\] = "did_not" if ctype == ClaimType\.DID_NOT_TOUCH else "did"',
      'polarity: Literal["did", "did_not"] = "did"'),
