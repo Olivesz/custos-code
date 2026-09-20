@@ -5,11 +5,14 @@ every OTLP backend emit) or a JSONL stream of individual spans. The GenAI semant
 make the interesting content *opt-in*: `gen_ai.operation.name=execute_tool` spans carry the tool
 name and call id, but `gen_ai.tool.call.arguments` / `.result` and the message events only exist
 when the instrumentation sets `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`. A span with
-no captured result is therefore recorded with `flags.stderr_dropped`, which makes its claims
-`unrecorded` -- the record is known-incomplete -- rather than `unwitnessed`.
+no captured result is recorded with `flags.stderr_dropped`, and when *no* span in the trace
+carries a result the adapter writes the `no_tool_log` META row, so outcome claims come out
+`unrecorded` -- the record is known-incomplete -- rather than confirmed off a bare span status.
 
-Span status maps to outcome: `STATUS_CODE_ERROR` is positive evidence of failure, `UNSET` is not
-evidence of success, so only an explicit OK (or a captured exit code) yields exit_code 0.
+Span status maps to outcome: `STATUS_CODE_ERROR` is positive evidence of failure. `UNSET` is not
+evidence of success, and neither is `OK` on its own -- the convention lets an exporter mark a span
+OK with nothing captured, and Tier 2 needs runner output, not just a status. exit_code 0 therefore
+requires a captured `process.exit_code`, or an OK status *and* a captured tool result.
 
 Owner: Ananya.
 """
@@ -23,7 +26,7 @@ from typing import Any
 from ..ledger import chain, redact
 from ..models import EventFlags, EventKind, LedgerEvent, Session
 from ..parsers import is_piped
-from .state import Builder, as_dict, as_list, as_text
+from .state import Builder, as_dict, as_list, as_text, no_tool_log
 
 _TOOL_ALIASES = {
     "bash": "Bash",
@@ -157,12 +160,11 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
             flags=EventFlags(piped=piped, sidechain=bool(attrs.get("gen_ai.agent.id"))),
         )
 
-        result = attrs.get("gen_ai.tool.call.result")
         exit_raw = attrs.get("process.exit_code")
+        result = attrs.get("gen_ai.tool.call.result")
+        ok = str(status.get("code", "")).endswith("OK") and result is not None
         exit_code = (
-            int(exit_raw)
-            if isinstance(exit_raw, int)
-            else (1 if failed else 0 if str(status.get("code", "")).endswith("OK") else None)
+            int(exit_raw) if isinstance(exit_raw, int) else (1 if failed else 0 if ok else None)
         )
         event = b.add(
             kind=EventKind.RESULT,
@@ -181,9 +183,17 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
         if result is not None:
             b.store_output(event, as_text(result))
 
+    results = sum(1 for e in b.events if e.kind is EventKind.RESULT)
+    captured = sum(1 for e in b.events if e.kind is EventKind.RESULT and not e.flags.stderr_dropped)
+    if results and not captured:
+        no_tool_log(
+            b,
+            ended,
+            "trace captured no gen_ai.tool.call.result: content capture is opt-in in the GenAI "
+            "convention, so tool outcomes are not in the record",
+            evidence_class="T",
+        )
     events = chain(b.events)
-    captured = sum(1 for e in events if e.kind is EventKind.RESULT and not e.flags.stderr_dropped)
-    results = sum(1 for e in events if e.kind is EventKind.RESULT)
     meta = Session(
         id=session_id,
         source="otel",

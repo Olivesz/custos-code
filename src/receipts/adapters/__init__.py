@@ -51,16 +51,13 @@ def _bundle_source(obj: dict[str, object]) -> Source | None:
     raw = obj.get("session")
     session: dict[str, object] = raw if isinstance(raw, dict) else {}
     keys = set(obj) | {f"session.{k}" for k in session}
-    if keys & {
-        "session.session_id",
-        "session.structured_output",
-        "structured_output",
-        "session_id",
-    }:
-        return "devin"
-    if "pull_request" in keys and (keys & {"log", "session.workspace", "commits"}):
+    # Copilot first: both bundles carry `pull_request` and a `session.session_id`, and only
+    # Copilot carries a workspace or an attached tool log. Devin's tell is structured_output.
+    if "pull_request" in keys and (keys & {"log", "session.workspace", "session.agent_log"}):
         return "copilot"
-    if "pull_request" in keys or "pull_requests" in keys:
+    if keys & {"session.structured_output", "structured_output"}:
+        return "devin"
+    if keys & {"session.session_id", "session_id", "pull_request", "pull_requests"}:
         return "devin"
     return None
 

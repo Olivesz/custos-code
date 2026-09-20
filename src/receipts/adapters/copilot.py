@@ -142,7 +142,9 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
         git_branch=str(git.get("branch") or pr.get("head") or "") or None,
         n_events=len(events),
         ledger_root_hash=events[-1].hash if events else "",
-        integrity_score=1.0 if entries else 0.5,
+        # the bundle is assembled by the caller from the GitHub API, not signed by a harness:
+        # class R cannot reach 1.0 until the log's provenance is checkable (NEEDS-DECISION: A3)
+        integrity_score=0.8 if entries else 0.5,
     )
     return meta, events, report
 

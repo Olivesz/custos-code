@@ -12,10 +12,12 @@ Wire format, one JSON object per line in ~/.receipts/machine/<host>-<date>.jsonl
    "path":"src/a.py","op":"modified",              # event=fs
    "ref":"HEAD","from":"abc","to":"def","subject":"..."}  # event=git
 
-Attribution: class M cannot prove which agent ran a command, so `ppid_chain` is recorded as a hint
-and nothing more. When a class-H/F adapter also covered the session its events win, and machine
-rows only fill exit-code gaps (see `merge_exit_codes`); alone, they support outcome claims but
-leave tool attribution `unwitnessed` rather than guessing from timing.
+Attribution: class M cannot prove which agent ran a command, so the recorded pid/ppid are a hint
+and nothing more. Alone, these rows support outcome claims but leave tool attribution
+`unwitnessed` rather than guessing from timing. Merging them into a class-H/F ledger to fill its
+exit-code gaps is deliberately not implemented: the join is timing-based, the machine log is
+writable by anything the agent runs, and a merge would have to re-chain and mark every borrowed
+row to keep invariant 1 legible. See docs/ADAPTERS.md §4.
 
 Owner: Ananya.
 """
@@ -41,15 +43,16 @@ __receipts_log() { printf '%s\n' "$1" >> "$RECEIPTS_MACHINE_LOG"; }
 __receipts_preexec() {
   [ -n "$COMP_LINE" ] && return
   [ "$BASH_COMMAND" = "$PROMPT_COMMAND" ] && return
-  __RECEIPTS_CMD=$BASH_COMMAND; __RECEIPTS_T0=$(date +%s.%N)
-  __receipts_log "$(RECEIPTS_EVENT=start RECEIPTS_CMD=$__RECEIPTS_CMD receipts _record-line)"
+  __RECEIPTS_CMD="$BASH_COMMAND"; __RECEIPTS_T0=$(date +%s.%N)
+  __receipts_log "$(RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID RECEIPTS_TTY="$RECEIPTS_TTY" receipts _record-line)"
 }
 __receipts_precmd() {
   local rc=$?
   [ -z "$__RECEIPTS_CMD" ] && return
-  __receipts_log "$(RECEIPTS_EVENT=end RECEIPTS_CMD=$__RECEIPTS_CMD RECEIPTS_RC=$rc RECEIPTS_T0=$__RECEIPTS_T0 receipts _record-line)"
+  __receipts_log "$(RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$rc RECEIPTS_T0="$__RECEIPTS_T0" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID RECEIPTS_TTY="$RECEIPTS_TTY" receipts _record-line)"
   __RECEIPTS_CMD=
 }
+export RECEIPTS_TTY="${RECEIPTS_TTY:-$(tty 2>/dev/null || echo)}"
 export RECEIPTS_MACHINE_LOG="${RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}"
 mkdir -p "$(dirname "$RECEIPTS_MACHINE_LOG")"
 trap '__receipts_preexec' DEBUG
@@ -58,17 +61,20 @@ PROMPT_COMMAND="__receipts_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 """
 
 ZSH_SNIPPET = r"""# >>> receipts recorder (class M) >>>
+export RECEIPTS_TTY="${RECEIPTS_TTY:-$(tty 2>/dev/null || echo)}"
 export RECEIPTS_MACHINE_LOG="${RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}"
 mkdir -p "${RECEIPTS_MACHINE_LOG:h}"
 __receipts_preexec() {
   __RECEIPTS_CMD=$1; __RECEIPTS_T0=$EPOCHREALTIME
-  RECEIPTS_EVENT=start RECEIPTS_CMD=$__RECEIPTS_CMD receipts _record-line >> $RECEIPTS_MACHINE_LOG
+  RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
+    RECEIPTS_TTY="$RECEIPTS_TTY" receipts _record-line >> "$RECEIPTS_MACHINE_LOG"
 }
 __receipts_precmd() {
   local rc=$?
   [[ -z $__RECEIPTS_CMD ]] && return
-  RECEIPTS_EVENT=end RECEIPTS_CMD=$__RECEIPTS_CMD RECEIPTS_RC=$rc RECEIPTS_T0=$__RECEIPTS_T0 \
-    receipts _record-line >> $RECEIPTS_MACHINE_LOG
+  RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$rc RECEIPTS_T0="$__RECEIPTS_T0" \
+    RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID RECEIPTS_TTY="$RECEIPTS_TTY" \
+    receipts _record-line >> "$RECEIPTS_MACHINE_LOG"
   __RECEIPTS_CMD=
 }
 autoload -Uz add-zsh-hook
@@ -97,6 +103,8 @@ def record_line(env: dict[str, str] | None = None) -> str:
     e = dict(os.environ if env is None else env)
     event = e.get("RECEIPTS_EVENT", "end")
     now = float(e.get("RECEIPTS_TS") or datetime.now(tz=UTC).timestamp())
+    # the snippets pass the shell's own pid; without them, this process's parent *is* that shell
+    pid = _pid(e.get("RECEIPTS_PID", "")) or os.getppid()
     line: dict[str, Any] = {
         "recorder": "receipts-machine",
         "v": WIRE_VERSION,
@@ -105,8 +113,8 @@ def record_line(env: dict[str, str] | None = None) -> str:
         "cmd": e.get("RECEIPTS_CMD", ""),
         "cwd": e.get("PWD", ""),
         "tty": e.get("RECEIPTS_TTY", ""),
-        "pid": int(e["RECEIPTS_PID"]) if e.get("RECEIPTS_PID", "").isdigit() else None,
-        "ppid": int(e["RECEIPTS_PPID"]) if e.get("RECEIPTS_PPID", "").isdigit() else None,
+        "pid": pid,
+        "ppid": _pid(e.get("RECEIPTS_PPID", "")),
     }
     if event == "end":
         rc = e.get("RECEIPTS_RC", "")
@@ -116,6 +124,10 @@ def record_line(env: dict[str, str] | None = None) -> str:
         except (KeyError, ValueError):
             line["dur_ms"] = None
     return json.dumps(redact(line), sort_keys=True)
+
+
+def _pid(value: str) -> int | None:
+    return int(value) if value.isdigit() else None
 
 
 def _paths(record: dict[str, Any], cwd: str | None) -> list[str]:
@@ -256,28 +268,3 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
         integrity_score=0.6,
     )
     return meta, chained, None
-
-
-def merge_exit_codes(
-    ledger: list[LedgerEvent], machine: list[LedgerEvent], *, window_s: float = 5.0
-) -> int:
-    """Fill missing exit codes on harness RESULTs from machine rows with the same command nearby.
-
-    Timing is a weak join, so this only ever *adds* an exit code the harness never had; it never
-    overwrites one, never creates an event, and never changes tool attribution.
-    """
-    filled = 0
-    by_command: dict[str, list[LedgerEvent]] = {}
-    for m in machine:
-        if m.kind is EventKind.RESULT and m.exit_code is not None and m.input:
-            by_command.setdefault(str(m.input.get("command", "")), []).append(m)
-    for e in ledger:
-        if e.kind is not EventKind.RESULT or e.exit_code is not None or not e.input:
-            continue
-        candidates = by_command.get(str(e.input.get("command", "")), [])
-        near = [m for m in candidates if abs((m.ts - e.ts).total_seconds()) <= window_s]
-        if len(near) == 1:
-            e.exit_code = near[0].exit_code
-            e.flags.error = e.flags.error or bool(near[0].exit_code)
-            filled += 1
-    return filled
