@@ -35,7 +35,6 @@
 
 # Ananya: infra, adapters, Action, evidence track
 /.github/workflows/            @AnanyaGuntur8
-/.github/pr_bundle.jq          @AnanyaGuntur8
 /src/receipts/adapters/__init__.py @AnanyaGuntur8
 /src/receipts/adapters/codex.py    @AnanyaGuntur8
 /src/receipts/adapters/copilot.py  @AnanyaGuntur8
