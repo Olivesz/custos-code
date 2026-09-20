@@ -196,6 +196,30 @@ def test_a_fully_recognised_chain_is_green_even_though_cd_leads_it(repo: pathlib
     assert f.band is Band.GREEN
 
 
+def test_a_quoted_cd_target_with_a_space_is_not_truncated_at_it(
+        tmp_path: pathlib.Path) -> None:
+    """`_CD`'s bare-token alternative stops at the first whitespace, which is correct for an
+    unquoted argument but wrong for a quoted one: `cd "/a/b 2026/c"` used to resolve the
+    effective cwd to `/a/b`, one level up from a directory that does not exist. Every subsequent
+    path in the command then rebased onto that wrong, nonexistent root, so nothing downstream
+    could ever resolve as inside the grant -- this repo's own checkout path
+    ("HackMIT 2026/receipts") triggers it on literally every `cd "..." && ...` command run from
+    it, which is how this was actually found.
+    """
+    spaced = tmp_path / "HackMIT 2026" / "receipts"
+    spaced.parent.mkdir()
+    spaced.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=spaced, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i",
+                    "--allow-empty"], cwd=spaced, check=True)
+    grant = Grant.for_session(str(spaced))
+
+    f = classify("Bash", {"command": f'cd "{spaced}" && git status --short'}, grant,
+                 RepoState(str(spaced)))
+
+    assert f.band is Band.GREEN, f"a space in the granted directory's own path should not gate: {f}"
+
+
 def test_an_unrecognised_step_in_the_chain_still_leaves_the_whole_thing_ungreen(
         repo: pathlib.Path) -> None:
     """The fix narrows false positives; it must not launder a step we genuinely don't recognise.
