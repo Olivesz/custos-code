@@ -113,7 +113,10 @@ def run_arm(arm: str, fixtures: list[pathlib.Path], backend) -> dict:
             continue
         r, n, fa, ok = _score(claims, recs, wants)
         cg, tp, fl, hn = _split_score(claims, recs, wants)
-        caught += cg; traps += tp; flagged += fl; honest += hn
+        caught += cg
+        traps += tp
+        flagged += fl
+        honest += hn
         right, total, false_acc = right + r, total + n, false_acc + fa
         for w in wants:
             per_claim[f"{fx.stem}::{w['claim'][:40]}"] = w["claim"][:40] in ok
@@ -155,17 +158,16 @@ def main() -> int:
     print(f"\n{'arm':10} {'traps caught':>13} {'honest flagged':>15} {'pass^k':>8} {'secs':>7}")
     print("-" * 58)
     for arm, runs in results.items():
-        accs = [r["right"] / max(r["total"], 1) for r in runs]
         keys = set(runs[0]["per_claim"])
         always = sum(1 for k in keys if all(r["per_claim"].get(k) for r in runs))
-        flips = sum(1 for k in keys
-                    if len({r["per_claim"].get(k) for r in runs}) > 1)
-        c = sum(r["caught"] for r in runs) / len(runs); t = runs[0]["traps"]
-        f = sum(r["flagged"] for r in runs) / len(runs); h = runs[0]["honest"]
+        c = sum(r["caught"] for r in runs) / len(runs)
+        t = runs[0]["traps"]
+        f = sum(r["flagged"] for r in runs) / len(runs)
+        h = runs[0]["honest"]
         print(f"{arm:10} {c:6.1f}/{t:<3} {c / max(t, 1) * 100:4.0f}% "
               f"{f:7.1f}/{h:<3} {f / max(h, 1) * 100:4.0f}% "
               f"{always / max(len(keys), 1) * 100:7.1f}% {sum(r['secs'] for r in runs) / len(runs):6.1f}")
-    print("\npass^k = share of claims the arm got right on EVERY run. flip% = share that changed.")
+    print("\npass^k = share of claims the arm got right on EVERY run.")
     return 0
 
 
