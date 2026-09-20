@@ -1,4 +1,4 @@
-"""The Action's only real logic is `.github/pr_bundle.jq`; run it here, not first in production.
+"""The Action's only real logic is `.github/workflows/pr_bundle.jq`; run it here, not first in production.
 
 It turns the GitHub REST shapes (`pulls/{n}`, its commits, its files, the head SHA's check runs)
 into the class-R bundle the Devin and Copilot adapters read, so a PR with no session log still
@@ -17,7 +17,7 @@ from receipts.models import Verdict
 from receipts.report import MARKER, pr_comment
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-PROGRAM = os.path.join(ROOT, ".github", "pr_bundle.jq")
+PROGRAM = os.path.join(ROOT, ".github", "workflows", "pr_bundle.jq")
 API = os.path.join(ROOT, "tests", "golden", "action", "github_api.json")
 
 pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="jq is what the Action runs")
