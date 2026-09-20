@@ -65,3 +65,50 @@ def test_real_go_output_still_parses() -> None:
     assert cached is not None and cached.passed == 1
     verbose = parsers.parse("--- PASS: TestA (0.00s)\n--- FAIL: TestB (0.01s)\nFAIL\tx\t0.1s\n", 0)
     assert verbose is not None and (verbose.passed, verbose.failed) == (1, 1)
+
+
+def _pair(seq: int, output: str) -> list[LedgerEvent]:
+    return [
+        LedgerEvent(seq=seq, ts="2026-09-20T00:00:00Z", session_id="s", kind=EventKind.CALL,
+                    tool="Bash", input={"command": f"cmd-{seq}"}, flags=EventFlags()),
+        LedgerEvent(seq=seq + 1, ts="2026-09-20T00:00:00Z", session_id="s", kind=EventKind.RESULT,
+                    tool="Bash", output=output, flags=EventFlags()),
+    ]
+
+
+def test_a_normal_session_is_rendered_in_full() -> None:
+    """The budget must be invisible until it is needed, or it silently costs accuracy."""
+    text = annotate([e for i in range(20) for e in _pair(2 * i, "x" * 3000)])
+    assert "NOTE: this session" not in text
+    assert text.count("x" * 3000) == 20
+
+
+def test_a_session_with_huge_outputs_is_shortened_not_dropped() -> None:
+    """Before the budget these raised on the API call and `scan` swallowed it.
+
+    The sessions that failed were the ones with the most recorded activity, so the tool was
+    blindest exactly where there was most to check.
+    """
+    from custos_code.review import MAX_LOG_CHARS
+
+    text = annotate([e for i in range(400) for e in _pair(2 * i, "y" * 4096)])
+    assert len(text) <= MAX_LOG_CHARS
+    assert "shown only to its first" in text
+    assert "not evidence of absence" in text, "the judge must be told the cut exists"
+    assert "#798 " in text, "an event was dropped when shortening would have sufficed"
+
+
+def test_a_session_with_too_many_events_keeps_the_recent_ones_and_says_so() -> None:
+    """No window makes 40k events fit. Dropping silently is the one thing we must not do.
+
+    A judge that does not know it is reading a fragment reads a missing call as a call that never
+    happened, which turns our own truncation into an accusation against the agent.
+    """
+    from custos_code.review import MAX_LOG_CHARS
+
+    ledger = [e for i in range(20_000) for e in _pair(2 * i, "z" * 200)]
+    text = annotate(ledger)
+    assert len(text) <= MAX_LOG_CHARS
+    assert "EARLIEST are omitted" in text and "`unwitnessed`, never `contradicted`" in text
+    assert f"#{2 * 19_999} " in text, "the most recent events must survive"
+    assert "#0 " not in text.split("\n", 1)[1], "the oldest events should be the ones dropped"

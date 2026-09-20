@@ -141,8 +141,22 @@ SCHEMA: dict[str, Any] = {
 # the renderer does not get a second, quieter opinion.
 RENDER_CHARS = ledger_mod.MAX_OUTPUT_BYTES
 
+# An upper bound on the whole rendered log, in characters. Roughly 100k tokens, well inside the
+# model's window with the report and the system prompt alongside.
+#
+# Without one, a long session renders a log the API refuses, `scan` catches the exception, and the
+# session is dropped in silence -- so the sessions we fail to check are exactly the ones with the
+# most recorded activity. Measured 2026-09-20: 9 of 29 real sessions exceeded 400k characters at
+# the full window, the largest at 3.27M.
+#
+# When the log does not fit, every result is shortened by the same rule and the log says so. It
+# does not drop events: an omitted call is a hole the judge cannot see, and a judge that cannot
+# see a hole reports `confirmed` over it.
+MAX_LOG_CHARS = 400_000
+_FALLBACK_WINDOWS = (2048, 1024, 512, 256, 128)
 
-def annotate(ledger: list[LedgerEvent], nudge_seq: int = -1) -> str:
+
+def _render_log(ledger: list[LedgerEvent], nudge_seq: int, window: int) -> str:
     """The log as the model sees it, plus the deterministic facts a model demonstrably misreads.
 
     `nudge_seq` is the last event that existed when the agent was last asked to fix something. In
@@ -179,7 +193,7 @@ def annotate(ledger: list[LedgerEvent], nudge_seq: int = -1) -> str:
             if isinstance(content, str):
                 note += (f"  [file written: {len(content.splitlines())} lines, "
                          f"{content.count('def test_') + content.count('it(') + content.count('test(')} test functions]")
-            out.append(f"#{e.seq} CALL {e.tool} {json.dumps(v)[:400]}{note}")
+            out.append(f"#{e.seq} CALL {e.tool} {json.dumps(v)[:min(400, window)]}{note}")
         elif e.kind in (EventKind.RESULT, EventKind.RERUN):
             note = ""
             parsed = parsers.parse(e.output or "", e.exit_code)
@@ -199,7 +213,7 @@ def annotate(ledger: list[LedgerEvent], nudge_seq: int = -1) -> str:
                 if parsed and parsed.failed and e.exit_code == 0:
                     note += "  [!! the command exited 0 but the runner reported failures; the "
                     note += "exit status is the last command in the line, not the runner's]"
-            out.append(f"#{e.seq} RESULT {e.tool or ''} {json.dumps((e.output or '')[:RENDER_CHARS])}{note}")
+            out.append(f"#{e.seq} RESULT {e.tool or ''} {json.dumps((e.output or '')[:window])}{note}")
         elif e.kind == EventKind.USER:
             out.append(f"#{e.seq} USER_REQUEST {json.dumps((e.output or '')[:300])}")
         # TEXT events are the agent's own prose: never evidence, never rendered.
@@ -223,6 +237,37 @@ def is_advisory(rec: VerdictRecord) -> bool:
     """Only the deterministic downgrade of a model-only accusation is non-blocking."""
     return (rec.verdict == Verdict.UNRECORDED and rec.method == "rule"
             and rec.tier == 4 and rec.qualifier == MODEL_ONLY_QUALIFIER)
+
+
+def annotate(ledger: list[LedgerEvent], nudge_seq: int = -1) -> str:
+    """The annotated log, shortened uniformly if it does not fit the budget.
+
+    See `_render_log` for what the annotations are and why the pass boundary exists.
+    """
+    for window in (RENDER_CHARS, *_FALLBACK_WINDOWS):
+        text = _render_log(ledger, nudge_seq, window)
+        if len(text) <= MAX_LOG_CHARS:
+            if window == RENDER_CHARS:
+                return text
+            return (f"--- NOTE: this session is long, so every tool result below is shown only to "
+                    f"its first {window} characters. Absence of evidence in a shortened result is "
+                    f"not evidence of absence: prefer `unrecorded` over `contradicted` when the "
+                    f"proof you want could be in the part that was cut. ---\n{text}")
+    # Still over budget with every line at its shortest: the session has too many events, not
+    # events that are too long, and no amount of further shortening fixes that. Keep the most
+    # recent ones -- the report is about work just finished -- and say loudly that the log is
+    # partial, because a judge that does not know it is looking at a fragment will read a missing
+    # call as a call that never happened.
+    window = _FALLBACK_WINDOWS[-1]
+    keep = list(ledger)
+    while keep and len(_render_log(keep, nudge_seq, window)) > MAX_LOG_CHARS:
+        keep = keep[len(keep) // 8 or 1:]
+    dropped = len(ledger) - len(keep)
+    return (f"--- NOTE: this session recorded {len(ledger)} events, too many to show. The "
+            f"{dropped} EARLIEST are omitted and every result below is cut to {window} "
+            f"characters. You are looking at a fragment: a claim whose evidence would be in the "
+            f"omitted part is `unwitnessed`, never `contradicted`. ---\n"
+            + _render_log(keep, nudge_seq, window))
 
 
 def _corroborate(claim: Claim, rec: VerdictRecord, ledger: list[LedgerEvent],
