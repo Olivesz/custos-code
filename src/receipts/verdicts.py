@@ -11,17 +11,44 @@ which can only turn `unwitnessed` into `confirmed` — never the other way, and 
 
 Owner: Oliver.
 """
+
 from __future__ import annotations
 
 from .judge import Backend, window_for_all
-from .models import Claim, LedgerEvent, Verdict, VerdictRecord
+from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
 from .rules import check as rules_check
+
+# Claim types that only a tool log can witness. Edits, commits and deletions survive in state, so
+# they stay settleable on a class-R record; these do not.
+NEEDS_TOOL_LOG = frozenset(
+    {
+        ClaimType.RUN_CMD,
+        ClaimType.RUN_TESTS,
+        ClaimType.BUILD,
+        ClaimType.DEPLOY,
+        ClaimType.READ,
+        ClaimType.OBSERVED_OUTPUT,
+        ClaimType.VERIFY,
+    }
+)
+
+
+def known_incomplete(ledger: list[LedgerEvent]) -> str | None:
+    """The adapter's own statement that this record has no tool log (see adapters/state.py)."""
+    for event in ledger:
+        if event.kind is EventKind.META and (event.input or {}).get("event") == "no_tool_log":
+            return str((event.input or {}).get("note") or "the record has no tool log")
+    return None
 
 
 def _enforce(rec: VerdictRecord) -> VerdictRecord:
     if rec.method == "judge" and rec.verdict == Verdict.CONTRADICTED:
         raise AssertionError("invariant 3: the judge cannot emit contradicted")
-    if rec.verdict == Verdict.CONFIRMED and not rec.evidence and rec.method not in ("state", "rerun"):
+    if (
+        rec.verdict == Verdict.CONFIRMED
+        and not rec.evidence
+        and rec.method not in ("state", "rerun")
+    ):
         raise AssertionError("confirmed without evidence or a state check")
     return rec
 
@@ -33,17 +60,31 @@ def _escalates(rec: VerdictRecord | None) -> bool:
     return rec.verdict == Verdict.UNWITNESSED and rec.tier >= 4
 
 
-def run(claims: list[Claim], ledger: list[LedgerEvent], repo_root: str | None,
-        backend: Backend | None = None) -> list[VerdictRecord]:
+def run(
+    claims: list[Claim],
+    ledger: list[LedgerEvent],
+    repo_root: str | None,
+    backend: Backend | None = None,
+) -> list[VerdictRecord]:
     settled: dict[str, VerdictRecord] = {}
     pending: list[Claim] = []
     for claim in claims:
         found = rules_check(claim, ledger, repo_root)
         if _escalates(found):
             pending.append(claim)
-        rec = found if found is not None else VerdictRecord(
-            claim_id=claim.id, verdict=Verdict.UNWITNESSED, tier=4, method="rule", confidence=0.5,
-            evidence=[], rationale="No deterministic rule applies to this claim type.")
+        rec = (
+            found
+            if found is not None
+            else VerdictRecord(
+                claim_id=claim.id,
+                verdict=Verdict.UNWITNESSED,
+                tier=4,
+                method="rule",
+                confidence=0.5,
+                evidence=[],
+                rationale="No deterministic rule applies to this claim type.",
+            )
+        )
         settled[claim.id] = _enforce(rec)
 
     if backend is not None and pending:
@@ -56,6 +97,14 @@ def run(claims: list[Claim], ledger: list[LedgerEvent], repo_root: str | None,
                 prev.rationale = jrec.rationale or prev.rationale
                 prev.method = "judge"
                 prev.tier = 4
+
+    note = known_incomplete(ledger)
+    if note:
+        for claim in claims:
+            rec = settled[claim.id]
+            if rec.verdict is Verdict.UNWITNESSED and claim.type in NEEDS_TOOL_LOG:
+                rec.verdict = Verdict.UNRECORDED
+                rec.rationale = f"{note}; this claim needs one."
     return [settled[c.id] for c in claims]
 
 
