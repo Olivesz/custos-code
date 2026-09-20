@@ -33,12 +33,16 @@
 /bench/                        @anushmainali
 /eval/                         @anushmainali
 
-# Ananya: infra, adapters, Action, evidence track       
+# Ananya: infra, adapters, Action, evidence track
 /.github/workflows/            @AnanyaGuntur8
+/.github/pr_bundle.jq          @AnanyaGuntur8
+/src/receipts/adapters/__init__.py @AnanyaGuntur8
 /src/receipts/adapters/codex.py    @AnanyaGuntur8
 /src/receipts/adapters/copilot.py  @AnanyaGuntur8
 /src/receipts/adapters/devin.py    @AnanyaGuntur8
+/src/receipts/adapters/machine.py  @AnanyaGuntur8
 /src/receipts/adapters/otel.py     @AnanyaGuntur8
+/src/receipts/adapters/state.py    @AnanyaGuntur8
 /docs/ADAPTERS.md              @AnanyaGuntur8
 /docs/DEVIN.md                 @AnanyaGuntur8
 /docs/EVIDENCE_PLAN.md         @AnanyaGuntur8
