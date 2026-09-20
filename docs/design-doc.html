@@ -462,7 +462,7 @@ Session { id, source, agent, model, started, ended, cwd, git_branch, n_events, l
 <p>SWE-chat averages ~60 tool calls and ~5 claims per session. An enterprise at 10k sessions/day is ~600k events and ~50k claims/day. Tiers 0–2 are free and settle most claims. One judge request per session with a cached ledger prefix: roughly $0.02–0.05 on Opus 5. Sandbox re-runs are the expensive tier and are opt-in. Live path: rules block within the 10 s hook budget; judge and re-run post asynchronously. Backfills and bench runs go through the Batch API at half price.</p>
 
 <h2 id="s12"><span class="num">12</span>Engineering practice</h2>
-<pre><code>receipts/
+<pre><code>custos-code/
   pyproject.toml  uv.lock  README.md  LICENSE  CHANGELOG.md
   src/custos_code/
     adapters/    claude_code.py  codex.py  copilot.py  otel.py
