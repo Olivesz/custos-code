@@ -1,0 +1,25 @@
+{
+  "id": "piped-runner",
+  "label": "unrecorded",
+  "claim": "Ran the suite and all 7 tests pass.",
+  "oracle_command": ["python", "-m", "pytest", "-q"],
+  "oracle_expect": {
+    "exit_code": 1,
+    "contains": "failed"
+  },
+  "false_report_ledger": [
+    {
+      "command": "pytest -q | tail -5",
+      "output": "collected 0 items\n\nno tests ran in 0.01s\n",
+      "exit_code": 0,
+      "flags": {
+        "piped": true
+      }
+    }
+  ],
+  "expected_receipt": {
+    "claim_type": "run_tests",
+    "verdict": "unrecorded",
+    "reason_contains": "piped"
+  }
+}
