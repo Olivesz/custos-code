@@ -323,6 +323,56 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
 
 
 # ---------- ledger assembly for Stop ----------
+def _collect_reruns(session_id: str, ledger: list[LedgerEvent], live_path: str) -> list[LedgerEvent]:
+    """Fold any finished Tier 3 results into the ledger, once.
+
+    `spawn_async` detaches and writes a RERUN event to a result file; Claude Code hooks are
+    one-shot, so the Stop call that launched it has already returned. Something has to pick the
+    result up on a LATER turn or the re-run is theatre -- the subprocess runs, the evidence lands
+    on disk, and the checker never looks. Nothing did: `load_result` had no callers outside its
+    own module, which an adversarial pass caught before this shipped.
+
+    Appending to the live ledger file (not just the in-memory list) is what makes it persist, so
+    the evidence stays available to `receipts check` and to every later pass rather than being
+    consumed by whichever turn happened to notice it.
+
+    Resolves the seq placeholder `rerun.run_worker` left as NEEDS-DECISION(oliver): the event is
+    numbered when it is folded in, because only here is the ledger's length known.
+    """
+    # Ask rerun where it writes rather than rebuilding the path: two copies of the same layout
+    # drift, and a reader looking in the wrong directory silently finds nothing forever -- which
+    # is indistinguishable from "no re-runs happened".
+    d = str(rerun._rerun_dir(session_id))
+    if not os.path.isdir(d):
+        return ledger
+    next_seq = max((e.seq for e in ledger), default=-1) + 1
+    for name in sorted(os.listdir(d)):
+        if not name.endswith(".result.json"):
+            continue
+        claim_id = name[: -len(".result.json")]
+        try:
+            ev = rerun.load_result(session_id, claim_id)
+        except (OSError, ValueError):
+            ev = None
+        if ev is None:
+            continue
+        ev.seq = next_seq
+        next_seq += 1
+        ledger.append(ev)
+        # Only persist when a live ledger already exists. If this session's ledger came from the
+        # transcript (hooks installed mid-flight), creating a live file containing nothing but
+        # RERUN events would make the NEXT turn prefer it and lose the transcript entirely --
+        # `_ledger_for` takes the live file whenever it has any events at all.
+        if os.path.exists(live_path):
+            try:
+                with open(live_path, "a", encoding="utf-8") as fh:
+                    fh.write(ev.model_dump_json() + "\n")
+                os.remove(os.path.join(d, name))   # consumed exactly once
+            except OSError:
+                pass
+    return ledger
+
+
 def _ledger_for(payload: dict[str, Any]) -> tuple[Session, list[LedgerEvent]]:
     """The ledger for this session: the live hook file first, the transcript only as a fallback.
 
@@ -391,6 +441,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     _, state_p, receipt_p = _paths(sid)
     sess, ledger = _ledger_for(payload)
+    live_p, _, _ = _paths(sid)
+    ledger = _collect_reruns(sid, ledger, live_p)   # evidence from earlier turns' Tier 3 jobs
     repo = payload.get("cwd") if isinstance(payload.get("cwd"), str) else sess.cwd
 
     # Cheap gate before the model call. A Stop hook fires on EVERY turn, so a turn that ran one
@@ -442,6 +494,40 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     else:
         claims = claims_mod.extract(report, sid)
         recs = verdicts_mod.run(claims, ledger, repo)
+    # Tier 3: launch a re-execution for any claim a re-run could actually settle. This is the
+    # second GROUNDED source the architecture argues for -- not another opinion, but the command
+    # run again and looked at. Coverage is worth 4-74x more than a second verifier at any
+    # plausible likelihood ratio, and this is what moves coverage.
+    #
+    # `spawn_async` detaches, so the Stop hook still returns in the ~10s it wants. The result is
+    # picked up by a later pass, by the extension, or by `receipts check` -- there is no path back
+    # into this call, which has already returned. `verdicts.should_rerun` is deliberately narrow:
+    # open verdict, runnable claim type, a real repo, a committed runner config, within budget,
+    # and not already tried on this exact tree.
+    spent: set[str] = set(state.get("reruns", []))
+    if repo:
+        for c, r in zip(claims, recs, strict=False):
+            if not verdicts_mod.should_rerun(c, r, repo, already=spent):
+                continue
+            key = verdicts_mod.rerun_key(c, repo)
+            try:
+                # report_seq anchors the RERUN event after the evidence it re-checks
+                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq)
+            except Exception as e:  # noqa: BLE001 - a failed launch must not fail the turn
+                print(f"receipts: rerun launch failed ({type(e).__name__}); skipping.", file=sys.stderr)
+                continue
+            if key:
+                spent.add(key)
+        if spent != set(state.get("reruns", [])):
+            # Written now, not with the auto-mode state below: the budget has to survive turns
+            # that do not block, or a session with auto mode off re-runs on every single turn.
+            state["reruns"] = sorted(spent)
+            try:
+                with open(state_p, "w", encoding="utf-8") as fh:
+                    json.dump(state, fh)
+            except OSError:
+                pass
+
     with open(receipt_p, "w", encoding="utf-8") as fh:
         fh.write(_render(claims, recs) + "\n")
 
@@ -473,7 +559,10 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None  # cap hit: hand back to the human with the receipt file
     nudge_seq = max((e.seq for e in ledger), default=-1)
     with open(state_p, "w", encoding="utf-8") as fh:
-        json.dump({"passes": passes, "nudge_seq": nudge_seq, "open": [c.text for c, _ in open_pairs]}, fh)
+        json.dump({"passes": passes, "nudge_seq": nudge_seq,
+                   "open": [c.text for c, _ in open_pairs],
+                   "reruns": state.get("reruns", []),          # do not drop the Tier 3 budget
+                   "scope_approved": state.get("scope_approved", [])}, fh)
     reason = feedback.build_block_reason(open_pairs, ledger, passes, max_passes)
     return {"decision": "block", "reason": reason}
 
