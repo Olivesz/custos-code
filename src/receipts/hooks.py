@@ -323,6 +323,56 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
 
 
 # ---------- ledger assembly for Stop ----------
+def _collect_reruns(session_id: str, ledger: list[LedgerEvent], live_path: str) -> list[LedgerEvent]:
+    """Fold any finished Tier 3 results into the ledger, once.
+
+    `spawn_async` detaches and writes a RERUN event to a result file; Claude Code hooks are
+    one-shot, so the Stop call that launched it has already returned. Something has to pick the
+    result up on a LATER turn or the re-run is theatre -- the subprocess runs, the evidence lands
+    on disk, and the checker never looks. Nothing did: `load_result` had no callers outside its
+    own module, which an adversarial pass caught before this shipped.
+
+    Appending to the live ledger file (not just the in-memory list) is what makes it persist, so
+    the evidence stays available to `receipts check` and to every later pass rather than being
+    consumed by whichever turn happened to notice it.
+
+    Resolves the seq placeholder `rerun.run_worker` left as NEEDS-DECISION(oliver): the event is
+    numbered when it is folded in, because only here is the ledger's length known.
+    """
+    # Ask rerun where it writes rather than rebuilding the path: two copies of the same layout
+    # drift, and a reader looking in the wrong directory silently finds nothing forever -- which
+    # is indistinguishable from "no re-runs happened".
+    d = str(rerun._rerun_dir(session_id))
+    if not os.path.isdir(d):
+        return ledger
+    next_seq = max((e.seq for e in ledger), default=-1) + 1
+    for name in sorted(os.listdir(d)):
+        if not name.endswith(".result.json"):
+            continue
+        claim_id = name[: -len(".result.json")]
+        try:
+            ev = rerun.load_result(session_id, claim_id)
+        except (OSError, ValueError):
+            ev = None
+        if ev is None:
+            continue
+        ev.seq = next_seq
+        next_seq += 1
+        ledger.append(ev)
+        # Only persist when a live ledger already exists. If this session's ledger came from the
+        # transcript (hooks installed mid-flight), creating a live file containing nothing but
+        # RERUN events would make the NEXT turn prefer it and lose the transcript entirely --
+        # `_ledger_for` takes the live file whenever it has any events at all.
+        if os.path.exists(live_path):
+            try:
+                with open(live_path, "a", encoding="utf-8") as fh:
+                    fh.write(ev.model_dump_json() + "\n")
+                os.remove(os.path.join(d, name))   # consumed exactly once
+            except OSError:
+                pass
+    return ledger
+
+
 def _ledger_for(payload: dict[str, Any]) -> tuple[Session, list[LedgerEvent]]:
     """The ledger for this session: the live hook file first, the transcript only as a fallback.
 
@@ -391,6 +441,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     _, state_p, receipt_p = _paths(sid)
     sess, ledger = _ledger_for(payload)
+    live_p, _, _ = _paths(sid)
+    ledger = _collect_reruns(sid, ledger, live_p)   # evidence from earlier turns' Tier 3 jobs
     repo = payload.get("cwd") if isinstance(payload.get("cwd"), str) else sess.cwd
 
     # Cheap gate before the model call. A Stop hook fires on EVERY turn, so a turn that ran one
