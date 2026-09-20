@@ -14,7 +14,12 @@ rerun_timeout_s = 60
 # manual mode: nothing blocks, all marks shown. auto mode: loop until clean.
 auto = false
 auto_max_passes = 3           # 0 = run until clean (not recommended; see DESIGN §6)
-auto_clear = ["contradicted", "unrecorded", "unwitnessed"]   # marks that must be resolved or withdrawn before the report is shown
+auto_clear = ["contradicted"]  # only an accusation holds the turn.
+# `unrecorded` and `unwitnessed` are the checker reporting the limits of its OWN evidence
+# -- "the output was piped", "nothing in the log either way". Measured over 648 real
+# claims they are 21.0% and 28.9%, so gating on them held half of every report open, and
+# `unwitnessed` on a heading or a piece of advice cannot be cleared by any amount of
+# further work. Adding them back reproduces a three-pass stall on honest reports.
 
 [ledger]
 max_output_bytes = 4096       # beyond this: truncate, keep full-content hash, flag truncated

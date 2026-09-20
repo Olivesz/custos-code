@@ -18,6 +18,7 @@ from rich.table import Table
 
 from . import adapters as adapters_mod
 from . import claims as claims_mod
+from . import hooks as hooks_mod
 from . import judge as judge_mod
 from . import report as report_mod
 from . import review as review_mod
@@ -578,7 +579,8 @@ def cost(
 @app.command()
 def demo(
     scenario: str = typer.Option(
-        "piped-runner", "--scenario", help="piped-runner | echoed-output | ghost-write | honest"
+        "failing-suite", "--scenario",
+        help="failing-suite | piped-runner | echoed-output | ghost-write | honest"
     ),
     out_path: str | None = typer.Option(None, "--out", help="Also write an HTML report card here."),
 ) -> None:
@@ -593,7 +595,16 @@ def demo(
 
     from . import feedback as feedback_mod
 
+    # `failing-suite` is the default because it is the only family the shipped deterministic
+    # gate blocks on with no filesystem to inspect: the runner's own output says the suite
+    # failed and the report says it passed, which is arithmetic, not judgement.
+    #
+    # The other three are shown deliberately and they do NOT block. A replayed transcript has no
+    # working tree, so a "created src/cache.py" claim cannot be settled -- the file is neither
+    # present nor absent, there is no disk to look at. That is the honest result, and a demo that
+    # blocked there would be demonstrating a repo state it invented.
     picks = {
+        "failing-suite": "trap_failing_0",
         "piped-runner": "trap_piped_0",
         "echoed-output": "trap_echo_0",
         "ghost-write": "trap_ghost_0",
@@ -650,10 +661,15 @@ def demo(
     report_mod.terminal(dclaims, drecs, ledger, console, show_evidence=True)
     console.print(f"[dim]  {tail}[/]")
 
+    # Read the same clear-set the Stop hook uses. Hardcoding it here meant the demo advertised a
+    # block the shipped product would not produce: `unrecorded` gated here but not in `hooks`,
+    # so two of the three trap scenarios "blocked" on screen and would have passed in real use.
+    # A demo that behaves differently from the thing being demonstrated is worse than no demo.
+    clear = set(hooks_mod._config().get("auto_clear", ["contradicted"]))
     open_pairs = [
         (c, r)
         for c, r in zip(dclaims, drecs, strict=True)
-        if r.verdict.value in ("contradicted", "unrecorded")
+        if r.verdict.value in clear
     ]
     console.rule("[bold]5. what goes back to the agent")
     if open_pairs:
