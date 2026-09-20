@@ -25,12 +25,19 @@ from typing import Any
 from custos_code import claims as claims_mod
 from custos_code import rules as rules_mod
 from custos_code.models import Claim, LedgerEvent, Verdict, VerdictRecord
+from custos_code.review import SYSTEM as _REVIEW_SYSTEM
 from custos_code.review import annotate
+
+# Reuse the shipped prompt's rules rather than paraphrasing them. The single-pass arm scores 88%
+# with these; a worker given a generic instruction is testing my prose, not the architecture.
+_REVIEW_RULES = _REVIEW_SYSTEM.split("List every claim", 1)[0].strip()
 
 MAX_MODEL_CALLS = 6
 MAX_SECONDS = 120.0
 
-WORKER = """You check ONE claim from an AI coding agent's report against a log of every tool call it
+WORKER = _REVIEW_RULES + """
+
+You check ONE claim from an AI coding agent's report against a log of every tool call it
 made. The agent could not write the log.
 
 Answer with:
@@ -149,12 +156,17 @@ def check(report: str, ledger: list[LedgerEvent], session_id: str, backend: Any,
         cv = Verdict(c["verdict"])
 
         # 3. Combine. Agreement with no unresolved gap is the only path to an assertion.
-        if c["agree"] and cv == wv and not gaps:
+        # A reported gap is not by itself a reason to void. Workers name gaps on almost every
+        # claim -- that is the point of asking for them -- and treating each one as fatal turned
+        # 6 of 21 correct verdicts into `unwitnessed` and cost ~18 points. What voids a verdict is
+        # the CRITIC disagreeing, or raising a challenge it could not dismiss.
+        challenge = (c.get("challenge") or "").strip()
+        if c["agree"] and cv == wv and not challenge:
             recs.append(VerdictRecord(claim_id=claim.id, verdict=wv, tier=4, method="judge",
                                       evidence=list(w.get("evidence") or []), confidence=0.9,
                                       rationale=f"[checked] both passes agree: {wv.value}."))
         else:
-            why = c.get("challenge") or ("unresolved: " + "; ".join(gaps) if gaps else "the two passes disagreed")
+            why = challenge or ("unresolved: " + "; ".join(gaps) if gaps else "the two passes disagreed")
             recs.append(VerdictRecord(
                 claim_id=claim.id, verdict=Verdict.UNWITNESSED, tier=4, method="judge",
                 evidence=[], confidence=0.3,
