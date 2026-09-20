@@ -21,6 +21,7 @@ import tomllib
 from datetime import UTC, datetime
 from typing import Any
 
+from . import arch as arch_mod
 from . import claims as claims_mod
 from . import feedback, parsers, rerun
 from . import judge as judge_mod
@@ -120,6 +121,86 @@ def _scope_grant(payload: dict[str, Any], policy: scope_mod.Policy) -> scope_mod
         except (OSError, ValueError, json.JSONDecodeError):
             pass
     return scope_mod.Grant.for_session(cwd or os.getcwd(), approved=approved, policy=policy)
+
+
+def _written_paths(session_id: str) -> list[str]:
+    """Paths this session has already written, from the live ledger.
+
+    Read rather than remembered: the hook is a fresh process on every tool call, so anything held
+    in memory is gone. The ledger is the only state that survives, which is also why it is the only
+    state worth trusting here.
+    """
+    live, _, _ = _paths(session_id)
+    out: list[str] = []
+    if not os.path.exists(live):
+        return out
+    try:
+        with open(live, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("kind") != "call":
+                    continue
+                for p in row.get("paths") or []:
+                    if isinstance(p, str):
+                        out.append(p)
+    except (OSError, ValueError):
+        return out
+    return out
+
+
+def _arch_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """The documented architecture as a second, independent opinion on one write.
+
+    `_scope_gate` asks where a write lands. This asks whether the repo's own diagram says the
+    component it lands in has anything to do with the components this session has already changed.
+    Neither reads the other's output.
+
+    It never denies. A diagram is a claim made by someone who is not in this session and may be
+    out of date, so the strongest honest response is to ask -- and only in `on` mode. In `warn`
+    the crossing is recorded and the call proceeds.
+
+    Fails open twice over: no architecture, no finding; any exception, no finding. A documentation
+    parser must never be the reason a tool call does not happen.
+    """
+    mode = _scope_mode()
+    if mode == "off":
+        return None
+    try:
+        tool = str(payload.get("tool_name", ""))
+        if tool not in ("Write", "Edit", "NotebookEdit"):
+            return None
+        raw = payload.get("tool_input")
+        inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+        target = inp.get("file_path")
+        cwd = payload.get("cwd")
+        if not isinstance(target, str) or not isinstance(cwd, str) or not cwd:
+            return None
+        architecture = arch_mod.load(cwd)
+        if not architecture:
+            return None
+        rel = os.path.relpath(target, cwd).replace(os.sep, "/")
+        if rel.startswith(".."):
+            return None  # outside the repo is `_scope_gate`'s question, not this one
+        found = arch_mod.crossings(architecture,
+                                   [*_written_paths(str(payload.get("session_id", ""))), rel])
+        new = [c for c in found if rel in c.paths_a or rel in c.paths_b]
+        if not new:
+            return None
+        c = new[0]
+        detail = (f"{c.a_label} and {c.b_label} are both being changed, and "
+                  f"{', '.join(architecture.sources)} declares no edge between them.")
+    except Exception as e:  # noqa: BLE001 - never take the turn down over a docs parser
+        print(f"custos-code: architecture check failed ({type(e).__name__}); allowing.",
+              file=sys.stderr)
+        return None
+    if mode == "warn":
+        print(f"custos-code: architecture · {detail}", file=sys.stderr)
+        return None
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse", "permissionDecision": "ask",
+        "permissionDecisionReason": f"custos-code · crosses a documented boundary. {detail}"}}
 
 
 def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -247,6 +328,8 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
     # Scope first: a RED action must never get wrapped and run. The E5 rewrite below only makes a
     # command observable; it does not make it safe.
     if (gate := _scope_gate(payload)) is not None:
+        return gate
+    if (gate := _arch_gate(payload)) is not None:
         return gate
     if payload.get("tool_name") != "Bash":
         return None
