@@ -16,7 +16,8 @@ def test_bundle_parses_with_log_commits_and_checks() -> None:
     sess, ledger, report = copilot.parse(BUNDLE)
     assert sess.source == "copilot" and sess.id == "copilot-8821"
     assert sess.cwd == "/workspaces/app" and sess.git_branch == "copilot/cache-settings"
-    assert sess.integrity_score == 1.0
+    # a caller-assembled bundle has no harness signature: class R never reaches 1.0
+    assert sess.integrity_score == 0.8
     assert verify_chain(ledger)
     assert report is not None and "Caches `load_settings()`" in report
     assert not [e for e in ledger if (e.input or {}).get("event") == "no_tool_log"]
