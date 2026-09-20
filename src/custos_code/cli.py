@@ -9,6 +9,7 @@ hook payload at all. See docs/ADAPTERS.md §2 for the payload shapes.
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass
 
 import typer
@@ -157,7 +158,7 @@ def check(
         raise typer.Exit(code=1)
 
 
-def _hook_command(event: str) -> str:
+def _hook_command(event: str, env: dict[str, str] | None = None) -> str:
     """An absolutely-resolved command line for one hook event.
 
     Claude Code runs hooks through a shell that does not inherit this process's PATH, so a bare
@@ -174,18 +175,23 @@ def _hook_command(event: str) -> str:
     args = ["_hook", event]
     script = _sh.which("custos-code")
     if script:
-        return shlex.join([script, *args])
-    return shlex.join([_sys.executable, "-c", "from custos_code.cli import app; app()", *args])
+        line = shlex.join([script, *args])
+    else:
+        line = shlex.join([_sys.executable, "-c", "from custos_code.cli import app; app()", *args])
+    # Quote only the value. `shlex.join` would quote the whole word, and a fully quoted `'A=b'` is
+    # not an assignment to a POSIX shell -- it is a command name, so the hook would not run at all.
+    prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in sorted((env or {}).items()))
+    return prefix + line
 
 
-def hooks_snippet() -> dict[str, object]:
+def hooks_snippet(env: dict[str, str] | None = None) -> dict[str, object]:
     """The settings.json fragment that installs the three hooks, with commands already resolved."""
     return {
         "hooks": {
             "PreToolUse": [
                 {
                     "matcher": "Bash",
-                    "hooks": [{"type": "command", "command": _hook_command("pre"), "timeout": 5}],
+                    "hooks": [{"type": "command", "command": _hook_command("pre", env), "timeout": 5}],
                 }
             ],
             "PostToolUse": [
@@ -194,7 +200,7 @@ def hooks_snippet() -> dict[str, object]:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": _hook_command("post-tool-use"),
+                            "command": _hook_command("post-tool-use", env),
                             "timeout": 10,
                         }
                     ],
@@ -204,12 +210,15 @@ def hooks_snippet() -> dict[str, object]:
                 {
                     "matcher": "",
                     "hooks": [
-                        {"type": "command", "command": _hook_command("stop"), "timeout": 120}
+                        {"type": "command", "command": _hook_command("stop", env), "timeout": 120}
                     ],
                 }
             ],
         }
     }
+
+
+_ENV_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def _is_installed_hook(hook: object) -> bool:
@@ -225,6 +234,15 @@ def _is_installed_hook(hook: object) -> bool:
         args = shlex.split(command)
     except ValueError:
         return False
+    # An installed command may carry leading `VAR=value` assignments -- every hook this repo has
+    # ever written to a real settings.json does (`RECEIPTS_ONLY_IN=...`, now `CUSTOS_CODE_*`).
+    # Those are shell syntax, not the program, so step over them before looking for the binary.
+    # Without this the matcher does not recognise its own prior installs, and `watch --install`
+    # stacks a fresh copy beside the stale one rather than replacing it -- which on this machine
+    # meant three dead pre-rename hooks erroring on every tool call, untouched by the migration
+    # written to remove them.
+    while args and _ENV_ASSIGN_RE.match(args[0]):
+        args.pop(0)
     if len(args) < 3:
         return False
     if pathlib.Path(args[0]).name in ("receipts", "custos-code"):
@@ -245,14 +263,28 @@ def watch(
     install: bool = typer.Option(
         False, "--install", help="Merge the hooks into ~/.claude/settings.json (backup kept)."
     ),
+    only_in: str = typer.Option(
+        "", "--only-in", metavar="DIR",
+        help="Record only in sessions whose cwd is inside DIR. Leave unset to record everywhere.",
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Arm blocking auto mode for the installed hooks (they hold the turn)."
+    ),
 ) -> None:
     """Show (or install) the Claude Code hooks that record every tool call and check each final report."""
     import json as _json
     import os as _os
     import shutil as _shutil
 
+    env: dict[str, str] = {}
+    if only_in.strip():
+        # Resolve now. The hook compares against a realpath, and an install-time `.` or `~/x` would
+        # otherwise mean whatever directory the *agent* happens to be in when the hook fires.
+        env["CUSTOS_CODE_ONLY_IN"] = _os.path.realpath(_os.path.expanduser(only_in.strip()))
+    if auto:
+        env["CUSTOS_CODE_AUTO"] = "1"
     if not install:
-        console.print(_json.dumps(hooks_snippet(), indent=2))
+        console.print(_json.dumps(hooks_snippet(env), indent=2))
         console.print(
             "[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `custos-code watch --install`.[/]"
         )
@@ -265,7 +297,7 @@ def watch(
             data = _json.load(fh)
     hooks = data.setdefault("hooks", {})
     assert isinstance(hooks, dict)
-    snippet = hooks_snippet()["hooks"]
+    snippet = hooks_snippet(env)["hooks"]
     assert isinstance(snippet, dict)
     for ev, entries in snippet.items():
         existing = hooks.setdefault(ev, [])
