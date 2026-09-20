@@ -874,3 +874,38 @@ def arch(
             console.print(f"[yellow]crossing[/] {c.a_label} ↔ {c.b_label}")
             console.print(f"  [dim]{c.paths_a[0]} + {c.paths_b[0]} — "
                           f"no edge between them in {', '.join(a.sources)}[/]")
+
+
+@app.command()
+def scope(
+    command: str = typer.Argument(..., help="The shell command to band, quoted."),
+    repo: str = typer.Option(".", "--repo", help="Treat this directory as the granted cwd."),
+    tool: str = typer.Option("Bash", "--tool", help="Bash | Write | Edit | Read ..."),
+) -> None:
+    """Band one command and say why, without running it.
+
+    The bands only mean something if you can check them against your own judgement on your own
+    commands. `scan` answers this for a whole recorded session, which is the wrong grain for
+    "would it have stopped me typing that" -- the question you actually want answered before
+    switching the gate on.
+    """
+    from . import scope as scope_mod
+
+    pol = scope_mod.Policy.load()
+    grant = scope_mod.Grant.for_session(pathlib.Path(repo).resolve().as_posix(), policy=pol)
+    inp: dict[str, object] = ({"command": command} if tool == "Bash" else {"file_path": command})
+    f = scope_mod.classify(tool, inp, grant, policy=pol)
+
+    colour = {"green": "green", "yellow": "yellow", "red": "red"}[f.band.value]
+    verdict = {"green": "proceeds", "yellow": "asks you first",
+               "red": "refused"}[f.band.value]
+    console.print(f"[{colour}]{f.band.value.upper()}[/] · {verdict}")
+    console.print(f"  rule       {f.rule}")
+    console.print(f"  why        {f.detail}")
+    console.print(f"  recoverable {'yes' if f.recoverable else 'no'}"
+                  f"{'' if f.recoverable else '  (nothing can undo this)'}")
+    if not f.gates:
+        console.print("[dim]  gates     no — this never interrupts, in any mode[/]")
+    else:
+        console.print("[dim]  gates     yes — in `on` mode this would stop the call[/]")
+    console.print(f"[dim]  grant     cwd={grant.cwd}[/]")
