@@ -93,6 +93,85 @@ def install_snippet(shell: str) -> str:
     raise ValueError(f"no recorder snippet for {shell!r}; supported: bash, sh, zsh")
 
 
+# docs/ADAPTERS.md §4 promises this ("non-interactive shells: a PATH-first bash and sh wrapper
+# that logs argv and exit status and execs the real shell") and §7's VERIFY names exactly the gap
+# it closes: "DEBUG trap behaviour inside the shells Claude Code and Codex spawn (they run
+# `bash -c`/`zsh -lc`)". They do not source ~/.bashrc -- POSIX shells only read startup files for
+# interactive or login shells, and `bash -c "cmd"` is neither -- so BASH_SNIPPET's `trap ... DEBUG`
+# and ZSH_SNIPPET's `preexec` hook never attach inside a command an agent spawns this way. Nothing
+# in this module implemented the wrapper before now; `install_snippet` only ever returned the
+# interactive rc-file forms.
+#
+# `{real}` is resolved once, at install time, to an absolute path outside the wrapper's own
+# directory (the same "bake in the real path instead of re-resolving through PATH" idiom already
+# used by `hooks._run.sh`'s `receipts_cmd` and `rerun._worker_argv`) -- re-resolving "bash" via
+# PATH inside the wrapper would just find itself again if its own directory is still first.
+WRAPPER_TEMPLATE = r"""#!/usr/bin/env bash
+# >>> receipts recorder (class M), PATH-first wrapper >>>
+# Installed by `receipts record --wrapper`; intercepts a PATH lookup for {name} that an
+# agent-spawned, non-interactive shell (`{name} -c "cmd"`) would otherwise resolve straight to the
+# real interpreter, invisibly to install_snippet's rc-file hooks. Logs start/end the same way the
+# interactive snippets do (`receipts _record-line`, same wire format), then runs the real {name}
+# and exits with its exact status. Never captures stdout/stderr: those pass straight through.
+REAL="{real}"
+if [ "$1" = "-c" ] && [ "$#" -ge 2 ]; then
+  __RECEIPTS_CMD="$2"
+else
+  __RECEIPTS_CMD="$*"
+fi
+export RECEIPTS_MACHINE_LOG="${{RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}}"
+mkdir -p "$(dirname "$RECEIPTS_MACHINE_LOG")"
+__T0=$(date +%s.%N)
+RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
+  receipts _record-line >> "$RECEIPTS_MACHINE_LOG" 2>/dev/null || true
+"$REAL" "$@"
+__RC=$?
+RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$__RC RECEIPTS_T0="$__T0" \
+  RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
+  receipts _record-line >> "$RECEIPTS_MACHINE_LOG" 2>/dev/null || true
+exit $__RC
+# <<< receipts recorder (class M) <<<
+"""
+
+WRAPPER_DIR = os.path.expanduser("~/.receipts/bin")
+
+
+def wrapper_script(name: str, real_path: str) -> str:
+    """Render the PATH-first wrapper for `name` (`bash` or `sh`), calling through to `real_path`."""
+    return WRAPPER_TEMPLATE.format(name=name, real=real_path)
+
+
+def install_wrapper(bin_dir: str | None = None, which: Any = None) -> dict[str, str]:
+    """Write `bash`/`sh` wrapper scripts into `bin_dir` (default `~/.receipts/bin`), executable,
+    each baked with the real interpreter's current, already-resolved absolute path. Returns
+    {name: written_path}; raises FileNotFoundError naming whichever of bash/sh isn't on PATH at
+    all, since a wrapper with nothing real to call through to would only break the shell.
+
+    Installing the *directory* onto PATH (ahead of the system one) is the caller's job -- this
+    only ever writes files under `bin_dir`, never touches PATH, an rc file, or anything outside it.
+    """
+    import shutil as _shutil
+    import stat
+
+    which = which or _shutil.which
+    target = bin_dir or WRAPPER_DIR
+    os.makedirs(target, exist_ok=True)
+    written: dict[str, str] = {}
+    for name in ("bash", "sh"):
+        real = which(name)
+        if not real or os.path.dirname(os.path.abspath(real)) == os.path.abspath(target):
+            raise FileNotFoundError(
+                f"no real {name!r} found on PATH outside {target} to wrap -- refusing to install "
+                "a wrapper that could only ever call itself"
+            )
+        path = os.path.join(target, name)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(wrapper_script(name, os.path.abspath(real)))
+        os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        written[name] = path
+    return written
+
+
 def default_log(now: datetime | None = None) -> str:
     stamp = (now or datetime.now()).strftime("%Y-%m-%d")
     return os.path.join(LOG_DIR, f"{socket.gethostname().split('.')[0]}-{stamp}.jsonl")

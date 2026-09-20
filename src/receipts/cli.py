@@ -311,10 +311,41 @@ def record(
     install: bool = typer.Option(
         False, "--install", help="Append the snippet to the rc file (backup kept)."
     ),
+    wrapper: bool = typer.Option(
+        False, "--wrapper",
+        help="Also install the PATH-first bash/sh wrapper (docs/ADAPTERS.md §4/§7): the rc-file "
+             "snippet's DEBUG-trap/preexec hooks never attach inside `bash -c \"cmd\"`/`sh -c \"cmd\"` "
+             "-- neither interactive nor login, so it never sources the rc file -- which is exactly "
+             "how Claude Code and Codex spawn commands.",
+    ),
 ) -> None:
     """Class-M recorder: log every shell command, exit status and cwd, with no harness at all."""
     import os as _os
     import shutil as _shutil
+
+    if wrapper:
+        try:
+            written = machine.install_wrapper()
+        except FileNotFoundError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[dim]wrapper installed: {', '.join(written.values())}[/]")
+        path_line = f'export PATH="{machine.WRAPPER_DIR}:$PATH"\n'
+        if install:
+            rc = _os.path.expanduser({"bash": "~/.bashrc", "sh": "~/.profile", "zsh": "~/.zshrc"}[shell])
+            existing = open(rc, encoding="utf-8").read() if _os.path.exists(rc) else ""
+            if "receipts recorder (class M) wrapper" not in existing:
+                with open(rc, "a", encoding="utf-8") as fh:
+                    fh.write(
+                        "\n# >>> receipts recorder (class M) wrapper >>>\n"
+                        f"{path_line}"
+                        "# <<< receipts recorder (class M) wrapper <<<\n"
+                    )
+                console.print(f"[dim]PATH updated in {rc} -- takes effect in new shells only.[/]")
+            else:
+                console.print(f"[dim]wrapper PATH already present in {rc}[/]")
+        else:
+            console.print(f"[dim]Prepend to PATH yourself, or re-run with --install: {path_line.strip()}[/]")
 
     snippet = machine.install_snippet(shell)
     if not install:
