@@ -42,6 +42,21 @@ def test_detect_machine_log(tmp_path) -> None:
     assert adapters.detect(str(path)) == "machine"
 
 
+def test_a_copilot_bundle_with_a_session_id_is_not_read_as_devin(tmp_path) -> None:
+    # both class-R bundles carry pull_request and session.session_id; only Copilot has a workspace
+    path = tmp_path / "bundle.json"
+    path.write_text(
+        json.dumps(
+            {
+                "pull_request": {"number": 7, "body": "done"},
+                "session": {"session_id": "s-1", "workspace": "/workspaces/app"},
+                "log": [],
+            }
+        )
+    )
+    assert adapters.detect(str(path)) == "copilot"
+
+
 def test_parse_routes_through_the_registry() -> None:
     sess, ledger, _ = adapters.parse(os.path.join(GOLDEN, "codex/session.jsonl"))
     assert sess.source == "codex" and ledger

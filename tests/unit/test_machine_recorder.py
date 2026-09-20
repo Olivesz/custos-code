@@ -1,14 +1,14 @@
 """Class M: a shell trap knows status, not stdout, and never who ran the command."""
 
 import json
+import os
 import subprocess
-from datetime import UTC, datetime
 
 import pytest
 
 from receipts.adapters import machine
 from receipts.ledger import verify_chain
-from receipts.models import EventFlags, EventKind, LedgerEvent
+from receipts.models import EventKind
 
 
 def _log(tmp_path, rows: list[dict]) -> str:
@@ -106,41 +106,26 @@ def test_foreign_lines_are_ignored(tmp_path) -> None:
     assert len(ledger) == 1
 
 
-def _result(seq: int, command: str, ts: float, exit_code: int | None) -> LedgerEvent:
-    return LedgerEvent(
-        seq=seq,
-        session_id="s",
-        kind=EventKind.RESULT,
-        tool="Bash",
-        ts=datetime.fromtimestamp(ts, tz=UTC),
-        input={"command": command},
-        exit_code=exit_code,
-        flags=EventFlags(),
-    )
+def test_no_cross_ledger_merge_is_exposed() -> None:
+    # borrowing exit codes from this log into a harness ledger would need a re-chain and a marker
+    # on every borrowed row (invariant 1); until that exists the join is deliberately absent
+    assert not hasattr(machine, "merge_exit_codes")
 
 
-def test_merge_only_fills_gaps_and_only_when_the_match_is_unambiguous() -> None:
-    harness = [
-        _result(0, "pytest -q", 1000.0, None),  # gap: one machine row nearby
-        _result(1, "make build", 2000.0, 0),  # already known: never overwritten
-        _result(2, "ruff check", 3000.0, None),
-    ]  # two candidates: too ambiguous to join
-    machine_rows = [
-        _result(0, "pytest -q", 1001.0, 1),
-        _result(1, "make build", 2001.0, 9),
-        _result(2, "ruff check", 3001.0, 0),
-        _result(3, "ruff check", 3002.0, 1),
+def test_record_line_falls_back_to_the_calling_shell_for_pid() -> None:
+    line = json.loads(machine.record_line({"RECEIPTS_EVENT": "start", "RECEIPTS_CMD": "ls"}))
+    assert line["pid"] == os.getppid() and line["ppid"] is None
+
+
+def test_pairing_survives_a_repeated_command(tmp_path) -> None:
+    rows = [
+        _row(event="start", ts=1.0, cmd="pytest -q", pid=100),
+        _row(event="end", ts=2.0, cmd="pytest -q", pid=100, exit=0),
+        _row(event="start", ts=3.0, cmd="pytest -q", pid=100),
+        _row(event="end", ts=4.0, cmd="pytest -q", pid=100, exit=1),
     ]
-    assert machine.merge_exit_codes(harness, machine_rows) == 1
-    assert harness[0].exit_code == 1 and harness[0].flags.error
-    assert harness[1].exit_code == 0
-    assert harness[2].exit_code is None
-
-
-def test_merge_respects_the_time_window() -> None:
-    harness = [_result(0, "pytest -q", 1000.0, None)]
-    assert machine.merge_exit_codes(harness, [_result(0, "pytest -q", 1100.0, 1)]) == 0
-    assert harness[0].exit_code is None
+    _, ledger, _ = machine.parse(_log(tmp_path, rows))
+    assert [e.exit_code for e in ledger if e.kind is EventKind.RESULT] == [0, 1]
 
 
 def test_snippets_exist_for_supported_shells_only() -> None:
@@ -155,3 +140,15 @@ def test_bash_snippet_is_syntactically_valid() -> None:
         ["bash", "-n"], input=machine.install_snippet("bash"), text=True, capture_output=True
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_bash_snippet_does_not_word_split_the_command() -> None:
+    # RECEIPTS_CMD=$__RECEIPTS_CMD unquoted would record `pytest` and drop `-q` into argv
+    script = machine.install_snippet("bash").replace("receipts _record-line", "env")
+    proc = subprocess.run(
+        ["bash", "-c", f'{script}\n__RECEIPTS_CMD="pytest -q"; __receipts_precmd'],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "RECEIPTS_MACHINE_LOG": "/dev/stdout"},
+    )
+    assert "RECEIPTS_CMD=pytest -q" in proc.stdout, proc.stdout or proc.stderr

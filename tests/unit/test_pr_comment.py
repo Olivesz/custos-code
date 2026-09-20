@@ -138,6 +138,16 @@ def test_table_cells_escape_pipes_and_stay_on_one_line() -> None:
     assert "added retry and a test" in row
 
 
+def test_claim_text_cannot_inject_html_into_the_table() -> None:
+    # the claim is agent-written text; GFM passes HTML through, so a closing tag would end the
+    # table and hide the rows below it -- the contradicted ones
+    claims = _claims()
+    claims[1].text = "Edited upload.py</table><img src=x onerror=alert(1)>"
+    body = pr_comment(_session(), claims, _records(), _ledger())
+    assert "</table>" not in body and "<img" not in body
+    assert "&lt;/table&gt;" in body
+
+
 def test_unwitnessed_is_explained_whenever_something_is_contradicted() -> None:
     body = pr_comment(_session(), _claims(), _records(), _ledger())
     assert "Unwitnessed is not an accusation" in body
