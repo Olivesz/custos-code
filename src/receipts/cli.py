@@ -5,6 +5,7 @@ directly); it is not a user-facing command. Its subcommands either read one hook
 stdin, or -- `rerun-worker` only -- take their identity as positional args since they have no
 hook payload at all. See docs/ADAPTERS.md §2 for the payload shapes.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -22,26 +23,50 @@ from . import verdicts as verdicts_mod
 from .adapters import claude_code, codex, machine
 from .models import Claim, EventKind, Verdict, VerdictRecord
 
-MARK = {Verdict.CONFIRMED: ("✓", "green"), Verdict.CONTRADICTED: ("✗", "red"), Verdict.UNWITNESSED: ("?", "yellow"),
-        Verdict.UNRECORDED: ("○", "bright_black"), Verdict.QUALIFIED: ("≈", "cyan")}
+MARK = {
+    Verdict.CONFIRMED: ("✓", "green"),
+    Verdict.CONTRADICTED: ("✗", "red"),
+    Verdict.UNWITNESSED: ("?", "yellow"),
+    Verdict.UNRECORDED: ("○", "bright_black"),
+    Verdict.QUALIFIED: ("≈", "cyan"),
+}
 
-app = typer.Typer(help="Check a coding agent's final report against what it actually did.", no_args_is_help=True)
+app = typer.Typer(
+    help="Check a coding agent's final report against what it actually did.", no_args_is_help=True
+)
 console = Console()
 
 
 @app.command()
 def check(
-    session: str | None = typer.Argument(None, help="Path to a session transcript, rollout, or bundle."),
-    last: bool = typer.Option(False, "--last", help="Use the most recent session of --agent (default Claude Code)."),
-    agent: str | None = typer.Option(None, "--agent",
-                                     help="claude_code | codex | devin | copilot | machine | otel (default: detect)."),
+    session: str | None = typer.Argument(
+        None, help="Path to a session transcript, rollout, or bundle."
+    ),
+    last: bool = typer.Option(
+        False, "--last", help="Use the most recent session of --agent (default Claude Code)."
+    ),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        help="claude_code | codex | devin | copilot | machine | otel (default: detect).",
+    ),
     events: bool = typer.Option(False, "--events", help="Also print the ledger."),
-    evidence: bool = typer.Option(False, "--evidence", help="Print the cited ledger lines under each claim."),
-    repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
-    rules_only: bool = typer.Option(False, "--rules-only", help="Deterministic rules only; no model call."),
-    ladder: bool = typer.Option(False, "--ladder", help="Use the superseded tiered pipeline instead of review."),
+    evidence: bool = typer.Option(
+        False, "--evidence", help="Print the cited ledger lines under each claim."
+    ),
+    repo: str | None = typer.Option(
+        None, "--repo", help="Repo root for state checks (default: the session's cwd)."
+    ),
+    rules_only: bool = typer.Option(
+        False, "--rules-only", help="Deterministic rules only; no model call."
+    ),
+    ladder: bool = typer.Option(
+        False, "--ladder", help="Use the superseded tiered pipeline instead of review."
+    ),
     fmt: str = typer.Option("terminal", "--format", help="terminal | markdown | html"),
-    out_path: str | None = typer.Option(None, "--out", help="Write the rendered receipt to a file."),
+    out_path: str | None = typer.Option(
+        None, "--out", help="Write the rendered receipt to a file."
+    ),
 ) -> None:
     """Print the receipt for one session: every claim in the final report, with its verdict and evidence."""
     if last:
@@ -53,8 +78,10 @@ def check(
     flagged = sum(1 for e in ledger if e.flags.piped or e.flags.truncated or e.flags.error)
 
     if fmt == "terminal":
-        console.print(f"[bold]receipts[/] session {sess.id[:8]}… · {sess.n_events} events · {calls} tool calls · "
-                      f"{flagged} flagged · chain {sess.ledger_root_hash[:8]}… · cwd {sess.cwd}")
+        console.print(
+            f"[bold]receipts[/] session {sess.id[:8]}… · {sess.n_events} events · {calls} tool calls · "
+            f"{flagged} flagged · chain {sess.ledger_root_hash[:8]}… · cwd {sess.cwd}"
+        )
         if events:
             t = Table(show_header=True, header_style="dim")
             for col in ("#", "kind", "tool", "detail", "flags"):
@@ -62,7 +89,12 @@ def check(
             for e in ledger:
                 detail = ""
                 if e.kind == EventKind.CALL and e.input:
-                    detail = str(e.input.get("command") or e.input.get("file_path") or e.input.get("path") or "")[:90]
+                    detail = str(
+                        e.input.get("command")
+                        or e.input.get("file_path")
+                        or e.input.get("path")
+                        or ""
+                    )[:90]
                 elif e.output:
                     detail = e.output.replace("\n", " ⏎ ")[:90]
                 fl = " ".join(k for k, v in e.flags.model_dump().items() if v)
@@ -83,23 +115,36 @@ def check(
         tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
     else:
         if backend is None and not rules_only:
-            console.print("[yellow]no model backend: set OPENAI_API_KEY; falling back to rules only[/]")
+            console.print(
+                "[yellow]no model backend: set OPENAI_API_KEY; falling back to rules only[/]"
+            )
         claims = claims_mod.extract(report, sess.id)
         recs = verdicts_mod.run(claims, ledger, repo or sess.cwd, backend)
-        tail = "rules only" if backend is None else f"rules + judge · {backend.usage.requests} requests"
+        tail = (
+            "rules only"
+            if backend is None
+            else f"rules + judge · {backend.usage.requests} requests"
+        )
 
     if fmt == "markdown":
         text = report_mod.markdown(claims, recs, source=f"{sess.source} session {sess.id[:8]}")
     elif fmt == "html":
-        text = report_mod.html_card(claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}")
+        text = report_mod.html_card(
+            claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}"
+        )
     else:
         report_mod.terminal(claims, recs, ledger, console, show_evidence=evidence)
         console.print(f"[dim]  {tail}[/]")
         text = None
 
     if out_path:
-        body = text if text is not None else report_mod.html_card(
-            claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}")
+        body = (
+            text
+            if text is not None
+            else report_mod.html_card(
+                claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}"
+            )
+        )
         pathlib.Path(out_path).write_text(body, encoding="utf-8")
         console.print(f"[dim]wrote {out_path}[/]")
     elif text is not None:
@@ -111,15 +156,36 @@ def check(
 
 HOOKS_SNIPPET = {
     "hooks": {
-        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "receipts _hook pre", "timeout": 5}]}],
-        "PostToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": "receipts _hook post-tool-use", "timeout": 10}]}],
-        "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "receipts _hook stop", "timeout": 120}]}],
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [{"type": "command", "command": "receipts _hook pre", "timeout": 5}],
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {"type": "command", "command": "receipts _hook post-tool-use", "timeout": 10}
+                ],
+            }
+        ],
+        "Stop": [
+            {
+                "matcher": "",
+                "hooks": [{"type": "command", "command": "receipts _hook stop", "timeout": 120}],
+            }
+        ],
     }
 }
 
 
 @app.command()
-def watch(install: bool = typer.Option(False, "--install", help="Merge the hooks into ~/.claude/settings.json (backup kept).")) -> None:
+def watch(
+    install: bool = typer.Option(
+        False, "--install", help="Merge the hooks into ~/.claude/settings.json (backup kept)."
+    ),
+) -> None:
     """Show (or install) the Claude Code hooks that record every tool call and check each final report."""
     import json as _json
     import os as _os
@@ -127,7 +193,9 @@ def watch(install: bool = typer.Option(False, "--install", help="Merge the hooks
 
     if not install:
         console.print(_json.dumps(HOOKS_SNIPPET, indent=2))
-        console.print("[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `receipts watch --install`.[/]")
+        console.print(
+            "[dim]Add to ~/.claude/settings.json (or .claude/settings.json in a repo), or run `receipts watch --install`.[/]"
+        )
         return
     path = _os.path.expanduser("~/.claude/settings.json")
     data: dict[str, object] = {}
@@ -164,15 +232,26 @@ def _hook(
 
 @app.command(name="pr-comment")
 def pr_comment(
-    session: str = typer.Argument(..., help="Session transcript or class-R bundle (Devin/Copilot) for the PR."),
+    session: str = typer.Argument(
+        ..., help="Session transcript or class-R bundle (Devin/Copilot) for the PR."
+    ),
     agent: str | None = typer.Option(None, "--agent", help="Adapter to use (default: detect)."),
-    out: str | None = typer.Option(None, "--out", help="Write the markdown here instead of stdout."),
-    repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
+    out: str | None = typer.Option(
+        None, "--out", help="Write the markdown here instead of stdout."
+    ),
+    repo: str | None = typer.Option(
+        None, "--repo", help="Repo root for state checks (default: the session's cwd)."
+    ),
     pr_url: str | None = typer.Option(None, "--pr-url", help="Link back to the PR in the footer."),
     receipt_url: str | None = typer.Option(None, "--receipt-url", help="Link to the full receipt."),
-    rules_only: bool = typer.Option(False, "--rules-only", help="Deterministic rules only; no model call."),
-    fail_on_contradiction: bool = typer.Option(False, "--fail-on-contradiction",
-                                               help="Exit 1 when a claim is contradicted (for a required check)."),
+    rules_only: bool = typer.Option(
+        False, "--rules-only", help="Deterministic rules only; no model call."
+    ),
+    fail_on_contradiction: bool = typer.Option(
+        False,
+        "--fail-on-contradiction",
+        help="Exit 1 when a claim is contradicted (for a required check).",
+    ),
 ) -> None:
     """Render the PR receipt as markdown (product sketch B); the Action posts what this prints."""
     sess, ledger, report = adapters_mod.parse(session, agent)
@@ -195,7 +274,9 @@ def pr_comment(
 @app.command()
 def record(
     shell: str = typer.Option("bash", "--shell", help="bash | zsh | sh: which rc snippet to emit."),
-    install: bool = typer.Option(False, "--install", help="Append the snippet to the rc file (backup kept)."),
+    install: bool = typer.Option(
+        False, "--install", help="Append the snippet to the rc file (backup kept)."
+    ),
 ) -> None:
     """Class-M recorder: log every shell command, exit status and cwd, with no harness at all."""
     import os as _os
@@ -204,8 +285,10 @@ def record(
     snippet = machine.install_snippet(shell)
     if not install:
         print(snippet)
-        console.print(f"[dim]Append to your rc file, or run `receipts record --shell {shell} --install`. "
-                      f"Log: {machine.default_log()}[/]")
+        console.print(
+            f"[dim]Append to your rc file, or run `receipts record --shell {shell} --install`. "
+            f"Log: {machine.default_log()}[/]"
+        )
         return
     rc = _os.path.expanduser({"bash": "~/.bashrc", "sh": "~/.profile", "zsh": "~/.zshrc"}[shell])
     if _os.path.exists(rc):
@@ -227,10 +310,16 @@ def _record_line() -> None:
 
 @app.command()
 def cost(
-    session: str | None = typer.Argument(None, help="Path to a session transcript (Claude Code JSONL)."),
+    session: str | None = typer.Argument(
+        None, help="Path to a session transcript (Claude Code JSONL)."
+    ),
     last: bool = typer.Option(False, "--last", help="Use the most recent Claude Code session."),
-    repo: str | None = typer.Option(None, "--repo", help="Repo root for state checks (default: the session's cwd)."),
-    judge: bool = typer.Option(False, "--judge", help="Escalate semantic claims to the Tier 4 judge (needs an API key)."),
+    repo: str | None = typer.Option(
+        None, "--repo", help="Repo root for state checks (default: the session's cwd)."
+    ),
+    judge: bool = typer.Option(
+        False, "--judge", help="Escalate semantic claims to the Tier 4 judge (needs an API key)."
+    ),
     json_out: bool = typer.Option(False, "--json", help="Print JSON instead of a table."),
 ) -> None:
     """Tokens and dollars by tier for one session."""
@@ -244,7 +333,9 @@ def cost(
     cl = claims_mod.extract(report or "", sess.id)
     backend = judge_mod.make_backend() if judge else None
     if judge and backend is None:
-        console.print("[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic)[/]")
+        console.print(
+            "[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic)[/]"
+        )
     recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
     usage = backend.usage if backend is not None else None
     c = cost_mod.compute(sess.id, recs, ledger, judge_usage=usage)
@@ -253,10 +344,12 @@ def cost(
     else:
         console.print(cost_mod.render_table(c))
 
+
 @app.command()
 def demo(
-    scenario: str = typer.Option("piped-runner", "--scenario",
-                                 help="piped-runner | echoed-output | ghost-write | honest"),
+    scenario: str = typer.Option(
+        "piped-runner", "--scenario", help="piped-runner | echoed-output | ghost-write | honest"
+    ),
     out_path: str | None = typer.Option(None, "--out", help="Also write an HTML report card here."),
 ) -> None:
     """Run the whole loop on a known trap: the agent's claim, the evidence, the verdict, the nudge.
@@ -268,12 +361,18 @@ def demo(
 
     from . import feedback as feedback_mod
 
-    picks = {"piped-runner": "trap_piped_0", "echoed-output": "trap_echo_0",
-             "ghost-write": "trap_ghost_0", "honest": "ok_tests_0"}
+    picks = {
+        "piped-runner": "trap_piped_0",
+        "echoed-output": "trap_echo_0",
+        "ghost-write": "trap_ghost_0",
+        "honest": "ok_tests_0",
+    }
     name = picks.get(scenario)
     if name is None:
         raise typer.BadParameter(f"scenario must be one of {', '.join(picks)}")
-    fixture = pathlib.Path(__file__).resolve().parents[2] / "eval" / "arms" / "fixtures" / f"{name}.jsonl"
+    fixture = (
+        pathlib.Path(__file__).resolve().parents[2] / "eval" / "arms" / "fixtures" / f"{name}.jsonl"
+    )
     if not fixture.exists():
         console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
         raise typer.Exit(code=2)
@@ -305,21 +404,35 @@ def demo(
     report_mod.terminal(reviewed.claims, reviewed.verdicts, ledger, console, show_evidence=True)
     console.print(f"[dim]  one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out[/]")
 
-    open_pairs = [(c, r) for c, r in zip(reviewed.claims, reviewed.verdicts, strict=True)
-                  if r.verdict.value in ("contradicted", "unrecorded")]
+    open_pairs = [
+        (c, r)
+        for c, r in zip(reviewed.claims, reviewed.verdicts, strict=True)
+        if r.verdict.value in ("contradicted", "unrecorded")
+    ]
     console.rule("[bold]5. what goes back to the agent")
     if open_pairs:
         reason = feedback_mod.build_block_reason(open_pairs, ledger, 1, 3)
-        console.print(f"  [red]stop blocked[/] — {len(open_pairs)} claim(s) need work, nudge is a "
-                      f"template, [bold]0 LLM tokens[/]")
+        console.print(
+            f"  [red]stop blocked[/] — {len(open_pairs)} claim(s) need work, nudge is a "
+            f"template, [bold]0 LLM tokens[/]"
+        )
         for line in reason.splitlines()[1:]:
             console.print(f"  [dim]{line[:160]}[/]")
         console.print(f"\n  [dim]hook returns:[/] {_json.dumps({'decision': 'block'})}")
     else:
-        console.print("  [green]nothing blocked[/] — every claim is confirmed or disclosed; the agent stops normally.")
+        console.print(
+            "  [green]nothing blocked[/] — every claim is confirmed or disclosed; the agent stops normally."
+        )
 
     if out_path:
         pathlib.Path(out_path).write_text(
-            report_mod.html_card(reviewed.claims, reviewed.verdicts, ledger, report=report or "",
-                                 title=f"Receipt · {scenario}"), encoding="utf-8")
+            report_mod.html_card(
+                reviewed.claims,
+                reviewed.verdicts,
+                ledger,
+                report=report or "",
+                title=f"Receipt · {scenario}",
+            ),
+            encoding="utf-8",
+        )
         console.print(f"\n[dim]report card written to {out_path}[/]")
