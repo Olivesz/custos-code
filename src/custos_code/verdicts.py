@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 
 from . import claims as claims_mod
@@ -81,7 +82,7 @@ def apply_reruns(
         ctype = claim.type
         if ctype == ClaimType.OTHER:
             ctype = claims_mod.classify(claim.text) or ClaimType.OTHER
-        if ctype != ClaimType.RUN_TESTS or claim.polarity != "did" or rec.verdict not in (
+        if ctype not in _RERUNNABLE or claim.polarity != "did" or rec.verdict not in (
             Verdict.UNWITNESSED, Verdict.UNRECORDED,
         ):
             settled.append(rec)
@@ -93,6 +94,7 @@ def apply_reruns(
             if (event.kind != EventKind.RERUN or event.tool != "rerun_tests"
                     or event.session_id != claim.session_id or event.flags.sidechain
                     or meta.get("claim_id") != claim.id or meta.get("claim_text") != claim.text
+                    or meta.get("claim_kind", "run_tests") != ctype.value
                     or not isinstance(boundary, int)
                     or event.seq <= boundary):
                 continue
@@ -111,7 +113,14 @@ def apply_reruns(
         qualifier = None
         flags = event.flags
         if not (flags.timed_out or flags.interrupted or flags.truncated or flags.piped):
-            if parsed is not None and event.exit_code is not None:
+            if ctype == ClaimType.BUILD:
+                if event.exit_code == 0 and not flags.error:
+                    verdict = Verdict.CONFIRMED
+                    why = "Tier 3 build completed successfully."
+                elif event.exit_code not in (None, 0, 126, 127):
+                    verdict = Verdict.CONTRADICTED
+                    why = f"Tier 3 build failed (exit {event.exit_code})."
+            elif parsed is not None and event.exit_code is not None:
                 if parsed.failed or parsed.errors or parsed.collected == 0:
                     verdict = Verdict.CONTRADICTED
                     why = (f"Tier 3 {parsed.runner}: {parsed.passed} passed, "
@@ -202,7 +211,7 @@ RERUN_BUDGET_PER_SESSION = 2
 
 # Claim types a re-execution can actually settle. Re-running proves a suite passes; it cannot
 # prove a file was edited, a commit was made, or a page was read.
-_RERUNNABLE = frozenset({ClaimType.RUN_TESTS})
+_RERUNNABLE = frozenset({ClaimType.RUN_TESTS, ClaimType.BUILD})
 
 
 def _tree_key(repo_root: str) -> str | None:
@@ -256,7 +265,7 @@ def should_rerun(claim: Claim, rec: VerdictRecord, repo_root: str | None,
     if not os.path.isdir(os.path.join(repo_root, ".git")) and \
             not os.path.isfile(os.path.join(repo_root, ".git")):
         return False
-    if rerun_mod._detect_test_command(repo_root) is None:
+    if rerun_command(claim, repo_root) is None:
         return False
     seen = already if already is not None else set()
     if len(seen) >= budget:
@@ -269,3 +278,19 @@ def rerun_key(claim: Claim, repo_root: str) -> str | None:
     """The dedupe key `should_rerun` checks, for a caller to record after launching."""
     key = _tree_key(repo_root)
     return f"{claim.id}:{key}" if key else None
+
+
+def rerun_kind(claim: Claim) -> ClaimType:
+    return (claims_mod.classify(claim.text) or ClaimType.OTHER
+            if claim.type == ClaimType.OTHER else claim.type)
+
+
+def rerun_command(claim: Claim, repo_root: str) -> list[str] | None:
+    """Choose a committed command only for the check the claim actually describes."""
+    ctype = rerun_kind(claim)
+    if ctype not in _RERUNNABLE:
+        return None
+    # BUILD also includes lint/typechecking; a successful build cannot verify those.
+    if ctype == ClaimType.BUILD and not re.search(r"\b(?:build|built|compil\w*)\b", claim.text, re.I):
+        return None
+    return rerun_mod.detect_command(repo_root, ctype.value)

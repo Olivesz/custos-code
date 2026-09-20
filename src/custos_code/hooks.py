@@ -514,7 +514,9 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
             key = verdicts_mod.rerun_key(c, repo)
             try:
                 # report_seq anchors the RERUN event after the evidence it re-checks
-                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq, claim_text=c.text)
+                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq, claim_text=c.text,
+                                   cmd=verdicts_mod.rerun_command(c, repo),
+                                   claim_kind=verdicts_mod.rerun_kind(c).value)
             except Exception as e:  # noqa: BLE001 - a failed launch must not fail the turn
                 print(f"receipts: rerun launch failed ({type(e).__name__}); skipping.", file=sys.stderr)
                 continue

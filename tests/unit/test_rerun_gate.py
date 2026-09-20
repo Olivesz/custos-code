@@ -16,7 +16,7 @@ import subprocess
 import pytest
 
 from custos_code.models import Claim, ClaimType, Verdict, VerdictRecord
-from custos_code.verdicts import RERUN_BUDGET_PER_SESSION, rerun_key, should_rerun
+from custos_code.verdicts import RERUN_BUDGET_PER_SESSION, rerun_command, rerun_key, should_rerun
 
 
 def _claim(t: ClaimType = ClaimType.RUN_TESTS, cid: str = "c1") -> Claim:
@@ -40,6 +40,28 @@ def repo(tmp_path: pathlib.Path) -> pathlib.Path:
 
 def test_it_runs_when_a_rerun_could_settle_the_claim(repo: pathlib.Path) -> None:
     assert should_rerun(_claim(), _rec(), str(repo)) is True
+
+
+def test_build_claims_use_a_committed_build_command(tmp_path: pathlib.Path) -> None:
+    repo = tmp_path / "build-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "package.json").write_text('{"scripts": {"build": "vite build"}}\n',
+                                       encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+                   cwd=repo, check=True)
+    claim = _claim(ClaimType.BUILD).model_copy(update={"text": "The build is clean."})
+
+    assert should_rerun(claim, _rec(), str(repo)) is True
+    assert rerun_command(claim, str(repo)) == ["npm", "run", "build", "--silent"]
+
+
+def test_build_claims_do_not_fall_back_to_test_command(repo: pathlib.Path) -> None:
+    claim = _claim(ClaimType.BUILD).model_copy(update={"text": "The build is clean."})
+
+    assert should_rerun(claim, _rec(), str(repo)) is False
+    assert rerun_command(claim, str(repo)) is None
 
 
 @pytest.mark.parametrize("verdict", [Verdict.CONFIRMED, Verdict.CONTRADICTED, Verdict.QUALIFIED])

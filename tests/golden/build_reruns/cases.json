@@ -1,0 +1,6 @@
+[
+  {"name":"completed build","event":{"exit_code":0},"verdict":"confirmed"},
+  {"name":"failed build","event":{"exit_code":1},"verdict":"contradicted"},
+  {"name":"missing build runner","event":{"exit_code":null},"verdict":"unrecorded"},
+  {"name":"truncated build result","event":{"exit_code":0,"flags":{"truncated":true}},"verdict":"unrecorded"}
+]

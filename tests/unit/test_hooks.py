@@ -13,6 +13,7 @@ FIXTURE = os.path.join(os.path.dirname(__file__), "..", "golden", "claude_code",
 
 def _use_home(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(hooks, "HOME", str(tmp_path / ".custos-code"))
+    monkeypatch.setenv("HOME", str(tmp_path))
 
 
 def test_post_tool_use_appends_call_and_result(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
