@@ -11,6 +11,7 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 
 import typer
 from rich.console import Console
@@ -40,6 +41,29 @@ app = typer.Typer(
     help="Check a coding agent's final report against what it actually did.", no_args_is_help=True
 )
 console = Console()
+
+
+def _print_version(show: bool) -> None:
+    if not show:
+        return
+    # Read from the installed package's own metadata, not a literal here, so this can never say
+    # something other than what was actually installed -- a hardcoded string drifts the moment a
+    # release changes pyproject.toml without someone remembering this one too.
+    try:
+        console.print(f"custos-code {version('custos-code')}")
+    except PackageNotFoundError:
+        console.print("custos-code (unknown version: not installed as a package)")
+    raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version_: bool = typer.Option(
+        False, "--version", "-V", callback=_print_version, is_eager=True,
+        help="Print the installed version and exit.",
+    ),
+) -> None:
+    return
 
 
 @app.command()
