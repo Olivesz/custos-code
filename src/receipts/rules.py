@@ -412,7 +412,20 @@ def rule_did_not_touch(claim: Claim, ledger: list[LedgerEvent], state: RepoState
         return _rec(claim, Verdict.CONTRADICTED, 1, "state", [], f"git shows changes under {', '.join(objs)}.")
     if all(c is False for c in ch):
         return _rec(claim, Verdict.CONFIRMED, 1, "state", [], f"No edit events and git shows no change under {', '.join(objs)}.")
-    return _rec(claim, Verdict.CONFIRMED, 1, "rule", [], "No edit events on the named paths; repo state unavailable.", 0.7)
+    # No edit events, and no repo to check against. That is NOT a confirmation: a negative claim
+    # ("I did not touch X") is backed by the repository, not by our own silence, and with no
+    # `state` check there is nothing a reader could verify -- the record would carry an empty
+    # evidence list. verdicts._enforce rejects exactly this shape, and it is right to.
+    #
+    # Found on a real session (5f8a60d1) where the claim was a mis-extracted pytest flag,
+    # `-o python_files=<name>`, read as a path. Confirming a negative about a path we cannot
+    # resolve is how a checker starts agreeing with things it has not established.
+    #
+    # `unwitnessed` is the conservative answer: it never blocks and is never an accusation, so the
+    # cost of being wrong here is a mark the agent can clear by checking the path itself.
+    return _rec(claim, Verdict.UNWITNESSED, 1, "rule", [],
+                "No edit events on the named paths, but the repo state could not be read, so the "
+                "absence of a change is not established.", 0.7)
 
 
 Rule = Callable[[Claim, list[LedgerEvent], RepoState], VerdictRecord | None]
