@@ -8,7 +8,7 @@ Owner: Ananya (recruitment, scheduling, running sessions). Metrics computed by A
 
 ### 1. The problem is real and common (prevalence)
 - **Bench:** per-model false-report rate on the reproducible traps (`bench/`), N ≥ 10 runs per trap per model, 95% Wilson intervals. Report `qualified` separately from `contradicted`.
-- **Wild:** Receipts run over a SWE-chat sample (≥ 300 sessions) and over donated sessions. Report the share of sessions with ≥ 1 contradicted claim, ≥ 1 unwitnessed claim, ≥ 1 pipe/truncation flag. Report conditional-on-failure rates where the session outcome is known.
+- **Wild:** Custos Code run over a SWE-chat sample (≥ 300 sessions) and over donated sessions. Report the share of sessions with ≥ 1 contradicted claim, ≥ 1 unwitnessed claim, ≥ 1 pipe/truncation flag. Report conditional-on-failure rates where the session outcome is known.
 - **Honest framing:** the wild per-session rate of a provably false claim may be low. We report it either way.
 
 ### 2. The checker is right (accuracy)
@@ -22,10 +22,10 @@ Owner: Ananya (recruitment, scheduling, running sessions). Metrics computed by A
 **Timed verification task (within-subject, counterbalanced).**
 - Participants: 8–12 developers who use Claude Code, Codex, Cursor, or Copilot agent at least weekly.
 - Materials: 6 real or bench sessions, each with the agent's report and the repo state. Half contain at least one false or qualified claim; half are honest.
-- Task: "Decide whether you would merge this. Say which claims in the report you trust." Once with only the report and the repo (manual verification), once with the Receipts output. Order and session assignment counterbalanced.
+- Task: "Decide whether you would merge this. Say which claims in the report you trust." Once with only the report and the repo (manual verification), once with the Custos Code output. Order and session assignment counterbalanced.
 - Measures: time to decision (seconds); decision accuracy against ground truth; claims correctly flagged; confidence (1–5).
-- Pre-registered hypothesis: median time to decision falls by ≥ 40% with Receipts, and accuracy does not fall.
-- Cost: `receipts cost` per session, reported next to the time saved; compare to the participant's own estimate of their hourly cost only if they volunteer it.
+- Pre-registered hypothesis: median time to decision falls by ≥ 40% with Custos Code, and accuracy does not fall.
+- Cost: `custos-code cost` per session, reported next to the time saved; compare to the participant's own estimate of their hourly cost only if they volunteer it.
 
 **One-week install (retention).**
 - Same participants install the Stop hook for one week.
@@ -46,7 +46,7 @@ Channels, in order of expected yield:
 4. Hacker News "Show HN" after the event.
 5. Discord servers for Claude Code, Cursor, Codex (ask, do not scrape).
 
-Script for the ask (keep it under 60 words): what it is, that it runs locally, that we redact secrets at ingest, that we need 20 minutes and, optionally, five recent session logs, and what they get (their own receipts, early access, a name in the thanks if they want it).
+Script for the ask (keep it under 60 words): what it is, that it runs locally, that we redact secrets at ingest, that we need 20 minutes and, optionally, five recent session logs, and what they get (their own custos-code, early access, a name in the thanks if they want it).
 
 ## Consent and data handling
 - Written consent for the timed task and the install week; participants can withdraw and have their data deleted.
@@ -57,7 +57,7 @@ Script for the ask (keep it under 60 words): what it is, that it runs locally, t
 ## What goes on the slides (and nowhere else if we did not measure it)
 1. Per-model false-report rate on the traps, with intervals.
 2. Gold-set precision/recall/κ, baseline vs judge.
-3. Median time-to-decision with vs without Receipts, n, and accuracy.
+3. Median time-to-decision with vs without Custos Code, n, and accuracy.
 4. Retention at day 7 and the number of real corrections observed.
 5. Cost per session by tier.
 

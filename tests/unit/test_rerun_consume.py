@@ -15,16 +15,16 @@ import pathlib
 
 import pytest
 
-import receipts.hooks as h
-import receipts.rerun as rerun
-from receipts.models import EventFlags, EventKind, LedgerEvent
+import custos_code.hooks as h
+import custos_code.rerun as rerun
+from custos_code.models import EventFlags, EventKind, LedgerEvent
 
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(h, "HOME", str(tmp_path / ".receipts"))
     monkeypatch.setenv("HOME", str(tmp_path))       # rerun._rerun_dir uses Path.home()
-    monkeypatch.delenv("RECEIPTS_ONLY_IN", raising=False)
+    monkeypatch.delenv("CUSTOS_CODE_ONLY_IN", raising=False)
 
 
 def _write_result(sid: str, claim_id: str, output: str) -> None:

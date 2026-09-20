@@ -4,7 +4,7 @@ name: receipt
 # reads before the diff. The comment is edited in place (marker in the body), never stacked.
 #
 # The session log is whichever of these the agent left behind, first match wins:
-#   1. a `receipts-session` artifact from a successful run, of this repo's own session workflow,
+#   1. a `custos-code-session` artifact from a successful run, of this repo's own session workflow,
 #      on the head SHA -- a fork cannot define the workflow that produces it,
 #   2. for a remote agent (Devin, Copilot), a class-R bundle built here from the PR, its commits
 #      and its check runs -- no tool log, so shell claims come out `unrecorded`, not confirmed.
@@ -57,9 +57,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          # the only workflow whose `receipts-session` artifact is trusted; it must live in this
+          # the only workflow whose `custos-code-session` artifact is trusted; it must live in this
           # repo, so a fork PR cannot define a run that uploads a ledger of its own choosing
-          SESSION_WORKFLOW: ${{ vars.RECEIPTS_SESSION_WORKFLOW || 'ci' }}
+          SESSION_WORKFLOW: ${{ vars.CUSTOS_CODE_SESSION_WORKFLOW || 'ci' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -74,7 +74,7 @@ jobs:
               | select(.conclusion == "success")
               | select(.head_repository.full_name == $repo)]
              | .[0].id // "" | tostring' "$RUNNER_TEMP/runs.json")
-          if [ -n "$run_id" ] && gh run download "$run_id" --repo "$REPO" --name receipts-session \
+          if [ -n "$run_id" ] && gh run download "$run_id" --repo "$REPO" --name custos-code-session \
                --dir "$RUNNER_TEMP/evidence" 2>/dev/null; then
             file=$(find "$RUNNER_TEMP/evidence" -type f \( -name '*.jsonl' -o -name '*.json' \) | head -1)
           else
@@ -106,9 +106,9 @@ jobs:
       - name: Render the receipt
         env:
           # invariant 9: the deterministic tiers are the default. The judge sends the PR body to a
-          # third party, so it is opt-in per repo (vars.RECEIPTS_JUDGE) and still needs the key.
-          OPENAI_API_KEY: ${{ vars.RECEIPTS_JUDGE == 'true' && secrets.OPENAI_API_KEY || '' }}
-          JUDGE: ${{ vars.RECEIPTS_JUDGE }}
+          # third party, so it is opt-in per repo (vars.CUSTOS_CODE_JUDGE) and still needs the key.
+          OPENAI_API_KEY: ${{ vars.CUSTOS_CODE_JUDGE == 'true' && secrets.OPENAI_API_KEY || '' }}
+          JUDGE: ${{ vars.CUSTOS_CODE_JUDGE }}
           AGENT: ${{ steps.evidence.outputs.agent }}
           FILE: ${{ steps.evidence.outputs.file }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -118,7 +118,7 @@ jobs:
           args=()
           if [ -n "${AGENT:-}" ]; then args+=(--agent "$AGENT"); fi
           if [ "${JUDGE:-}" != "true" ] || [ -z "${OPENAI_API_KEY:-}" ]; then args+=(--rules-only); fi
-          uv run receipts pr-comment "$FILE" "${args[@]}" \
+          uv run custos-code pr-comment "$FILE" "${args[@]}" \
             --pr-url "$PR_URL" \
             --out "$RUNNER_TEMP/receipt.md"
 
@@ -130,7 +130,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          marker='<!-- receipts-bot: pr-receipt -->'
+          marker='<!-- custos-code-bot: pr-receipt -->'
           existing=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" \
             --jq "[.[] | select(.body | contains(\"$marker\"))] | .[0].id // empty")
           if [ -n "$existing" ]; then

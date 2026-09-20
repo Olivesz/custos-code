@@ -1,4 +1,4 @@
-# Copy to ~/.receipts/config.toml. Nothing here is secret; keys come from the environment.
+# Copy to ~/.custos-code/config.toml. Nothing here is secret; keys come from the environment.
 [judge]
 backend = "openai"            # "openai" | "anthropic"  (NEEDS-DECISION(oliver): confirm default per sponsor strategy)
 openai_extractor_model = ""   # NEEDS-DECISION(oliver): smallest current model with structured outputs; check price list
@@ -25,7 +25,7 @@ enabled = false               # local by default; do not change without docs/pri
 
 [compress]
 enabled = false                # off by default: judge-window-only pre-processor (Token Company bear-2).
-                                # RECEIPTS_TTC_API_KEY alone is not enough to turn this on -- it changes
+                                # CUSTOS_CODE_TTC_API_KEY alone is not enough to turn this on -- it changes
                                 # what evidence the judge sees, so it needs an explicit yes here too.
 model = "bear-2"
 

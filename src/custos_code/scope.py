@@ -101,7 +101,7 @@ class Grant:
     def for_session(cwd: str, named: tuple[str, ...] = (), approved: tuple[str, ...] = ()) -> Grant:
         scratch = [os.path.realpath(p) for p in
                    (os.environ.get("TMPDIR", "/tmp"), "/tmp", "/private/tmp",
-                    os.path.expanduser("~/.receipts")) if p]
+                   os.path.expanduser("~/.custos-code")) if p]
         root = os.path.realpath(os.path.expanduser(cwd)) if cwd else ""
         # Scratch roots are kept whole. An earlier version dropped any root that CONTAINED the
         # project -- which deleted /tmp from the list whenever cwd was anywhere beneath it, so
@@ -135,7 +135,7 @@ def _under(path: str, root: str) -> bool:
     """True when `path` is inside `root`.
 
     `os.path.commonpath`, never `startswith`: `/x/proj-evil` is not inside `/x/proj`, and a
-    prefix test says it is. Same bug class as the RECEIPTS_ONLY_IN fence in hooks.py.
+    prefix test says it is. Same bug class as the CUSTOS_CODE_ONLY_IN fence in hooks.py.
     """
     if not root:
         return False

@@ -1,11 +1,11 @@
-# Receipts
+# Custos Code
 
 Checks a coding agent's final report against the log of what it actually did.
 
-An agent finishes and says "implemented the feature, ran the tests, all passing." Receipts reads the harness-written action log, splits the report into claims, and marks each one **confirmed**, **contradicted**, **unwitnessed**, **unrecorded**, or **qualified**, with the ledger lines that back the verdict. Contradictions go back to the agent before it is allowed to stop.
+An agent finishes and says "implemented the feature, ran the tests, all passing." Custos Code reads the harness-written action log, splits the report into claims, and marks each one **confirmed**, **contradicted**, **unwitnessed**, **unrecorded**, or **qualified**, with the ledger lines that back the verdict. Contradictions go back to the agent before it is allowed to stop.
 
 ```
-receipts  session 4f2a… · 63 events
+custos-code  session 4f2a… · 63 events
   ✓ confirmed     edited auth/middleware.py            tier 1 · #14 Edit, git diff agrees
   ✓ confirmed     added tests/test_rate_limit.py        tier 1 · #31 Write, file present
   ✗ contradicted  ran the suite, all 12 passing         tier 2 · #41 `pytest | tail -5` exit 0, "collected 0 items"
@@ -28,9 +28,9 @@ Pre-build. The design, research, plan, and evidence protocol are in `docs/`. Sta
 ```bash
 uv sync
 export OPENAI_API_KEY=...
-uv run receipts demo                 # the whole loop on a known trap, live
-uv run receipts demo --scenario honest   # the control: nothing blocks
-uv run receipts check --last         # your own most recent session
+uv run custos-code demo                 # the whole loop on a known trap, live
+uv run custos-code demo --scenario honest   # the control: nothing blocks
+uv run custos-code check --last         # your own most recent session
 ```
 
 `demo` prints five things from the fixture's own tool log: what was asked, what the agent actually
@@ -55,7 +55,7 @@ with Homebrew: `brew install uv`. From the repository directory:
 uv python install
 make sync
 make check
-uv run receipts check --last
+uv run custos-code check --last
 ```
 
 `.python-version` selects Python 3.12, independently of your shell's pyenv or
@@ -73,12 +73,12 @@ the [uv integration guide](https://docs.astral.sh/uv/guides/integration/github/)
 With Docker installed and running, build from the repository root:
 
 ```bash
-docker build -t receipts-bench .
-docker run --rm --network none receipts-bench
-docker run --rm --network none receipts-bench python -m pytest --version
+docker build -t custos-code-bench .
+docker run --rm --network none custos-code-bench
+docker run --rm --network none custos-code-bench python -m pytest --version
 ```
 
-The image contains Python 3.12, uv 0.12.17, git, the installed Receipts package,
+The image contains Python 3.12, uv 0.12.17, git, the installed Custos Code package,
 developer dependencies, and scenario descriptions under `/app/bench/scenarios`.
 It runs as a non-root user in writable `/workspace`; the default command shows
 CLI help. The benchmark orchestration and fixture repos are not implemented
@@ -92,7 +92,7 @@ that fixture (including its git metadata when state checks need it):
 ```bash
 docker run --rm --network none \
   --mount type=bind,src="$(pwd)/path/to/fixture",dst=/workspace,readonly \
-  receipts-bench python -m pytest -p no:cacheprovider
+  custos-code-bench python -m pytest -p no:cacheprovider
 ```
 
 This read-only example suits tests that do not write into the fixture. Agent

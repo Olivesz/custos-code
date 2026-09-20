@@ -1,5 +1,5 @@
-from receipts.claims import classify, extract_regex, sentences
-from receipts.models import ClaimType
+from custos_code.claims import classify, extract_regex, sentences
+from custos_code.models import ClaimType
 
 REPORT = (
     "Implemented sliding-window rate limiting in auth/middleware.py and added 12 tests in "

@@ -1,8 +1,8 @@
 """Renderers: same verdicts in, three surfaces out, marks never drift between them."""
 from datetime import datetime
 
-from receipts.models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
-from receipts.report import MARK, html_card, markdown, tally
+from custos_code.models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
+from custos_code.report import MARK, html_card, markdown, tally
 
 TS = datetime(2026, 9, 19)
 

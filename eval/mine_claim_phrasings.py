@@ -30,9 +30,9 @@ from dataclasses import dataclass
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from receipts import claims as claims_mod  # noqa: E402
-from receipts.adapters import claude_code  # noqa: E402
-from receipts.ledger import redact  # noqa: E402
+from custos_code import claims as claims_mod  # noqa: E402
+from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.ledger import redact  # noqa: E402
 
 _LEADING_RE = re.compile(r"^\W*(?:I\W*ve|I\W*d|I\W*ll|I|we|we\W*ve|the\s+\w+)?\W*([a-z][a-z'-]*)", re.IGNORECASE)
 

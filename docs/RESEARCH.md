@@ -103,7 +103,7 @@ Vendors have converged on transparency, not verification. The table records what
 
 | Vendor | Attaches the action log | Checks the final report against it |
 |---|---|---|
-| **Claude Code** | Session JSONL on disk; hooks receive `transcript_path`; 30+ hook events; `/verify` builds and runs the app on demand; Compliance API exposes transcripts for eDiscovery ([hooks](https://code.claude.com/docs/en/hooks); [compliance](https://platform.claude.com/docs/en/manage-claude/compliance-sessions)) | No. Managed Code Review has "a verification step" that checks the *reviewer's* findings against code, never blocks merge, costs $15 to 25 per review ([Code Review](https://code.claude.com/docs/en/code-review)). No "receipts" or self-check feature in the changelog. |
+| **Claude Code** | Session JSONL on disk; hooks receive `transcript_path`; 30+ hook events; `/verify` builds and runs the app on demand; Compliance API exposes transcripts for eDiscovery ([hooks](https://code.claude.com/docs/en/hooks); [compliance](https://platform.claude.com/docs/en/manage-claude/compliance-sessions)) | No. Managed Code Review has "a verification step" that checks the *reviewer's* findings against code, never blocks merge, costs $15 to 25 per review ([Code Review](https://code.claude.com/docs/en/code-review)). No "custos-code" or self-check feature in the changelog. |
 | **Cursor** | In-app transcript; Bugbot reads diffs | No. Bugbot "analyzes pull request diffs, not test execution"; `stop` hook cannot block ([Bugbot](https://cursor.com/docs/bugbot)) |
 | **Codex** | Launch post promised "citations, terminal logs, and test results with each task"; current cloud docs say only "review the summary and diff" ([Codex Cloud](https://learn.chatgpt.com/docs/cloud)) | No documented step |
 | **Copilot coding agent** | Strongest attachment: every commit links to session logs showing tools used to "validate its work" ([GitHub](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/track-copilot-sessions)) | No automatic step; you can *ask* Copilot "what was validated" and a model answers from the log |
@@ -124,7 +124,7 @@ Formal verification makes the absence of a spec a hard stop by construction. Age
 |---|---|---|---|
 | Log (harness transcript) | Claude Code JSONL, Codex rollout JSONL, Copilot session logs, Entire, SpecStory, Compliance API | No | No |
 | Log (independent of harness) | AgentSight, flightrec, Tracon, agent-trace probes | No | No |
-| Tamper-evidence | AgentLens, MakerChecker, TRACE spec, YYLO receipts, IETF agent-audit-trail draft | No | No |
+| Tamper-evidence | AgentLens, MakerChecker, TRACE spec, YYLO custos-code, IETF agent-audit-trail draft | No | No |
 | Show to a human | All flight recorders, HANSEL, Devin replay | No | No |
 | Score vs reference trajectory | agentevals match modes, AgentLens PTA | No | Yes (reference) |
 | Score vs rubric (LLM judge) | Phoenix, Datadog, Galileo, Maxim, TruLens, Braintrust, Langfuse, Docent | Only if user writes the prompt | Rubric |

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from receipts import rerun
-from receipts.models import EventKind
-from receipts.rerun import rerun_tests
+from custos_code import rerun
+from custos_code.models import EventKind
+from custos_code.rerun import rerun_tests
 
 
 def _init_repo(path: Path) -> Path:

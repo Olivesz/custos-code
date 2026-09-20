@@ -1,4 +1,4 @@
-"""E12: `receipts cost --path review|ladder|judge-all`. No live API key needed -- every judge
+"""E12: `custos-code cost --path review|ladder|judge-all`. No live API key needed -- every judge
 call goes through a stub backend that mimics the OpenAI Responses shape review.py/judge.py read.
 """
 from __future__ import annotations
@@ -11,10 +11,10 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from receipts import compress as compress_mod
-from receipts import judge as judge_mod
-from receipts.cli import app
-from receipts.models import Claim, Verdict, VerdictRecord
+from custos_code import compress as compress_mod
+from custos_code import judge as judge_mod
+from custos_code.cli import app
+from custos_code.models import Claim, Verdict, VerdictRecord
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "golden", "claude_code", "session.jsonl")
 runner = CliRunner()
@@ -82,7 +82,7 @@ def test_path_ladder_needs_no_backend_and_reports_rules(monkeypatch: Any) -> Non
     monkeypatch.setattr(judge_mod, "make_backend", lambda *a, **k: None)
     result = runner.invoke(app, ["cost", FIXTURE, "--path", "ladder"])
     assert result.exit_code == 0, result.output
-    assert "receipts cost" in result.output
+    assert "custos-code cost" in result.output
     assert "TOTAL" in result.output
 
 

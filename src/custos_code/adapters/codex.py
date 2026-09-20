@@ -429,7 +429,7 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
 
 
 def find_last_session(sessions_dir: str | None = None) -> str:
-    """Most recently modified rollout under ~/.codex/sessions (for `receipts check --last`)."""
+    """Most recently modified rollout under ~/.codex/sessions (for `custos-code check --last`)."""
     root = sessions_dir or os.path.expanduser("~/.codex/sessions")
     files = glob.glob(os.path.join(root, "**", "rollout-*.jsonl"), recursive=True)
     if not files:

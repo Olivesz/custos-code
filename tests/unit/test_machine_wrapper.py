@@ -16,25 +16,25 @@ from pathlib import Path
 
 import pytest
 
-from receipts.adapters import machine
+from custos_code.adapters import machine
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs a real bash")
 
 
-def _receipts_on_path(env: dict[str, str]) -> dict[str, str]:
-    """The wrapper shells out to `receipts _record-line`; make sure it can find this checkout's.
+def _custos_code_on_path(env: dict[str, str]) -> dict[str, str]:
+    """The wrapper shells out to `custos-code _record-line`; make sure it can find this checkout's.
 
-    When `receipts` isn't resolvable at all (this checkout's `.venv/bin` not on the test runner's
+    When `custos-code` isn't resolvable at all (this checkout's `.venv/bin` not on the test runner's
     own PATH), the wrapper's `|| true` swallows that silently and the test would see an empty log
     and fail on an assertion that looks unrelated to the real cause. Skip instead, with the real
-    reason -- the wrapper's own silent-no-op-on-a-broken-`receipts` behavior is itself a gap
+    reason -- the wrapper's own silent-no-op-on-a-broken-`custos-code` behavior is itself a gap
     worth having a name for, not something a test failure should stand in for.
     """
-    receipts_bin = shutil.which("receipts")
-    if not receipts_bin:
-        pytest.skip("no `receipts` console script on PATH; can't exercise the wrapper's own call to it")
+    custos_code_bin = shutil.which("custos-code")
+    if not custos_code_bin:
+        pytest.skip("no `custos-code` console script on PATH; can't exercise the wrapper's own call to it")
     env = dict(env)
-    env["PATH"] = os.path.dirname(receipts_bin) + os.pathsep + env["PATH"]
+    env["PATH"] = os.path.dirname(custos_code_bin) + os.pathsep + env["PATH"]
     return env
 
 
@@ -43,7 +43,7 @@ def test_install_wrapper_writes_executable_scripts(tmp_path: Path) -> None:
     assert set(written) == {"bash", "sh"}
     for path in written.values():
         assert os.access(path, os.X_OK)
-        assert "receipts recorder" in Path(path).read_text()
+        assert "custos-code recorder" in Path(path).read_text()
 
 
 def test_install_wrapper_refuses_to_wrap_itself(tmp_path: Path) -> None:
@@ -60,8 +60,8 @@ def test_install_wrapper_refuses_when_no_real_shell_exists(tmp_path: Path) -> No
 
 def test_wrapped_bash_preserves_exit_code_and_stdio(tmp_path: Path) -> None:
     written = machine.install_wrapper(str(tmp_path))
-    env = _receipts_on_path(dict(os.environ))
-    env["RECEIPTS_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
+    env = _custos_code_on_path(dict(os.environ))
+    env["CUSTOS_CODE_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
     r = subprocess.run([written["bash"], "-c", "echo hi; echo err >&2; exit 7"],
                        env=env, capture_output=True, text=True, timeout=15)
     assert r.returncode == 7
@@ -72,8 +72,8 @@ def test_wrapped_bash_preserves_exit_code_and_stdio(tmp_path: Path) -> None:
 def test_wrapped_bash_logs_the_dash_c_command_not_the_flag(tmp_path: Path) -> None:
     written = machine.install_wrapper(str(tmp_path))
     log = tmp_path / "log.jsonl"
-    env = _receipts_on_path(dict(os.environ))
-    env["RECEIPTS_MACHINE_LOG"] = str(log)
+    env = _custos_code_on_path(dict(os.environ))
+    env["CUSTOS_CODE_MACHINE_LOG"] = str(log)
     subprocess.run([written["bash"], "-c", "true"], env=env, capture_output=True, text=True, timeout=15)
     rows = [json.loads(line) for line in log.read_text().splitlines()]
     assert [r["event"] for r in rows] == ["start", "end"]
@@ -84,8 +84,8 @@ def test_wrapped_bash_logs_the_dash_c_command_not_the_flag(tmp_path: Path) -> No
 def test_wrapped_bash_round_trips_through_machine_parse(tmp_path: Path) -> None:
     written = machine.install_wrapper(str(tmp_path))
     log = tmp_path / "log.jsonl"
-    env = _receipts_on_path(dict(os.environ))
-    env["RECEIPTS_MACHINE_LOG"] = str(log)
+    env = _custos_code_on_path(dict(os.environ))
+    env["CUSTOS_CODE_MACHINE_LOG"] = str(log)
     subprocess.run([written["bash"], "-c", "echo from-wrapper"], env=env,
                    capture_output=True, text=True, timeout=15)
     sess, ledger, report = machine.parse(str(log))
@@ -100,8 +100,8 @@ def test_wrapped_bash_round_trips_through_machine_parse(tmp_path: Path) -> None:
 
 def test_wrapped_sh_also_works(tmp_path: Path) -> None:
     written = machine.install_wrapper(str(tmp_path))
-    env = _receipts_on_path(dict(os.environ))
-    env["RECEIPTS_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
+    env = _custos_code_on_path(dict(os.environ))
+    env["CUSTOS_CODE_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
     r = subprocess.run([written["sh"], "-c", "exit 5"], env=env, capture_output=True, text=True, timeout=15)
     assert r.returncode == 5
 
@@ -119,8 +119,8 @@ def test_wrapper_dir_first_on_path_does_not_recurse(tmp_path: Path) -> None:
     configuration the earlier `#!/usr/bin/env bash` shebang bricked.
     """
     written = machine.install_wrapper(str(tmp_path))
-    env = _receipts_on_path(dict(os.environ))
-    env["RECEIPTS_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
+    env = _custos_code_on_path(dict(os.environ))
+    env["CUSTOS_CODE_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
     env["PATH"] = str(tmp_path) + os.pathsep + env["PATH"]
     r = subprocess.run(["bash", "-c", "echo hi; exit 3"], env=env,
                        capture_output=True, text=True, timeout=15)

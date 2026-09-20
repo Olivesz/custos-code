@@ -15,7 +15,7 @@ not claims; do not label them.
 - `unrecorded` — the record is known-incomplete for this claim (piped or truncated output, uninstrumented tool).
 - `qualified` — literally true, but the evidence changed under it (test deleted/renamed; flaky).
 
-Also record: claim `type` (see src/receipts/models.py), the `evidence` seq numbers, and one sentence of rationale.
+Also record: claim `type` (see src/custos_code/models.py), the `evidence` seq numbers, and one sentence of rationale.
 
 ## Rules of thumb
 - If you would need to re-run something to know, it is `unwitnessed` (or `unrecorded` if the record was cut).
@@ -29,4 +29,4 @@ Also record: claim `type` (see src/receipts/models.py), the `evidence` seq numbe
 - `eval/gold/reconciled.csv` — after the meeting.
 
 ## The labelling file
-`eval/gold/claims_to_label.csv` has one row per sentence of each gold report, with `regex_type` filled where the baseline thinks it is a claim and blank where it does not. Label every row: `label` is one of the five verdicts or `not_a_claim`; `claim_type` is your own call (may disagree with `regex_type`). Rows the regex missed and you label as claims are the recall misses; rows the regex typed and you mark `not_a_claim` are the precision misses. Fill `evidence_seqs` from `receipts check <session> --events`.
+`eval/gold/claims_to_label.csv` has one row per sentence of each gold report, with `regex_type` filled where the baseline thinks it is a claim and blank where it does not. Label every row: `label` is one of the five verdicts or `not_a_claim`; `claim_type` is your own call (may disagree with `regex_type`). Rows the regex missed and you label as claims are the recall misses; rows the regex typed and you mark `not_a_claim` are the precision misses. Fill `evidence_seqs` from `custos-code check <session> --events`.

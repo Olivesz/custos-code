@@ -20,9 +20,9 @@ E4 (async in the Stop hook): `rerun_tests` itself is a blocking call that can ta
 `timeout_s`, far past the ~10 s the product wants the Stop hook to feel responsive within. The
 Stop hook (cli.py `_hook stop`) never calls it directly: it calls `spawn_async`, which returns
 immediately after handing the run to a detached subprocess, and blocks only on what Tier 0-2
-already settled synchronously. The subprocess's entry point is `receipts _hook rerun-worker`
+already settled synchronously. The subprocess's entry point is `custos-code _hook rerun-worker`
 (cli.py), which calls `run_worker` here. Whatever Stop hook pass (or the extension, or
-`receipts check`) runs later picks the result up with `poll`/`load_result` -- there is no path
+`custos-code check`) runs later picks the result up with `poll`/`load_result` -- there is no path
 back into the Stop call that spawned it, since Claude Code hooks are one-shot request/response
 and that call has already returned.
 
@@ -135,7 +135,7 @@ def rerun_tests(
     it has it. `cmd` overrides auto-detection (E3) when the caller already knows the exact
     command; otherwise the command is auto-detected from HEAD's own committed config markers.
     """
-    with tempfile.TemporaryDirectory(prefix="receipts-rerun-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="custos-code-rerun-") as tmp:
         worktree = Path(tmp) / "worktree"
         _materialize_worktree(repo_root, worktree)
         try:
@@ -160,7 +160,7 @@ def rerun_tests(
                     timed_out = True
                     stdout = exc.stdout if isinstance(exc.stdout, str) else ""
                     stderr = exc.stderr if isinstance(exc.stderr, str) else ""
-                    output = f"{stdout}{stderr}\n[receipts] timed out after {timeout_s}s"
+                    output = f"{stdout}{stderr}\n[custos-code] timed out after {timeout_s}s"
                     exit_code = None
             duration_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
         finally:
@@ -196,7 +196,7 @@ def rerun_tests(
 
 
 def _sessions_root() -> Path:
-    return Path.home() / ".receipts" / "sessions"
+    return Path.home() / ".custos-code" / "sessions"
 
 
 def _rerun_dir(session_id: str) -> Path:
@@ -209,14 +209,14 @@ def _rerun_dir(session_id: str) -> Path:
 def _worker_argv(session_id: str, claim_id: str) -> list[str]:
     """How to launch the detached worker without assuming `uv` or `python` is on PATH.
 
-    There is no receipts/__main__.py, so the fallback goes through the console-script entry point
+    There is no custos-code/__main__.py, so the fallback goes through the console-script entry point
     (pyproject.toml [project.scripts]) via -c rather than -m.
     """
     args = ["_hook", "rerun-worker", session_id, claim_id]
-    script = shutil.which("receipts")
+    script = shutil.which("custos-code")
     if script:
         return [script, *args]
-    return [sys.executable, "-c", "from receipts.cli import app; app()", *args]
+    return [sys.executable, "-c", "from custos_code.cli import app; app()", *args]
 
 
 def spawn_async(
@@ -230,13 +230,13 @@ def spawn_async(
     """Launch Tier 3 detached and return immediately; never blocks the caller (E4).
 
     Idempotent: a claim already pending or already settled is not re-spawned. The child is its
-    own `receipts` invocation (`_hook rerun-worker`) rather than an in-process fork, so it
+    own `custos-code` invocation (`_hook rerun-worker`) rather than an in-process fork, so it
     survives this process's own exit the same way any other backgrounded shell job would.
 
     VERIFY(E4): does Claude Code kill the Stop hook's process group when the hook script exits,
     and does `start_new_session=True` survive that? If not, the worker needs to be launched by
     something whose lifecycle Claude Code doesn't own (e.g. a small daemon started by
-    `receipts watch`) instead of a child of the hook process. Not resolved here; revisit if the
+    `custos-code watch`) instead of a child of the hook process. Not resolved here; revisit if the
     result file is ever observed to go missing.
     """
     d = _rerun_dir(session_id)

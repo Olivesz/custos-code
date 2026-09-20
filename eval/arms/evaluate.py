@@ -23,8 +23,8 @@ from concurrent.futures import ThreadPoolExecutor
 import openai
 
 sys.path.insert(0, "src")
-from receipts.adapters import claude_code  # noqa: E402
-from receipts.review import SCHEMA, SYSTEM, annotate  # noqa: E402
+from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.review import SCHEMA, SYSTEM, annotate  # noqa: E402
 
 HERE = pathlib.Path(__file__).parent
 TRUTH = json.loads((HERE / "truth.json").read_text())
@@ -43,7 +43,7 @@ Cite log line numbers for anything but unwitnessed. Quote each claim verbatim fr
 
 
 def raw(ledger) -> str:
-    from receipts.models import EventKind
+    from custos_code.models import EventKind
     out = []
     for e in ledger:
         if e.kind == EventKind.CALL:

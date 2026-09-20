@@ -40,7 +40,7 @@ to every arm, which is why the first run undercounted: sessions whose checkout h
 been deleted were dropped even though their report and ledger are still perfectly readable. It also
 said nothing about *whose* sessions they were -- `~/.claude/projects/*/*.jsonl` spans every project
 on the machine, including ones that have nothing to do with this repo. Default scope is this
-repo's own root (or `RECEIPTS_ONLY_IN`, the same env var `hooks.py` already uses to keep an agent
+repo's own root (or `CUSTOS_CODE_ONLY_IN`, the same env var `hooks.py` already uses to keep an agent
 under test from reading its own audit config, if set); pass `--roots` for a different, explicit
 choice. Nothing here executes anything in any of them -- only `claude_code.parse` on an already
 recorded transcript -- so this scoping is about honesty and consent (whose sessions end up in a
@@ -67,12 +67,12 @@ from arms.evaluate import wilson  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.table import Table  # noqa: E402
 
-from receipts import claims as claims_mod  # noqa: E402
-from receipts import judge as judge_mod  # noqa: E402
-from receipts import review as review_mod  # noqa: E402
-from receipts.adapters import claude_code  # noqa: E402
-from receipts.models import LedgerEvent, Verdict, VerdictRecord  # noqa: E402
-from receipts.verdicts import run as verdicts_run  # noqa: E402
+from custos_code import claims as claims_mod  # noqa: E402
+from custos_code import judge as judge_mod  # noqa: E402
+from custos_code import review as review_mod  # noqa: E402
+from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.models import LedgerEvent, Verdict, VerdictRecord  # noqa: E402
+from custos_code.verdicts import run as verdicts_run  # noqa: E402
 
 console = Console()
 REPO_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -97,8 +97,8 @@ class TierResult:
 
 
 def _default_roots() -> list[str]:
-    """`RECEIPTS_ONLY_IN` if set (same env var `hooks._out_of_scope` reads), else this repo."""
-    env = os.environ.get("RECEIPTS_ONLY_IN", "").strip()
+    """`CUSTOS_CODE_ONLY_IN` if set (same env var `hooks._out_of_scope` reads), else this repo."""
+    env = os.environ.get("CUSTOS_CODE_ONLY_IN", "").strip()
     if env:
         return [os.path.realpath(os.path.expanduser(p)) for p in env.split(os.pathsep) if p.strip()]
     return [REPO_ROOT]
@@ -176,7 +176,7 @@ def tier_rules_plus_judge(sessions: list[Session], backend: object | None) -> Ti
 def tier_review(sessions: list[Session], backend: object | None) -> TierResult:
     """`review.review()`: the actual shipping default (cli.py, no `--ladder`, backend present).
     Its own LLM extraction, not `extract_regex` -- a different claim set than the other two arms,
-    on purpose, because that's what running `receipts check` for real gets you."""
+    on purpose, because that's what running `custos-code check` for real gets you."""
     tr = TierResult("review (shipping default)")
     if backend is None:
         tr.skipped = True
@@ -211,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else "")
     ap.add_argument("--roots", default=None,
                     help=f"Comma-separated dirs to scope the corpus to (default: "
-                         f"$RECEIPTS_ONLY_IN if set, else this repo: {REPO_ROOT}).")
+                         f"$CUSTOS_CODE_ONLY_IN if set, else this repo: {REPO_ROOT}).")
     ap.add_argument("--backend", default=None, help="openai | anthropic (default: judge.make_backend()'s own).")
     args = ap.parse_args(argv)
 

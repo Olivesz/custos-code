@@ -2,24 +2,24 @@ import json
 import os
 from pathlib import Path
 
-from receipts import hooks
-from receipts.claims import extract_regex
-from receipts.feedback import build_block_reason, nudge
-from receipts.models import Verdict
-from receipts.verdicts import run
+from custos_code import hooks
+from custos_code.claims import extract_regex
+from custos_code.feedback import build_block_reason, nudge
+from custos_code.models import Verdict
+from custos_code.verdicts import run
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "golden", "claude_code", "session.jsonl")
 
 
 def _use_home(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr(hooks, "HOME", str(tmp_path / ".receipts"))
+    monkeypatch.setattr(hooks, "HOME", str(tmp_path / ".custos-code"))
 
 
 def test_post_tool_use_appends_call_and_result(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _use_home(tmp_path, monkeypatch)
     hooks.on_post_tool_use({"session_id": "s1", "cwd": "/w", "tool_name": "Bash", "tool_use_id": "t1",
                             "tool_input": {"command": "pytest | tail -5"}, "tool_response": "collected 0 items"})
-    live = tmp_path / ".receipts" / "live" / "s1.jsonl"
+    live = tmp_path / ".custos-code" / "live" / "s1.jsonl"
     lines = [json.loads(line) for line in live.read_text().splitlines()]
     assert [x["kind"] for x in lines] == ["call", "result"]
     assert lines[1]["flags"]["piped"] is True and lines[1]["output"] == "collected 0 items"
@@ -31,10 +31,10 @@ def test_pre_tool_use_wraps_runner_to_a_file_not_stdout(tmp_path: Path, monkeypa
                                  "tool_input": {"command": "pytest -q"}})
     assert out is not None
     wrapped = out["hookSpecificOutput"]["updatedInput"]["command"]
-    assert "RECEIPTS_RC_FILE=" in wrapped
-    assert "__RECEIPTS_RC=" not in wrapped  # issue #22: not the legacy stdout-marker form
+    assert "CUSTOS_CODE_RC_FILE=" in wrapped
+    assert "__CUSTOS_CODE_RC=" not in wrapped  # issue #22: not the legacy stdout-marker form
 
-    pending_path = tmp_path / ".receipts" / "rc_pending" / "s2.json"
+    pending_path = tmp_path / ".custos-code" / "rc_pending" / "s2.json"
     pending = json.loads(pending_path.read_text())
     assert list(pending) == ["tu1"]
 
@@ -54,7 +54,7 @@ def test_pre_and_post_tool_use_round_trip_the_rc_file(tmp_path: Path, monkeypatc
     out = hooks.on_pre_tool_use({"session_id": "s4", "tool_name": "Bash", "tool_use_id": "tu2",
                                  "tool_input": {"command": "pytest -q"}})
     assert out is not None
-    pending_path = tmp_path / ".receipts" / "rc_pending" / "s4.json"
+    pending_path = tmp_path / ".custos-code" / "rc_pending" / "s4.json"
     # The entry carries the rc path AND the agent's original command, so PostToolUse can record
     # what the agent ran rather than our rewrite of it. Go through the unpacker rather than
     # hard-coding the encoding here.
@@ -68,7 +68,7 @@ def test_pre_and_post_tool_use_round_trip_the_rc_file(tmp_path: Path, monkeypatc
                             "tool_input": {"command": out["hookSpecificOutput"]["updatedInput"]["command"]},
                             "tool_response": "5 passed"})
 
-    live = tmp_path / ".receipts" / "live" / "s4.jsonl"
+    live = tmp_path / ".custos-code" / "live" / "s4.jsonl"
     call, result = (json.loads(line) for line in live.read_text().splitlines())
     assert call["input"]["resolved_bin"] == "/usr/bin/pytest"
     assert call["input"]["command"] == "pytest -q", "the ledger must quote the agent, not our wrapper"
@@ -84,14 +84,14 @@ def test_stop_manual_mode_writes_receipt_and_does_not_block(tmp_path: Path, monk
     out = hooks.on_stop({"session_id": "11111111-2222-3333-4444-555555555555", "transcript_path": FIXTURE, "cwd": str(tmp_path),
                          "last_assistant_message": "I ran the full suite, all 12 passing. Ready to merge.", "stop_hook_active": False})
     assert out is None
-    receipt = (tmp_path / ".receipts" / "receipts" / "11111111-2222-3333-4444-555555555555.txt").read_text()
+    receipt = (tmp_path / ".custos-code" / "custos-code" / "11111111-2222-3333-4444-555555555555.txt").read_text()
     assert "unrecorded" in receipt and "piped" in receipt
 
 
 def test_stop_auto_mode_blocks_with_deterministic_nudges(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _use_home(tmp_path, monkeypatch)
-    (tmp_path / ".receipts").mkdir()
-    (tmp_path / ".receipts" / "config.toml").write_text('[tiers]\nauto = true\nauto_max_passes = 2\n')
+    (tmp_path / ".custos-code").mkdir()
+    (tmp_path / ".custos-code" / "config.toml").write_text('[tiers]\nauto = true\nauto_max_passes = 2\n')
     payload = {"session_id": "11111111-2222-3333-4444-555555555555", "transcript_path": FIXTURE, "cwd": str(tmp_path),
                "last_assistant_message": "I ran the full suite, all 12 passing, lint is clean, and verified the endpoint manually with curl.",
                "stop_hook_active": False}
@@ -106,7 +106,7 @@ def test_stop_auto_mode_blocks_with_deterministic_nudges(tmp_path: Path, monkeyp
 
 
 def test_nudge_templates_are_deterministic() -> None:
-    from receipts.adapters import claude_code
+    from custos_code.adapters import claude_code
 
     sess, ledger, report = claude_code.parse(FIXTURE)
     claims = extract_regex(report or "", sess.id)
@@ -123,8 +123,8 @@ def test_nudge_templates_are_deterministic() -> None:
 def test_rewording_without_new_evidence_does_not_clear(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """A claim that was open, then 'confirms' on evidence older than the nudge, stays open."""
     _use_home(tmp_path, monkeypatch)
-    (tmp_path / ".receipts").mkdir()
-    (tmp_path / ".receipts" / "config.toml").write_text("[tiers]\nauto = true\nauto_max_passes = 3\n")
+    (tmp_path / ".custos-code").mkdir()
+    (tmp_path / ".custos-code" / "config.toml").write_text("[tiers]\nauto = true\nauto_max_passes = 3\n")
     sid = "11111111-2222-3333-4444-555555555555"
     # pass 1: the create claim is open because repo state is unavailable (unwitnessed)
     p1 = {"session_id": sid, "transcript_path": FIXTURE, "cwd": "/nonexistent",

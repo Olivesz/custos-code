@@ -3,7 +3,7 @@ record): calls bear-2 (Token Company, "we only ever delete", <50 ms, cache-safe)
 rendered ledger window before it reaches the Tier 4 prompt.
 
 Off by default. `make_compressor` returns `None` -- meaning "skip this, use `judge.render_window`
-unmodified" -- unless BOTH `[compress].enabled = true` in config AND `RECEIPTS_TTC_API_KEY` is
+unmodified" -- unless BOTH `[compress].enabled = true` in config AND `CUSTOS_CODE_TTC_API_KEY` is
 set. Key presence alone is deliberately not enough: unlike `judge.make_backend`, where a present
 key is a reasonable signal to turn the judge itself on, this changes what evidence the judge
 *sees*, so it needs an explicit yes in config too.
@@ -40,7 +40,7 @@ from typing import Any
 from . import judge
 from .models import LedgerEvent
 
-HOME = os.path.expanduser("~/.receipts")
+HOME = os.path.expanduser("~/.custos-code")
 
 
 def _config() -> dict[str, Any]:
@@ -97,7 +97,7 @@ class Compressor:
 
 def enabled(cfg: dict[str, Any] | None = None) -> bool:
     cfg = cfg if cfg is not None else _config()
-    return bool(cfg.get("enabled", False)) and bool(os.environ.get("RECEIPTS_TTC_API_KEY"))
+    return bool(cfg.get("enabled", False)) and bool(os.environ.get("CUSTOS_CODE_TTC_API_KEY"))
 
 
 def make_compressor(cfg: dict[str, Any] | None = None) -> Compressor | None:
@@ -106,7 +106,7 @@ def make_compressor(cfg: dict[str, Any] | None = None) -> Compressor | None:
     callers can handle both the same way: `c = make_compressor(); text = c.compress_window(w) if
     c else judge.render_window(w)`."""
     cfg = cfg if cfg is not None else _config()
-    key = os.environ.get("RECEIPTS_TTC_API_KEY")
+    key = os.environ.get("CUSTOS_CODE_TTC_API_KEY")
     if not enabled(cfg):
         return None
     assert key is not None  # enabled() already checked this

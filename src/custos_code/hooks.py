@@ -1,12 +1,12 @@
 """Live path for Claude Code (class H): hook handlers and the auto-mode loop state.
 
-PostToolUse appends CALL/RESULT events to ~/.receipts/live/<session_id>.jsonl (the harness calls
+PostToolUse appends CALL/RESULT events to ~/.custos-code/live/<session_id>.jsonl (the harness calls
 us; the model has no write path). Stop reads `last_assistant_message` from the payload (the
 transcript can lag), builds the ledger from the live file when present and the transcript
 otherwise, runs claims -> verdicts, writes the receipt, and in auto mode returns a block decision
 with deterministic nudges until the contract holds or the pass cap is hit.
 
-Loop state per session: ~/.receipts/state/<session_id>.json {passes, nudge_seq, open: {claim_text: verdict}}.
+Loop state per session: ~/.custos-code/state/<session_id>.json {passes, nudge_seq, open: {claim_text: verdict}}.
 
 Owner: Oliver.
 """
@@ -31,11 +31,11 @@ from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
 from .models import Claim, EventFlags, EventKind, LedgerEvent, Session, Verdict, VerdictRecord
 
-HOME = os.path.expanduser("~/.receipts")
+HOME = os.path.expanduser("~/.custos-code")
 
 
 def _out_of_scope(payload: dict[str, Any]) -> bool:
-    """True when RECEIPTS_ONLY_IN is set and this session's cwd is not inside it.
+    """True when CUSTOS_CODE_ONLY_IN is set and this session's cwd is not inside it.
 
     Exists for measurement validity, not convenience. The agent under test can read every file in
     its working directory, so a project-local `.claude/settings.json` tells it that its output is
@@ -43,11 +43,11 @@ def _out_of_scope(payload: dict[str, Any]) -> bool:
     config and a README that described the trap. An agent that knows it is being audited is not
     the agent whose honesty we are trying to measure.
 
-    With RECEIPTS_ONLY_IN the hooks live in the user's global settings and the project directory
+    With CUSTOS_CODE_ONLY_IN the hooks live in the user's global settings and the project directory
     holds nothing at all. The guard fails toward doing nothing: an unset, empty, or unresolvable
     value, or a payload with no cwd, means this hook does not act.
     """
-    root = os.environ.get("RECEIPTS_ONLY_IN", "").strip()
+    root = os.environ.get("CUSTOS_CODE_ONLY_IN", "").strip()
     if not root:
         return False
     cwd = payload.get("cwd")
@@ -62,12 +62,12 @@ def _out_of_scope(payload: dict[str, Any]) -> bool:
 
 
 def _config() -> dict[str, Any]:
-    """Auto-mode settings, from ~/.receipts/config.toml with a per-invocation env override.
+    """Auto-mode settings, from ~/.custos-code/config.toml with a per-invocation env override.
 
     `auto` blocks the agent's turn, so it must be opt-in and it must be possible to opt in for one
     project without arming every session on the machine. config.toml is global; the hook command in
-    a project's own .claude/settings.json can set RECEIPTS_AUTO=1 instead, which scopes blocking to
-    that project. RECEIPTS_AUTO=0 force-disables even when the global config enables it, so a repo
+    a project's own .claude/settings.json can set CUSTOS_CODE_AUTO=1 instead, which scopes blocking to
+    that project. CUSTOS_CODE_AUTO=0 force-disables even when the global config enables it, so a repo
     can opt out of a machine-wide default.
     """
     cfg: dict[str, Any] = {"auto": False, "auto_max_passes": 3, "auto_clear": ["contradicted", "unrecorded", "unwitnessed"]}
@@ -76,16 +76,16 @@ def _config() -> dict[str, Any]:
         with open(p, "rb") as fh:
             data = tomllib.load(fh)
         cfg.update(data.get("tiers", {}))
-    env = os.environ.get("RECEIPTS_AUTO")
+    env = os.environ.get("CUSTOS_CODE_AUTO")
     if env is not None:
         cfg["auto"] = env.strip().lower() in ("1", "true", "yes", "on")
-    if (mp := os.environ.get("RECEIPTS_AUTO_MAX_PASSES")) and mp.isdigit():
+    if (mp := os.environ.get("CUSTOS_CODE_AUTO_MAX_PASSES")) and mp.isdigit():
         cfg["auto_max_passes"] = int(mp)
     return cfg
 
 
 def _scope_mode() -> str:
-    """`off` | `warn` | `on`, from RECEIPTS_SCOPE or config.toml. Default OFF, deliberately.
+    """`off` | `warn` | `on`, from CUSTOS_CODE_SCOPE or config.toml. Default OFF, deliberately.
 
     Every threshold in scope.py is a default I wrote, not a measurement. Issue #57 calibrates them
     against ~400 sessions of accepted work, and until that reports, a scope gate that interrupts
@@ -95,7 +95,7 @@ def _scope_mode() -> str:
 
     `warn` bands and records without ever denying: that is the mode #57's harness runs in.
     """
-    v = (os.environ.get("RECEIPTS_SCOPE") or _config().get("scope") or "off")
+    v = (os.environ.get("CUSTOS_CODE_SCOPE") or _config().get("scope") or "off")
     v = str(v).strip().lower()
     return v if v in ("off", "warn", "on") else "off"
 
@@ -172,10 +172,10 @@ def _scope_reason(f: scope_mod.Finding, decision: str) -> str:
 def _paths(session_id: str) -> tuple[str, str, str]:
     os.makedirs(os.path.join(HOME, "live"), exist_ok=True)
     os.makedirs(os.path.join(HOME, "state"), exist_ok=True)
-    os.makedirs(os.path.join(HOME, "receipts"), exist_ok=True)
+    os.makedirs(os.path.join(HOME, "custos-code"), exist_ok=True)
     return (os.path.join(HOME, "live", f"{session_id}.jsonl"),
             os.path.join(HOME, "state", f"{session_id}.json"),
-            os.path.join(HOME, "receipts", f"{session_id}.txt"))
+            os.path.join(HOME, "custos-code", f"{session_id}.txt"))
 
 
 def _rc_dir() -> str:
@@ -226,7 +226,7 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
     binary path and exit code, defeating a `./pytest` wrapper shadowing the real one. Returns the
     hook response JSON to print, or None to leave the command untouched.
 
-    Issue #22: the trailer is written to a random per-call file under `~/.receipts/rc/` instead
+    Issue #22: the trailer is written to a random per-call file under `~/.custos-code/rc/` instead
     of stdout (the E9 experiment showed a stdout trailer is visible in the model's own tool
     output, letting it later forge the marker). `PostToolUse` cannot safely re-derive that random
     path by re-parsing `tool_input.command` (undocumented whether it sees the original or the
@@ -389,7 +389,7 @@ def _ledger_for(payload: dict[str, Any]) -> tuple[Session, list[LedgerEvent]]:
     2. **Citations pointed at the wrong lines.** The two sources number events independently --
        the transcript also numbers assistant/user text records, the live file only tool events. On
        that session `git mv` was seq 16 in the transcript and seq 14 in the live file. The receipt
-       cited #16; a reader checking ~/.receipts/live/<id>.jsonl, which is the artifact we tell
+       cited #16; a reader checking ~/.custos-code/live/<id>.jsonl, which is the artifact we tell
        people to audit, finds an unrelated pytest run there. Every citation in that receipt was
        unverifiable against the ledger on disk.
 
@@ -427,7 +427,7 @@ def _render(claims: list[Claim], recs: list[VerdictRecord]) -> str:
         ev = " ".join(f"#{e}" for e in r.evidence) or "—"
         lines.append(f"{mark[r.verdict]} {r.verdict.value:<12} {c.text}\n    tier {r.tier} · {r.method} · {ev} · {r.rationale}" + (f" · {r.qualifier}" if r.qualifier else ""))
     s = verdicts_mod.summary(recs)
-    lines.append("receipts · " + " · ".join(f"{s[v.value]} {mark[v]}" for v in Verdict if s[v.value]))
+    lines.append("custos-code · " + " · ".join(f"{s[v.value]} {mark[v]}" for v in Verdict if s[v.value]))
     return "\n".join(lines)
 
 
@@ -576,7 +576,7 @@ def main(event: str, session_id: str | None = None, claim_id: str | None = None)
         rerun.run_worker(session_id, claim_id)
         return 0
     # Everything below fails OPEN. `hooks/*.sh` append `|| true`, but the command that
-    # `receipts watch --install` writes into settings.json invokes this binary directly, with no
+    # `custos-code watch --install` writes into settings.json invokes this binary directly, with no
     # wrapper to swallow anything -- so an unhandled exception here surfaces as a traceback and a
     # non-zero exit from a Claude Code hook. For Stop that reads as "block", which would be a
     # contradiction backed by no evidence at all; for PostToolUse it means the ledger write is
@@ -585,10 +585,10 @@ def main(event: str, session_id: str | None = None, claim_id: str | None = None)
     try:
         payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
-        print(f"receipts: unreadable hook payload ({type(e).__name__}); not blocking.", file=sys.stderr)
+        print(f"custos-code: unreadable hook payload ({type(e).__name__}); not blocking.", file=sys.stderr)
         return 0
     if not isinstance(payload, dict):
-        print("receipts: hook payload was not a JSON object; not blocking.", file=sys.stderr)
+        print("custos-code: hook payload was not a JSON object; not blocking.", file=sys.stderr)
         return 0
     try:
         if event == "pre":
@@ -605,6 +605,6 @@ def main(event: str, session_id: str | None = None, claim_id: str | None = None)
                 print(json.dumps(out))
             return 0
     except Exception as e:  # noqa: BLE001 - a hook must not take the turn down with it
-        print(f"receipts: {event} hook failed ({type(e).__name__}: {e}); not blocking.", file=sys.stderr)
+        print(f"custos-code: {event} hook failed ({type(e).__name__}: {e}); not blocking.", file=sys.stderr)
         return 0
     return 2

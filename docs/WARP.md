@@ -1,20 +1,20 @@
 # Warp: what we can actually build against
 
 Warp is a sponsor track (Best Developer Tool) and the terminal the demo runs in. The question this
-doc settles is narrower than "does Warp work with receipts": it is **where the evidence comes from
+doc settles is narrower than "does Warp work with custos-code": it is **where the evidence comes from
 when the agent under test is Warp's own agent rather than Claude Code.** Everything below was read
 off a live, logged-in Warp install on 2026-09-19 (Warp Stable, macOS 15.6). Facts are marked
 `OBSERVED`; things I could not settle are marked `VERIFY` with the exact command that settles them.
 
 Owner: Oliver. Adapters, if we ever build one, are Ananya's area (see `.github/CODEOWNERS`).
 
-## 1. The three ways receipts can meet Warp
+## 1. The three ways custos-code can meet Warp
 
 | Tier | Mechanism | Build cost | Evidence quality | Verdict |
 |---|---|---|---|---|
 | **T0** | Claude Code (or Codex) runs as a CLI agent **inside a Warp pane**. Our existing hooks fire unchanged. | **Zero** | Full — this is our normal Claude Code ledger | **This is the demo.** |
 | **T1** | Read Warp's own local SQLite (`blocks`, `commands`) as the ledger for **Warp Agent** | Small, ~1 adapter | Would be excellent (see §3) | **Blocked on one check** (§4) |
-| **T2** | Ship receipts as an **MCP server** Warp Agent can call | Medium | Weak — see §5 | **Not worth it** |
+| **T2** | Ship custos-code as an **MCP server** Warp Agent can call | Medium | Weak — see §5 | **Not worth it** |
 
 The strategy note in `DESIGN.md` §15 already says "Warp: nothing to build, demo runs inside Warp."
 That remains right. This doc's contribution is the detail behind T1 and T2 so nobody re-derives it.
@@ -118,13 +118,13 @@ looks harness-written but isn't there.
 
 `OBSERVED`: Warp supports MCP — `active_mcp_servers`, `mcp_server_installations`,
 `mcp_environment_variables` tables, and `mcp_allowlist` / `mcp_denylist` / `mcp_permissions` in the
-default execution profile. So we *could* register receipts as a tool Warp Agent calls.
+default execution profile. So we *could* register custos-code as a tool Warp Agent calls.
 
 But an MCP server sees only its own arguments. Warp does not hand MCP servers the agent's tool log,
 so a `verify_my_report` tool would be verifying the agent's claims against **whatever the agent chose
 to pass it** — the model writing its own evidence. That violates invariant 1 outright. The only
 honest MCP tool we could ship is one that re-executes commands itself (Tier 3), which is a much
-smaller product and duplicates `receipts check --rerun`.
+smaller product and duplicates `custos-code check --rerun`.
 
 Revisit only if Warp exposes block context to MCP servers.
 
@@ -135,9 +135,9 @@ T0, and it needs no new code:
 1. Open Warp. Run `claude` in a pane — Warp renders its third-party agent toolbar.
 2. Give it a task where the honest answer is unpleasant (the `piped-runner` fixture: tests that
    collect zero items behind `| tail -5`).
-3. The agent reports success. The `Stop` hook fires, `receipts` builds the receipt, the gate blocks,
+3. The agent reports success. The `Stop` hook fires, `custos-code` builds the receipt, the gate blocks,
    and the nudge goes back — all inside a Warp block.
-4. `receipts demo --scenario honest` immediately after, to show it does not simply always accuse.
+4. `custos-code demo --scenario honest` immediately after, to show it does not simply always accuse.
 
 Two things to rehearse, both learned the hard way on 2026-09-19:
 

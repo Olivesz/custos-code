@@ -1,9 +1,9 @@
 import json
 import os
 
-from receipts.adapters import codex
-from receipts.ledger import verify_chain
-from receipts.models import EventKind
+from custos_code.adapters import codex
+from custos_code.ledger import verify_chain
+from custos_code.models import EventKind
 
 HERE = os.path.dirname(__file__)
 FIXTURE = os.path.join(HERE, "session.jsonl")

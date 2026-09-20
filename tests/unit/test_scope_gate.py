@@ -16,14 +16,14 @@ from typing import Any
 
 import pytest
 
-import receipts.hooks as h
+import custos_code.hooks as h
 
 
 @pytest.fixture
 def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
     monkeypatch.setattr(h, "HOME", str(tmp_path / ".receipts"))
-    monkeypatch.delenv("RECEIPTS_ONLY_IN", raising=False)
-    monkeypatch.delenv("RECEIPTS_AUTO", raising=False)
+    monkeypatch.delenv("CUSTOS_CODE_ONLY_IN", raising=False)
+    monkeypatch.delenv("CUSTOS_CODE_AUTO", raising=False)
     proj = tmp_path / "proj"
     proj.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
@@ -50,53 +50,53 @@ def test_off_by_default_even_for_rm_rf(repo: pathlib.Path) -> None:
 
 def test_warn_mode_bands_but_never_denies(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The mode #57's calibration harness runs in: measure without blocking."""
-    monkeypatch.setenv("RECEIPTS_SCOPE", "warn")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "warn")
     assert _decision(_call(repo, "Bash", {"command": "rm -rf /Users/someone/Projects"})) is None
 
 
 def test_an_unknown_mode_is_treated_as_off(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_SCOPE", "yes-please")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "yes-please")
     assert _decision(_call(repo, "Bash", {"command": "rm -rf /Users/someone/Projects"})) is None
 
 
 # --- on ------------------------------------------------------------------------------------------
 
 def test_red_denies(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
     out = _call(repo, "Bash", {"command": "git push --force origin main"})
     assert _decision(out) == "deny"
     assert "git-force-push" in out["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_yellow_asks_when_a_human_is_present(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
     assert _decision(_call(repo, "Write", {"file_path": "/Users/someone/.zshrc"})) == "ask"
 
 
 def test_yellow_denies_when_nobody_is_watching(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SCOPE.md §5: a flag is a message to a human. Unattended, 'ask' and 'do nothing' are equal."""
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
-    monkeypatch.setenv("RECEIPTS_AUTO", "1")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_AUTO", "1")
     assert _decision(_call(repo, "Write", {"file_path": "/Users/someone/.zshrc"})) == "deny"
 
 
 def test_green_passes_through_to_the_e5_rewrite(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The gate must not swallow the runner-resolution wrap it sits in front of."""
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
     out = _call(repo, "Bash", {"command": "pytest -q"})
     assert _decision(out) is None
     assert out is not None and "updatedInput" in out["hookSpecificOutput"]
 
 
 def test_the_granted_directory_is_never_gated(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
     assert _decision(_call(repo, "Write", {"file_path": str(repo / "src" / "x.py")})) is None
 
 
 # --- safety ---------------------------------------------------------------------------------------
 
 def test_fails_open_when_classify_raises(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
 
     def boom(*a: object, **k: object) -> object:
         raise RuntimeError("scope exploded")
@@ -106,9 +106,9 @@ def test_fails_open_when_classify_raises(repo: pathlib.Path, monkeypatch: pytest
 
 
 def test_out_of_scope_sessions_are_not_gated(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """RECEIPTS_ONLY_IN fences the whole hook; scope must not slip past it."""
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
-    monkeypatch.setenv("RECEIPTS_ONLY_IN", str(repo / "elsewhere"))
+    """CUSTOS_CODE_ONLY_IN fences the whole hook; scope must not slip past it."""
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_ONLY_IN", str(repo / "elsewhere"))
     assert _decision(_call(repo, "Bash", {"command": "git push --force"})) is None
 
 
@@ -121,7 +121,7 @@ def test_approved_paths_stop_being_asked_about(repo: pathlib.Path,
     scratch and never reaches the ask -- the test would pass without exercising the ratchet at all.
     """
     import json
-    monkeypatch.setenv("RECEIPTS_SCOPE", "on")
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
     other = "/Users/someone-else/notes"
     target = f"{other}/x.py"
     assert _decision(_call(repo, "Write", {"file_path": target})) == "ask"

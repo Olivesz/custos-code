@@ -15,8 +15,8 @@ import subprocess
 
 import pytest
 
-from receipts.rules import RepoState
-from receipts.scope import Band, Grant, classify, recoverable
+from custos_code.rules import RepoState
+from custos_code.scope import Band, Grant, classify, recoverable
 
 
 @pytest.fixture

@@ -3,9 +3,9 @@
 import json
 import os
 
-from receipts.adapters import otel
-from receipts.ledger import verify_chain
-from receipts.models import EventKind
+from custos_code.adapters import otel
+from custos_code.ledger import verify_chain
+from custos_code.models import EventKind
 
 SPANS = os.path.join(os.path.dirname(__file__), "spans.json")
 

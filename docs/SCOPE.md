@@ -202,7 +202,7 @@ an opinion.
 
 ### The mode decides the action
 
-Same verdict, different response, following the existing `RECEIPTS_AUTO` shape:
+Same verdict, different response, following the existing `CUSTOS_CODE_AUTO` shape:
 
 | | GREEN | YELLOW | RED |
 |---|---|---|---|
@@ -224,7 +224,7 @@ Stop-hook latency that made the terminal unusable on 2026-09-19.
 
 ## 6. Implementation
 
-### 6.1 New module `src/receipts/scope.py` (Oliver)
+### 6.1 New module `src/custos_code/scope.py` (Oliver)
 
 ```python
 class Band(StrEnum):
@@ -234,7 +234,7 @@ class Band(StrEnum):
 class Grant:
     """What the user implicitly and explicitly allowed this session."""
     cwd: str                      # the radius, from the hook payload
-    scratch: tuple[str, ...]      # TMPDIR, ~/.receipts, session scratchpad
+    scratch: tuple[str, ...]      # TMPDIR, ~/.custos-code, session scratchpad
     named: tuple[str, ...]        # paths/commands named in the request
     approved: tuple[str, ...]     # ratcheted grants from earlier prompts this session
 
@@ -266,7 +266,7 @@ RED action never gets wrapped and run:
 Claude Code's `PreToolUse` supports `permissionDecision`; Codex's documented shape matches
 (`docs/ADAPTERS.md` §3, PR #53), with `updatedInput` nesting as the one known difference.
 
-Reuses the `RECEIPTS_ONLY_IN` fence so the gate applies to one directory subtree, and `RECEIPTS_AUTO`
+Reuses the `CUSTOS_CODE_ONLY_IN` fence so the gate applies to one directory subtree, and `CUSTOS_CODE_AUTO`
 for attended vs unattended. Both land in #55.
 
 ### 6.3 Request and plan extraction (Ananya, `adapters/`)
@@ -283,11 +283,11 @@ so `scope.py` stays agent-agnostic.
 
 ### 6.4 Policy file
 
-`~/.receipts/policy.toml`, with a shipped default. Users widen or narrow without editing code:
+`~/.custos-code/policy.toml`, with a shipped default. Users widen or narrow without editing code:
 
 ```toml
 [scope]
-scratch = ["$TMPDIR", "~/.receipts"]
+scratch = ["$TMPDIR", "~/.custos-code"]
 red     = ["rm -rf", "git push --force", "git reset --hard", "sudo", "npm publish"]
 protect = ["~/.ssh", "~/.aws", "~/.zshrc", "**/.env"]
 max_files_changed = 0     # 0 = unset until §7 calibration says otherwise
@@ -336,9 +336,9 @@ correctly, not as calibration.
 
 | Who | What | Paths |
 |---|---|---|
-| **Oliver** | `scope.py` (bands, `classify`, recoverability), `PreToolUse` gate, `out_of_scope` verdict, policy loader, pass-boundary fix in `annotate()` | `src/receipts/scope.py`, `hooks.py`, `rules.py`, `review.py`, `cli.py` |
+| **Oliver** | `scope.py` (bands, `classify`, recoverability), `PreToolUse` gate, `out_of_scope` verdict, policy loader, pass-boundary fix in `annotate()` | `src/custos_code/scope.py`, `hooks.py`, `rules.py`, `review.py`, `cli.py` |
 | **Anush** | §7 calibration harness over the local corpus; synthetic RED fixtures; Wilson intervals; the `α/β` instrumentation from §2 turned into a reported metric | `eval/`, `bench/` |
-| **Ananya** | `adapters.request_and_plan()` per agent; `CODEOWNERS`/`CLAUDE.md` boundary loader; policy file plumbing | `src/receipts/adapters/*`, `docs/ADAPTERS.md` |
+| **Ananya** | `adapters.request_and_plan()` per agent; `CODEOWNERS`/`CLAUDE.md` boundary loader; policy file plumbing | `src/custos_code/adapters/*`, `docs/ADAPTERS.md` |
 
 Order matters: **§6.1 `classify` + §7 calibration are the critical path.** Without a measured
 false-positive rate this ships as a guess, and a scope gate that interrupts good work is worse than

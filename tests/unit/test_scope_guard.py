@@ -1,4 +1,4 @@
-"""RECEIPTS_ONLY_IN confines the hooks to one directory, so nothing has to live in that directory.
+"""CUSTOS_CODE_ONLY_IN confines the hooks to one directory, so nothing has to live in that directory.
 
 The agent under test reads every file in its working directory. A project-local
 `.claude/settings.json` therefore tells it that its report is being checked, and by what -- and on
@@ -15,13 +15,13 @@ import pathlib
 
 import pytest
 
-import receipts.hooks as h
+import custos_code.hooks as h
 
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(h, "HOME", str(tmp_path / "receipts"))
-    monkeypatch.delenv("RECEIPTS_ONLY_IN", raising=False)
+    monkeypatch.setattr(h, "HOME", str(tmp_path / "custos-code"))
+    monkeypatch.delenv("CUSTOS_CODE_ONLY_IN", raising=False)
 
 
 def test_unset_means_every_directory_is_in_scope() -> None:
@@ -32,7 +32,7 @@ def test_inside_the_named_directory_is_in_scope(monkeypatch: pytest.MonkeyPatch,
                                                 tmp_path: pathlib.Path) -> None:
     root = tmp_path / "proj"
     (root / "sub").mkdir(parents=True)
-    monkeypatch.setenv("RECEIPTS_ONLY_IN", str(root))
+    monkeypatch.setenv("CUSTOS_CODE_ONLY_IN", str(root))
     assert h._out_of_scope({"cwd": str(root)}) is False
     assert h._out_of_scope({"cwd": str(root / "sub")}) is False
 
@@ -42,7 +42,7 @@ def test_outside_is_out_of_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: path
     other = tmp_path / "other"
     root.mkdir()
     other.mkdir()
-    monkeypatch.setenv("RECEIPTS_ONLY_IN", str(root))
+    monkeypatch.setenv("CUSTOS_CODE_ONLY_IN", str(root))
     assert h._out_of_scope({"cwd": str(other)}) is True
 
 
@@ -51,12 +51,12 @@ def test_sibling_with_a_shared_prefix_is_not_confused(monkeypatch: pytest.Monkey
     """`/x/proj-evil` must not count as inside `/x/proj` -- a plain startswith would say it does."""
     (tmp_path / "proj").mkdir()
     (tmp_path / "proj-evil").mkdir()
-    monkeypatch.setenv("RECEIPTS_ONLY_IN", str(tmp_path / "proj"))
+    monkeypatch.setenv("CUSTOS_CODE_ONLY_IN", str(tmp_path / "proj"))
     assert h._out_of_scope({"cwd": str(tmp_path / "proj-evil")}) is True
 
 
 def test_missing_cwd_is_out_of_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
-    monkeypatch.setenv("RECEIPTS_ONLY_IN", str(tmp_path))
+    monkeypatch.setenv("CUSTOS_CODE_ONLY_IN", str(tmp_path))
     assert h._out_of_scope({}) is True
     assert h._out_of_scope({"cwd": ""}) is True
 
@@ -68,8 +68,8 @@ def test_handlers_no_op_when_out_of_scope(monkeypatch: pytest.MonkeyPatch,
     other = tmp_path / "other"
     root.mkdir()
     other.mkdir()
-    monkeypatch.setenv("RECEIPTS_ONLY_IN", str(root))
-    monkeypatch.setenv("RECEIPTS_AUTO", "1")
+    monkeypatch.setenv("CUSTOS_CODE_ONLY_IN", str(root))
+    monkeypatch.setenv("CUSTOS_CODE_AUTO", "1")
 
     def _boom(*a: object, **k: object) -> object:
         raise AssertionError("out-of-scope session reached the model backend")
