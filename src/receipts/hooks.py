@@ -240,6 +240,34 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     _, state_p, receipt_p = _paths(sid)
     sess, ledger = _ledger_for(payload)
     repo = payload.get("cwd") if isinstance(payload.get("cwd"), str) else sess.cwd
+
+    # Cheap gate before the model call. A Stop hook fires on EVERY turn, so a turn that ran one
+    # `rm` was paying for a full-session review, and in auto mode up to three of them. Observed
+    # on 2026-09-19: a one-line command took tens of seconds and the user reasonably concluded the
+    # terminal was broken. A checker nobody leaves switched on verifies nothing.
+    #
+    # Skip when there is nothing a receipt could say:
+    #   - no tool calls at all in the session -> every claim would be `unwitnessed` anyway, which
+    #     is never an accusation and never blocks, so the call buys nothing.
+    #   - no NEW tool calls since the last receipt -> the evidence has not moved, so neither can
+    #     any verdict. This is the common case for conversational turns.
+    n_calls = sum(1 for e in ledger if e.kind == EventKind.CALL)
+    if n_calls == 0:
+        return None
+    seen_p = os.path.join(HOME, "seen", f"{sid}.json")
+    os.makedirs(os.path.dirname(seen_p), exist_ok=True)
+    last_seq = -1
+    if os.path.exists(seen_p) and not payload.get("stop_hook_active"):
+        try:
+            with open(seen_p, encoding="utf-8") as fh:
+                last_seq = int(json.load(fh).get("seq", -1))
+        except (OSError, ValueError, json.JSONDecodeError):
+            last_seq = -1
+    max_seq = max((e.seq for e in ledger), default=-1)
+    if last_seq >= max_seq:
+        return None
+    with open(seen_p, "w", encoding="utf-8") as fh:
+        json.dump({"seq": max_seq}, fh)
     # The measured path (eval/arms/RESULTS.md: 86% vs 70% for the tiered pipeline, McNemar
     # p=0.00017). Falls back to deterministic rules with no key, so the hook never hard-fails.
     backend = judge_mod.make_backend()

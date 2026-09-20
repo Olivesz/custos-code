@@ -199,3 +199,16 @@ def find_last_session(projects_dir: str | None = None) -> str:
     if not files:
         raise FileNotFoundError(f"no Claude Code transcripts under {root}")
     return max(files, key=os.path.getmtime)
+
+
+def find_sessions(projects_dir: str | None = None, limit: int | None = None) -> list[str]:
+    """Local transcripts, newest first. Powers `receipts scan`.
+
+    The point of scanning real history rather than a fixture: a staged trap is only caught when the
+    agent takes the bait, and a careful agent simply does not. Real sessions contain the failures
+    that actually happen -- a sample reported as a total, a remembered test count, a "verified
+    working" that skipped the one command that failed.
+    """
+    root = projects_dir or os.path.expanduser("~/.claude/projects")
+    files = sorted(glob.glob(os.path.join(root, "*", "*.jsonl")), key=os.path.getmtime, reverse=True)
+    return files[:limit] if limit else files
