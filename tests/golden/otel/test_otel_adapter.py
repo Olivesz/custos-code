@@ -69,3 +69,35 @@ def test_unset_status_without_an_exit_code_is_not_success(tmp_path) -> None:
     _, ledger, _ = otel.parse(str(path))
     result = next(e for e in ledger if e.kind is EventKind.RESULT)
     assert result.exit_code is None and not result.flags.error
+
+
+def _span(status: str) -> dict:
+    return {
+        "traceId": "t",
+        "spanId": "s",
+        "name": "execute_tool bash",
+        "startTimeUnixNano": "1758276010000000000",
+        "endTimeUnixNano": "1758276011000000000",
+        "status": {"code": status},
+        "attributes": [
+            {"key": "gen_ai.tool.name", "value": {"stringValue": "bash"}},
+            {"key": "gen_ai.tool.call.arguments", "value": {"stringValue": "pytest -q"}},
+        ],
+    }
+
+
+def test_ok_status_without_captured_output_is_not_an_exit_code(tmp_path) -> None:
+    # an OK span says the call returned, not that the command inside it passed
+    path = tmp_path / "ok.json"
+    path.write_text(json.dumps(_span("STATUS_CODE_OK")))
+    _, ledger, _ = otel.parse(str(path))
+    result = next(e for e in ledger if e.kind is EventKind.RESULT)
+    assert result.exit_code is None and result.flags.stderr_dropped
+
+
+def test_a_trace_that_captured_no_result_states_the_gap(tmp_path) -> None:
+    path = tmp_path / "ok.json"
+    path.write_text(json.dumps(_span("STATUS_CODE_OK")))
+    _, ledger, _ = otel.parse(str(path))
+    markers = [e for e in ledger if (e.input or {}).get("event") == "no_tool_log"]
+    assert len(markers) == 1  # so shell claims come out unrecorded, never unwitnessed
