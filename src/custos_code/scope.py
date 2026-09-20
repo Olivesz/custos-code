@@ -261,6 +261,30 @@ def _paths_in(tool: str, inp: dict[str, Any]) -> list[str]:
     return out
 
 
+_CHAIN_OPS = frozenset({"&&", "||", ";", "|"})
+
+
+def _cmd_segments(cmd: str) -> list[list[str]]:
+    """Split a shell command line into its separate simple commands' argv lists.
+
+    Tokenizes once with shlex (so quoting is respected), then partitions the token stream on
+    unquoted `&&`/`||`/`;`/`|`. This is a tokenizer, not a shell: an operator glued to its
+    neighbours with no surrounding whitespace (`foo&&bar`) stays inside one token, the same
+    limitation the single-command check this replaces already had.
+    """
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return []
+    segments: list[list[str]] = [[]]
+    for tok in tokens:
+        if tok in _CHAIN_OPS:
+            segments.append([])
+        else:
+            segments[-1].append(tok)
+    return [s for s in segments if s]
+
+
 def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
              state: RepoState | None = None, policy: Policy | None = None) -> Finding:
     """Band one tool call. Pure, deterministic, no model call.
@@ -275,7 +299,8 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
     st = state if state is not None else RepoState(grant.cwd or None)
     pol = policy or Policy()
     inp = tool_input or {}
-    cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
+    raw_command = inp.get("command")
+    cmd = raw_command if isinstance(raw_command, str) else ""
 
     # --- RED: irreversible, wherever it points -------------------------------------------------
     if tool == "Bash" and cmd:
@@ -291,11 +316,11 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
             if phrase and phrase.lower() in cmd.lower():
                 return Finding(Band.RED, "policy-red", f"policy-red: {cmd[:160]}", recoverable=False)
 
-    for raw in _paths_in(tool, inp):
-        p = _abs(raw, grant.cwd)
-        if (hit := _protected(p, pol.protect)) and (tool in _WRITE_TOOLS or (tool == "Bash" and cmd and
-                                                                not _is_read_only_cmd(cmd))):
-            return Finding(Band.RED, "protected-path", f"writes {hit}: {raw}", recoverable=False)
+    if tool in _WRITE_TOOLS or (tool == "Bash" and cmd):
+        for raw in _write_relevant_paths(tool, inp, cmd):
+            p = _abs(raw, grant.cwd)
+            if hit := _protected(p, pol.protect):
+                return Finding(Band.RED, "protected-path", f"writes {hit}: {raw}", recoverable=False)
 
     # --- GREEN: reads are free, everywhere -----------------------------------------------------
     if tool in _READ_TOOLS:
@@ -305,7 +330,7 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
 
     # --- writes: banded by recoverability, not by distance from the request --------------------
     if tool in _WRITE_TOOLS or (tool == "Bash" and cmd):
-        for raw in _paths_in(tool, inp):
+        for raw in _write_relevant_paths(tool, inp, cmd):
             p = _abs(raw, grant.cwd)
             if _in_scratch(p, grant):
                 continue
@@ -334,29 +359,61 @@ _READ_ONLY_FIRST = frozenset({
     "pwd", "echo", "printf", "date", "env", "tree", "du", "df", "ps", "sed", "awk", "sort", "uniq",
     "pytest", "npx", "node", "python", "python3", "go", "cargo", "make", "ruff", "mypy", "tsc",
     "eslint", "jest", "vitest",
+    # Shell scaffolding: these never touch a file on disk themselves, so they cost nothing to
+    # allow -- and without them, ANY multi-step command wrapped in `cd project && ...` or
+    # `source ~/.env && ...` fell through as "unrecognised" on the first segment alone (the old,
+    # single-token check), which is what let a plain `source ~/.env` get reported as "writes .env".
+    "cd", "source", ".", "set", "export", "unset",
 })
 _GIT_READ_ONLY = frozenset({"status", "log", "diff", "show", "branch", "remote", "rev-parse",
                             "ls-files", "blame", "describe", "config", "stash"})
 
 
-def _is_read_only_cmd(cmd: str) -> bool:
-    """Conservative: only commands we recognise as non-mutating, and only without a redirect.
+def _segment_is_read_only(parts: list[str]) -> bool:
+    """One simple command's argv, non-mutating and without a redirect.
 
-    A redirect turns any of these into a write (`ls > file`), so the presence of `>` disqualifies
-    the whole line. Being wrong here costs a needless YELLOW, not a missed RED.
+    A redirect turns any of these into a write (`ls > file`), so a token containing `>` (`>`,
+    `>>`, or one glued to its target like `2>/dev/null`) disqualifies this segment. Being wrong
+    here costs a needless YELLOW, not a missed RED.
     """
-    if ">" in cmd:
-        return False
-    try:
-        parts = shlex.split(cmd)
-    except ValueError:
-        return False
-    if not parts:
+    if not parts or any(">" in t for t in parts):
         return False
     head = os.path.basename(parts[0])
     if head == "git":
         return len(parts) > 1 and parts[1] in _GIT_READ_ONLY
     return head in _READ_ONLY_FIRST
+
+
+def _is_read_only_cmd(cmd: str) -> bool:
+    """Conservative: true only when EVERY step of a `&&`/`;`/`|`-chained line is non-mutating.
+
+    Checking just the line's first word (as this used to) meant `cd proj && pytest -q` was never
+    recognised as read-only at all, because "cd" wasn't even in the allowlist -- the compound
+    form fell through as if it were unrecognised, not as if it were safe.
+    """
+    segments = _cmd_segments(cmd)
+    return bool(segments) and all(_segment_is_read_only(s) for s in segments)
+
+
+def _write_relevant_paths(tool: str, inp: dict[str, Any], cmd: str) -> list[str]:
+    """Path-like arguments worth banding as a potential write.
+
+    For every tool but Bash this is just `_paths_in` -- an Edit/Write call's `file_path` is
+    always the thing being written. For Bash, a path mentioned only inside a segment recognised
+    as read-only is not a write candidate at all: `source ~/.env && uv run ...` does not write
+    `.env`, whatever the rest of the line goes on to do, and treating "the line has an
+    unrecognised step somewhere" as "every path in the line might be written" is what made that
+    read get reported as a write in the first place. A path inside a segment we don't recognise
+    still counts, same as before -- this narrows false positives, it does not loosen real ones.
+    """
+    if tool != "Bash":
+        return _paths_in(tool, inp)
+    out: list[str] = []
+    for parts in _cmd_segments(cmd):
+        if _segment_is_read_only(parts):
+            continue
+        out += [t for t in parts if ("/" in t or t.startswith("~")) and not t.startswith("-")]
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
