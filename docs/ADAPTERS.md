@@ -114,6 +114,44 @@ This is also the Devin cloud recorder (Path B in `docs/DEVIN.md`), installed by 
 5. Devin Path C, then A and B when access arrives.
 6. Codex hooks or resume-based loop after `VERIFY`.
 
+## 6a. Status (what exists in `src/receipts/adapters/`)
+
+| Adapter | Class | State | Tests |
+|---|---|---|---|
+| `claude_code.py` | H / F | shipped | `tests/golden/claude_code/` |
+| `codex.py` | F | shipped: rollout JSONL, turn boundaries, shell pairing, exact exit code, pipe and truncation flags, patch paths, aborted turns, compaction and rollback | `tests/golden/codex/` |
+| `machine.py` | M | shipped: bash/zsh snippets (`receipts record --install`), the `_record-line` wire writer, the JSONL parser. **Not shipped:** the `fswatch` watcher and the `reflog` poller of §4 (the parser reads `fs`/`git` rows, nothing emits them yet), and the class-H exit-code join of §4 — borrowing a status from an appendable, unattributed log into a chained harness ledger needs a per-row provenance marker and a re-chain first | `tests/unit/test_machine_recorder.py` |
+| `devin.py` | R | shipped (Path C): bundle parse, `fetch_bundle` (GET `/v1/sessions/{id}`), `nudge` (POST `/v1/sessions/{id}/message`). Paths A and B wait on access | `tests/golden/devin/` |
+| `copilot.py` | R | shipped: PR body report, optional tool log, commits and checks. Log export format still A3 | `tests/golden/copilot/` |
+| `otel.py` | trace | shipped: OTLP JSON and JSONL, GenAI spans, `execute_tool` call/result pairing, status and `process.exit_code` mapping. Uncaptured tool results are flagged, never assumed | `tests/golden/otel/` |
+
+Every adapter is `parse(path) -> (Session, list[LedgerEvent], report | None)` and is registered in
+`adapters/__init__.py`; `receipts check <file>` sniffs the format, `--agent` overrides it.
+
+Class R and any span with no captured result write a `no_tool_log` / `stderr_dropped` marker, and
+`verdicts.run` turns the affected `unwitnessed` verdicts into `unrecorded`: a record that admits its
+own gap must not read as silence.
+
+## 6b. The receipt on the PR (product sketch B)
+
+`.github/workflows/receipt.yml` runs `receipts pr-comment` on every PR event and keeps exactly one
+comment, found by the marker `<!-- receipts-bot: pr-receipt -->`. Evidence, first match wins: a
+`receipts-session` artifact from a **successful run of this repo's own session workflow** on the
+head SHA (`vars.RECEIPTS_SESSION_WORKFLOW`, default `ci`), else a class-R bundle built from the PR,
+its commits, its files and its check runs by `.github/workflows/pr_bundle.jq` (tested in
+`tests/unit/test_pr_bundle_jq.py`).
+
+A log committed to the PR branch is **not** a source. It has no provenance, so an agent could
+commit a ledger that confirms its own report — invariant 1, the one failure this tool exists to
+catch. Restoring it needs a harness signature, or a verdict path that marks unverified-provenance
+evidence as such instead of scoring it like a harness-written ledger.
+
+It checks out the base ref under `pull_request_target`, never runs PR code, and passes every
+untrusted value (paths, URLs, PR text) through `env:` rather than `${{ }}` inside a shell line.
+The deterministic tiers are the default: the judge runs only where a repo sets
+`vars.RECEIPTS_JUDGE` and a key exists. Invariant 9 is intact: this is the repo's own CI on its own
+PRs.
+
 ## 7. VERIFY
 - Claude Code: is a `PreToolUse`-rewritten command visible to the model?
 - Codex: lifecycle hook shape and config; `codex exec` flags for JSON output, last-message file, and resume.

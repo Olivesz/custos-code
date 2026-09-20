@@ -1,0 +1,142 @@
+name: receipt
+# Product sketch B: the receipt on the PR. When an agent opens or updates a PR, read its session
+# log and its description, check every claim against the log, and post one comment that a reviewer
+# reads before the diff. The comment is edited in place (marker in the body), never stacked.
+#
+# The session log is whichever of these the agent left behind, first match wins:
+#   1. a `receipts-session` artifact from a successful run, of this repo's own session workflow,
+#      on the head SHA -- a fork cannot define the workflow that produces it,
+#   2. for a remote agent (Devin, Copilot), a class-R bundle built here from the PR, its commits
+#      and its check runs -- no tool log, so shell claims come out `unrecorded`, not confirmed.
+#
+# A log committed to the PR branch is deliberately NOT a source. It carries no provenance, so an
+# agent could author a ledger that confirms its own claims -- invariant 1, the one failure this
+# tool exists to catch. Until harness signatures exist, the only accepted tool log is one this
+# repo's own workflow uploaded.
+#
+# Invariant 9 (local by default) is untouched: this runs only in the repo's own CI, on its own PRs.
+# Untrusted values (file paths, PR title/body, URLs) are passed through `env:` and never
+# interpolated into a shell line.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: receipt-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      # pull_request_target runs from the base ref: check out the base tooling, never the PR's code.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.17"
+          enable-cache: true
+      - run: uv python install
+      - run: make sync
+
+      - name: Collect the session evidence
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          # the only workflow whose `receipts-session` artifact is trusted; it must live in this
+          # repo, so a fork PR cannot define a run that uploads a ledger of its own choosing
+          SESSION_WORKFLOW: ${{ vars.RECEIPTS_SESSION_WORKFLOW || 'ci' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/evidence"
+          gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+            > "$RUNNER_TEMP/runs.json"
+          run_id=$(jq -r \
+            --arg workflow "$SESSION_WORKFLOW" --arg repo "$REPO" --arg self "$RUN_ID" \
+            '[.workflow_runs[]
+              | select((.id | tostring) != $self)
+              | select(.name == $workflow)
+              | select(.conclusion == "success")
+              | select(.head_repository.full_name == $repo)]
+             | .[0].id // "" | tostring' "$RUNNER_TEMP/runs.json")
+          if [ -n "$run_id" ] && gh run download "$run_id" --repo "$REPO" --name receipts-session \
+               --dir "$RUNNER_TEMP/evidence" 2>/dev/null; then
+            file=$(find "$RUNNER_TEMP/evidence" -type f \( -name '*.jsonl' -o -name '*.json' \) | head -1)
+          else
+            file=""
+          fi
+          if [ -z "$file" ] || [ ! -s "$file" ]; then
+            # class-R fallback: report from the PR body, evidence from commits and checks only
+            file="$RUNNER_TEMP/evidence/bundle.json"
+            gh api "repos/$REPO/pulls/$PR" > "$RUNNER_TEMP/evidence/pr.json"
+            gh api "repos/$REPO/pulls/$PR/commits?per_page=100" > "$RUNNER_TEMP/evidence/commits.json"
+            gh api "repos/$REPO/commits/$HEAD_SHA/check-runs" --jq '.check_runs' \
+              > "$RUNNER_TEMP/evidence/checks.json"
+            gh api "repos/$REPO/pulls/$PR/files?per_page=100" > "$RUNNER_TEMP/evidence/files.json"
+            jq -n \
+              --slurpfile pr "$RUNNER_TEMP/evidence/pr.json" \
+              --slurpfile commits "$RUNNER_TEMP/evidence/commits.json" \
+              --slurpfile checks "$RUNNER_TEMP/evidence/checks.json" \
+              --slurpfile files "$RUNNER_TEMP/evidence/files.json" \
+              -f .github/workflows/pr_bundle.jq > "$file"
+            # both remote agents produce the same class-R bundle; the author picks the parser
+            author=$(jq -r '.pull_request.user.login // ""' "$file")
+            case "$author" in
+              *[Cc]opilot*) echo "agent=copilot" >> "$GITHUB_OUTPUT" ;;
+              *)            echo "agent=devin"   >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Render the receipt
+        env:
+          # invariant 9: the deterministic tiers are the default. The judge sends the PR body to a
+          # third party, so it is opt-in per repo (vars.RECEIPTS_JUDGE) and still needs the key.
+          OPENAI_API_KEY: ${{ vars.RECEIPTS_JUDGE == 'true' && secrets.OPENAI_API_KEY || '' }}
+          JUDGE: ${{ vars.RECEIPTS_JUDGE }}
+          AGENT: ${{ steps.evidence.outputs.agent }}
+          FILE: ${{ steps.evidence.outputs.file }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${AGENT:-}" ]; then args+=(--agent "$AGENT"); fi
+          if [ "${JUDGE:-}" != "true" ] || [ -z "${OPENAI_API_KEY:-}" ]; then args+=(--rules-only); fi
+          uv run receipts pr-comment "$FILE" "${args[@]}" \
+            --pr-url "$PR_URL" \
+            --out "$RUNNER_TEMP/receipt.md"
+
+      - name: Post or update the one receipt comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='<!-- receipts-bot: pr-receipt -->'
+          existing=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" \
+            --jq "[.[] | select(.body | contains(\"$marker\"))] | .[0].id // empty")
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" \
+              -F body=@"$RUNNER_TEMP/receipt.md" > /dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" \
+              -F body=@"$RUNNER_TEMP/receipt.md" > /dev/null
+          fi

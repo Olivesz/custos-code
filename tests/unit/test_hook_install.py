@@ -31,11 +31,18 @@ def _run(script: str, payload: str, env: dict[str, str]) -> subprocess.Completed
 
 @pytest.mark.parametrize("event", EVENTS)
 def test_hook_command_is_absolute_and_needs_no_path(event: str) -> None:
-    """Claude Code runs hooks in a shell that does not inherit our PATH."""
+    """Claude Code runs hooks in a shell that does not inherit our PATH.
+
+    `_hook_command` returns a shell line, so it must be taken apart with `shlex.split`, never a
+    whitespace split: a checkout under a path containing a space (Anush's is `HackMIT 2026`)
+    shell-quotes correctly and then fails a naive `.split()[0]` -- the same quoting bug this PR
+    exists to fix, relocated into its own regression test. Caught in review on PR #44.
+    """
     cmd = _hook_command(event)
-    assert cmd.split()[0].startswith("/"), f"not absolute: {cmd}"
-    assert os.path.exists(cmd.split()[0].strip("'\"")), cmd
-    assert cmd.endswith(f"_hook {event}")
+    argv = shlex.split(cmd)
+    assert argv[0].startswith("/"), f"not absolute: {cmd}"
+    assert os.path.exists(argv[0]), cmd
+    assert argv[-2:] == ["_hook", event], cmd
 
 
 def test_snippet_is_idempotent_against_its_own_output() -> None:
