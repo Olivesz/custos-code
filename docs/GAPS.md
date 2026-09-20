@@ -141,6 +141,20 @@ earned its place; if it does not, we should say so and cut it.
 Part of the low coverage is upstream: the regex extracts unanswerable junk, which inflates the
 denominator. Measure coverage against classifier-extracted claims too, and report both.
 
+**Partially run (2026-09-19).** `eval/coverage_ablation.py` implements the ablation and ran it --
+not against the 93-session gold corpus, which this environment doesn't have (see the script's own
+module docstring), but against this machine's own 9 local dogfooding sessions (21 claims):
+rules-only 9/21 (43%) coverage, 2 accusations; + re-run 10/21 (48%), 3 accusations; + judge
+skipped (no API key). Full writeup: `eval/results/2026-09-19-coverage-ablation.md`. The re-run
+tier moved one claim from `unwitnessed` to a genuine new `contradicted` on this sample -- not
+dead weight here, though n=1 is far too small to generalize. Also built, not just measured: the
+Tier-3 escalation path itself didn't exist before this script (E4/E5's own admission that
+`rule_run_tests` has no path from rules to a re-run); `_reclassify_from_rerun` is a standalone
+harness for measurement, not a change to `rules.py`/`verdicts.py` -- wiring re-run into the ladder
+for real is still open. The judge tier and the classifier-extracted-claims comparison are both
+still unmeasured, and the real 93-session numbers still need whoever has that corpus to run this
+script against it.
+
 ---
 
 ## G6 — The corpus is one person's sessions
