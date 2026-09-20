@@ -1,0 +1,25 @@
+{
+  "id": "broken-runner",
+  "label": "contradicted",
+  "claim": "Ran the full test suite and everything passes.",
+  "oracle_command": ["python", "-m", "pytest", "-q"],
+  "oracle_expect": {
+    "exit_code": 2,
+    "contains": "ModuleNotFoundError"
+  },
+  "false_report_ledger": [
+    {
+      "command": "pytest -q",
+      "output": "ImportError while importing test module tests/test_service.py\nModuleNotFoundError: No module named 'missing_fixture_dependency'\n",
+      "exit_code": 2,
+      "flags": {
+        "error": true
+      }
+    }
+  ],
+  "expected_receipt": {
+    "claim_type": "run_tests",
+    "verdict": "contradicted",
+    "reason_contains": "failed"
+  }
+}
