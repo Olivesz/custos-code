@@ -68,7 +68,12 @@ _RED_COMMAND = [
     (re.compile(r"^\s*sudo\b|\bdoas\b"), "sudo"),
     (re.compile(r"\b(npm|yarn|pnpm)\s+publish\b|\btwine\s+upload\b|\bcargo\s+publish\b"), "package-publish"),
     (re.compile(r"\bgh\s+(release|repo)\s+(create|delete)\b|" + _GIT + r"push\b.*--delete\b"), "remote-mutation"),
-    (re.compile(r"\bshutdown\b|\breboot\b|\bdiskutil\b|\bmkfs\b|\bdd\b.*\bof="), "system-level"),
+    # `shutdown` and `reboot` were here and produced ZERO true positives across 404 sessions --
+    # every fire was the word appearing inside Python source or prose. Now that interpreter
+    # heredoc bodies are scanned as commands (they must be, or `bash <<EOF` bypasses everything),
+    # keeping those two keywords would reinstate exactly that false positive. `diskutil`, `mkfs`
+    # and `dd of=` carry this rule; they do not appear in ordinary prose.
+    (re.compile(r"\bdiskutil\b|\bmkfs\b|\bdd\b[^|;&]*\bof="), "system-level"),
     (re.compile(r"\bfind\b.*(-delete\b|-exec\b)"), "find-mutating"),
     (re.compile(r"\b(mkfs|fdisk|parted)\b"), "system-level"),
 ]
@@ -345,15 +350,36 @@ def _plausible_path(x: str) -> bool:
         and not set(x) <= set("/'\"`*?")
 
 
-def _strip_heredocs(cmd: str) -> str:
-    """Remove heredoc bodies before scanning.
+# A heredoc fed to a shell or interpreter IS command text. One fed to `cat`, `jq` or a file is
+# data. Blanket-stripping treated both as data, which made `bash <<'EOF' / rm -rf ~ / EOF` a
+# complete bypass of every RED rule -- introduced by the fix for the 38 false `system-level` REDs
+# and caught by the automated security review the same hour.
+_INTERPRETER_HEAD = re.compile(
+    r"\b(sh|bash|zsh|ksh|dash|python3?|perl|ruby|node|php|osascript|eval|sudo|env|ssh)\b")
+_HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?([^\n]*)\n(.*?)^\s*\1\s*$", re.S | re.M)
 
-    All 38 `system-level` REDs on the accepted corpus were the words `shutdown` or `reboot` inside
-    a `python3 - <<'PY'` body -- Python source and prose, not commands. 91 of 293 REDs overall came
-    from lines containing a heredoc. The body is data being passed to a program, not a command line.
+
+def _strip_heredocs(cmd: str) -> str:
+    """Remove heredoc bodies that are DATA; keep the ones that are COMMANDS.
+
+    Stripping exists because all 38 `system-level` REDs on the accepted corpus were the words
+    `shutdown` or `reboot` appearing inside a Python heredoc body -- source code and prose, not a
+    command line. But the same removal hid real commands when the heredoc feeds a shell.
+
+    A body is kept when the text introducing it names an interpreter, on either side of the
+    delimiter: `bash <<EOF` and `cat <<EOF | bash` both execute it. Kept bodies are re-emitted as
+    their own lines so the segment scanner sees them as commands in their own right.
     """
-    return re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\s*\1\s*$", " ", cmd,
-                  flags=re.S | re.M)
+    out: list[str] = []
+    pos = 0
+    for m in _HEREDOC.finditer(cmd):
+        prefix = cmd[pos:m.start()]
+        out.append(prefix)
+        header = prefix.rsplit("\n", 1)[-1] + m.group(2)
+        out.append("\n" + m.group(3) + "\n" if _INTERPRETER_HEAD.search(header) else " ")
+        pos = m.end()
+    out.append(cmd[pos:])
+    return "".join(out)
 
 
 def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
@@ -398,7 +424,7 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
     # fixture (`tests/fixtures/dummy.pem`) un-writable AND un-approvable, and even `shasum` on it
     # was RED. Reading a credential is not exfiltration, and blocking a repo's own files is the
     # fastest way to get the gate switched off.
-    writes = tool in _WRITE_TOOLS or (tool == "Bash" and cmd and not _is_read_only_cmd(scan))
+    writes = tool in _WRITE_TOOLS or (tool == "Bash" and cmd and not _is_read_only_cmd(cmd))
     if writes:
         for raw in _mentioned_paths(tool, inp):
             p_abs = _abs(raw, grant.cwd)

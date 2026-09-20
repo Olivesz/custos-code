@@ -323,3 +323,51 @@ def test_shell_fragments_are_not_reported_as_paths(repo: pathlib.Path) -> None:
     """The corpus produced findings reading `touches a path outside...: /'`."""
     f = classify("Bash", {"command": "grep -r \"x\" . | awk '{print $1}'"}, _g(repo), RepoState(str(repo)))
     assert "/'" not in f.detail
+
+
+# --- the heredoc bypass, found by automated security review 2026-09-20 --------------------------
+# Introduced BY the fix for the 38 false `system-level` REDs: stripping heredoc bodies to stop
+# scanning Python prose also stopped scanning shell commands. A body fed to an interpreter is
+# command text; one fed to `cat`, `jq` or a file is data. The fix has to tell them apart, and
+# both directions are load-bearing, so both are tested.
+
+HEREDOC_EXPLOITS = [
+    ("bash",        "bash <<'EOF'\nrm -rf /Users/someone/Projects\nEOF"),
+    ("sh",          "sh <<'X'\ngit push --force origin main\nX"),
+    ("python",      "python3 - <<'PY'\nimport os; os.system('rm -rf /Users/someone')\nPY"),
+    ("cat to bash", "cat <<'EOF' | bash\nrm -rf /Users/someone/Projects\nEOF"),
+    ("sudo bash",   "sudo bash <<'E'\nrm -rf /Users/someone\nE"),
+]
+
+
+@pytest.mark.parametrize("name,cmd", HEREDOC_EXPLOITS, ids=[c[0] for c in HEREDOC_EXPLOITS])
+def test_an_interpreter_heredoc_body_is_scanned_as_commands(name: str, cmd: str,
+                                                            repo: pathlib.Path) -> None:
+    """Every one of these was GREEN -- a complete bypass of every RED rule."""
+    f = classify("Bash", {"command": cmd}, _g(repo), RepoState(str(repo)))
+    assert f.band is Band.RED, f"{name} bypassed the scanner: {f.band.value} ({f.rule})"
+
+
+HEREDOC_DATA = [
+    ("python prose", "python3 - <<'PY'\nprint('pool exited via shutdown(wait=True)')\nPY"),
+    ("python code",  "python3 - <<'PY'\nimport pathlib; print(list(pathlib.Path('.').glob('*')))\nPY"),
+    ("sql",          "psql <<'SQL'\nselect 1; -- shutdown the pool\nSQL"),
+]
+
+
+@pytest.mark.parametrize("name,cmd", HEREDOC_DATA, ids=[c[0] for c in HEREDOC_DATA])
+def test_a_data_heredoc_does_not_fire_on_its_contents(name: str, cmd: str,
+                                                      repo: pathlib.Path) -> None:
+    """The other direction: prose inside a body must not be read as a command.
+
+    `shutdown`/`reboot` were dropped from the RED patterns for this reason -- zero true positives
+    across 404 sessions, every fire the word inside Python source. `diskutil` and `mkfs` carry the
+    rule instead, since neither appears in ordinary prose.
+    """
+    f = classify("Bash", {"command": cmd}, _g(repo), RepoState(str(repo)))
+    assert f.band is not Band.RED, f"{name} fired on heredoc contents: {f.rule}"
+
+
+def test_a_real_disk_command_is_still_red(repo: pathlib.Path) -> None:
+    f = classify("Bash", {"command": "diskutil eraseDisk JHFS+ X disk2"}, _g(repo), RepoState(str(repo)))
+    assert f.band is Band.RED and f.rule == "system-level"
