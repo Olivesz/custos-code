@@ -168,6 +168,61 @@ def test_classify_is_pure(repo: pathlib.Path) -> None:
     assert all(classify(*args) == first for _ in range(5))
 
 
+# --- compound commands: a chained line is not one opaque, unrecognised blob ---------------------
+#
+# Found by dogfooding the installed hooks on this very session: `cd repo && source ~/.env && uv
+# run ...` was reported as "writes ~/.env" (RED, protected-path), because the old check only
+# looked at the line's FIRST token ("cd", not in the allowlist) and then treated "not recognised"
+# as "might write anything the line mentions" -- including a path a `source` two steps later only
+# ever reads. Nothing here should write anything; it should all be GREEN or exactly as YELLOW/RED
+# as the one segment that actually does something.
+
+def test_sourcing_a_file_in_a_chain_does_not_read_as_writing_it(repo: pathlib.Path) -> None:
+    outside_env = "/Users/someone/.env"
+    f = classify("Bash", {"command": f'cd "{repo}" && source "{outside_env}" && echo done'},
+                _g(repo), RepoState(str(repo)))
+    assert f.band is Band.GREEN, f"a read inside a chain was reported as a write: {f.rule} {f.detail}"
+
+
+def test_sourcing_a_file_alone_is_read_only(repo: pathlib.Path) -> None:
+    f = classify("Bash", {"command": "source /Users/someone/.env"}, _g(repo), RepoState(str(repo)))
+    assert f.band is Band.GREEN
+
+
+def test_a_fully_recognised_chain_is_green_even_though_cd_leads_it(repo: pathlib.Path) -> None:
+    """`cd` never used to be in the allowlist, so ANY chain starting with it fell through as
+    unrecognised, not as safe -- this is a straightforward improvement, not just a bug fix."""
+    f = classify("Bash", {"command": f'cd "{repo}" && pytest -q'}, _g(repo), RepoState(str(repo)))
+    assert f.band is Band.GREEN
+
+
+def test_an_unrecognised_step_in_the_chain_still_leaves_the_whole_thing_ungreen(
+        repo: pathlib.Path) -> None:
+    """The fix narrows false positives; it must not launder a step we genuinely don't recognise.
+
+    A path an unrecognised segment touches INSIDE the granted, git-backed cwd is meant to be
+    GREEN regardless of which tool wrote it -- that is the GREEN band's own definition. This
+    instead points the unrecognised step outside the grant, where it must still gate.
+    """
+    f = classify("Bash", {"command": f'cd "{repo}" && ./some-custom-script.sh /Users/someone/out.txt'},
+                _g(repo), RepoState(str(repo)))
+    assert f.band is Band.YELLOW and f.rule == "write-outside-cwd"
+
+
+def test_a_real_write_to_a_protected_path_is_still_caught_inside_a_chain(
+        repo: pathlib.Path) -> None:
+    """Narrowing to the writing segment must not stop catching an actual write in one."""
+    f = classify("Bash", {"command": f'cd "{repo}" && cp secret.txt ~/.ssh/config'},
+                _g(repo), RepoState(str(repo)))
+    assert f.band is Band.RED and f.rule == "protected-path"
+
+
+def test_a_redirect_two_steps_into_a_chain_is_still_a_write(repo: pathlib.Path) -> None:
+    f = classify("Bash", {"command": f'cd "{repo}" && echo hi > /Users/someone/.zshrc'},
+                _g(repo), RepoState(str(repo)))
+    assert f.band is not Band.GREEN
+
+
 # --- holes found while writing the tests above --------------------------------------------------
 
 def test_a_scratch_root_itself_is_not_disposable() -> None:
