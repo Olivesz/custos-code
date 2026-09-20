@@ -422,6 +422,112 @@ no scope gate.
 |---|---|---|---|
 | S1 | `max_files_changed` / `max_lines`: is magnitude a usable YELLOW signal at all, or noise? §7 answers it. | Anush | open |
 | S6 | §7b replaced "≤1% of calls" with prompts-per-session. Does p90 ≤ 2 hold once the ratchet is actually implemented? It is currently modelled in the harness, not in the product (`scope_approved` has a reader and no writer). | Oliver | open |
+| S8 | §11: move scope proper to a post-hoc On branch oliver/scope-design
+Your branch is up to date with 'origin/oliver/scope-design'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   docs/SCOPE.md
+
+no changes added to commit (use "git add" and/or "git commit -a")/diff --git a/docs/SCOPE.md b/docs/SCOPE.md
+index e2e820c..932bfa7 100644
+--- a/docs/SCOPE.md
++++ b/docs/SCOPE.md
+@@ -436,3 +436,93 @@ still requires positive evidence and still cannot be emitted by a model.
+ 
+ Integrity's measured numbers stand unchanged. Scope is additive, and it is unmeasured until §7 says
+ otherwise — which is exactly how integrity's numbers should be read too.
++
++
++## 11. Amendment: §4–§6 name the wrong instrument
++
++**Status: proposed. §3 stands; §4–§6 do not.** Written after two rounds of hardening and two
++measured calibration runs, per the rule that this document is what we build from — so a part of it
++that the evidence contradicts gets argued against in writing, not quietly abandoned.
++
++### The claim
++
++Banding a **command string** at `PreToolUse` cannot reach the §7b criterion. Roughly 14–18% is the
++floor of the approach, not its calibration error.
++
++### The evidence
++
++**1. The two error columns trade against each other, and we have watched it happen four times.**
++Every tightening moved errors from the miss column to the false-positive column, and every loosening
++moved them back:
++
++| Change | Bought | Cost |
++|---|---|---|
++| strip heredoc bodies | −38 false REDs | `bash <<'EOF' / rm -rf ~ / EOF` became **GREEN** |
++| drop the header tail | tidier scan text | `cat <<'EOF' > ~/.zshrc` became **GREEN** |
++| drop `python`/`sed`/`find` from the allowlist | closed 5 bypasses | `find . -name '*.pyc' -delete` is now **RED** |
++| remove `shutdown`/`reboot` | −38 false REDs | any `reboot` in a real command line is now missed |
++
++**Both HIGH-severity bypasses found so far were introduced by a fix for false positives.** That is
++not carelessness; it is the shape of the instrument.
++
++**2. False positives that cannot be fixed at the string level.** Each is ordinary developer work:
++
++```
++rm -rf build/ dist/ *.egg-info          RED    (any rm -rf, even inside cwd)
++find . -name '*.pyc' -delete            RED
++git push --force-with-lease origin x    RED    (the SAFE force push)
++curl -s 127.0.0.1:3000/api | python3    RED    (a local dev server)
++```
++
++A regex cannot distinguish `find -exec grep` from `find -exec rm`, or `rm -rf build/` from
++`rm -rf ~/Projects`, without knowing what the paths *are* — which is a filesystem question.
++
++**3. Bypasses that cannot be closed at the string level.** Each writes, none names a write verb:
++
++```
++sort -o ~/.zshrc src/a.py       GREEN    sort is read-only; -o writes
++git checkout -- .               GREEN    discards all uncommitted work
++git branch -f main HEAD~5       GREEN    `branch` is read-only
++python3 tool.py                 GREEN    tool.py may do anything
++```
++
++The instrument reads **syntax**; the property we want is an **effect**.
++
++### What §3 already said
++
++§3 lists `git status` / `git diff` / blast radius as a grounding source and rates it *fully*
++deterministic. §4–§6 then never use it. The doc named the right instrument in one section and
++specified the wrong one in the next three.
++
++### The correction
++
++**Split by reversibility, which is what §4 says scope is about anyway.**
++
++**Pre-action (`PreToolUse`), a short RED list only.** Things that cannot be undone after the fact,
++so there is no post-hoc measurement to take: force-push, package publish, `sudo`, credential-file
++writes, `rm -rf` outside cwd and scratch, sending or spending. This list *will* have bypasses —
++findings 1–4 above — and that is acceptable, because everything it misses is caught by the next
++stage. It should be small enough to audit by eye.
++
++**Post-action (`PostToolUse` / `Stop`), the real scope check.** `git status --porcelain` and
++`git diff --stat` answer *what actually changed, and can git undo it* with no parsing and no
++regexes. Untracked files, files outside the repo, and lockfile changes are all directly observable.
++Near-zero false positives, because it measures the effect rather than guessing it from the verb.
++
++This also repairs §5's timing argument, which was too broad. "Check before the action" is right for
++the irreversible list and unnecessary for everything else: a file write inside a git tree is
++revertible, so it can be reported after the fact and undone if wrong.
++
++### What it costs
++
++The gate stops being able to *prevent* an out-of-scope file write; it reports one and offers to
++revert. For the irreversible list nothing changes. Given that 82% of sessions see zero prompts
++(§7b) and the residue is dominated by in-repo writes, this trades a capability we cannot deliver
++accurately for one we can.
++
++### Decision needed
++
++S8: adopt this split, or keep §4–§6 and accept ~14% as the floor with YELLOW downgraded to
++log-only. **Owner: Oliver. Blocking: the gate cannot ship on either path until #57 reports against
++whichever instrument we pick**, and re-pointing calibration at the post-hoc measure is roughly the
++same work as calibrating the current one. measure and keep only an irreversible-action list at PreToolUse? Evidence in §11; ~14% looks like the floor of string banding. | Oliver | **open, blocking** |
 | S7 | Calibrate on bands recorded LIVE (`RECEIPTS_SCOPE=warn`) rather than replayed against today's filesystem — §7c says the replayed number is an upper bound only. | Anush | open |
 | S2 | Does a YELLOW pause mid-turn confuse the agent into working around the gate rather than asking? | Oliver | open |
 | S3 | Ratcheted grants: session-scoped only, or persisted per repo? Persisted is friendlier and strictly weaker. | Oliver | open |
@@ -436,3 +542,93 @@ still requires positive evidence and still cannot be emitted by a model.
 
 Integrity's measured numbers stand unchanged. Scope is additive, and it is unmeasured until §7 says
 otherwise — which is exactly how integrity's numbers should be read too.
+
+
+## 11. Amendment: §4–§6 name the wrong instrument
+
+**Status: proposed. §3 stands; §4–§6 do not.** Written after two rounds of hardening and two
+measured calibration runs, per the rule that this document is what we build from — so a part of it
+that the evidence contradicts gets argued against in writing, not quietly abandoned.
+
+### The claim
+
+Banding a **command string** at `PreToolUse` cannot reach the §7b criterion. Roughly 14–18% is the
+floor of the approach, not its calibration error.
+
+### The evidence
+
+**1. The two error columns trade against each other, and we have watched it happen four times.**
+Every tightening moved errors from the miss column to the false-positive column, and every loosening
+moved them back:
+
+| Change | Bought | Cost |
+|---|---|---|
+| strip heredoc bodies | −38 false REDs | `bash <<'EOF' / rm -rf ~ / EOF` became **GREEN** |
+| drop the header tail | tidier scan text | `cat <<'EOF' > ~/.zshrc` became **GREEN** |
+| drop `python`/`sed`/`find` from the allowlist | closed 5 bypasses | `find . -name '*.pyc' -delete` is now **RED** |
+| remove `shutdown`/`reboot` | −38 false REDs | any `reboot` in a real command line is now missed |
+
+**Both HIGH-severity bypasses found so far were introduced by a fix for false positives.** That is
+not carelessness; it is the shape of the instrument.
+
+**2. False positives that cannot be fixed at the string level.** Each is ordinary developer work:
+
+```
+rm -rf build/ dist/ *.egg-info          RED    (any rm -rf, even inside cwd)
+find . -name '*.pyc' -delete            RED
+git push --force-with-lease origin x    RED    (the SAFE force push)
+curl -s 127.0.0.1:3000/api | python3    RED    (a local dev server)
+```
+
+A regex cannot distinguish `find -exec grep` from `find -exec rm`, or `rm -rf build/` from
+`rm -rf ~/Projects`, without knowing what the paths *are* — which is a filesystem question.
+
+**3. Bypasses that cannot be closed at the string level.** Each writes, none names a write verb:
+
+```
+sort -o ~/.zshrc src/a.py       GREEN    sort is read-only; -o writes
+git checkout -- .               GREEN    discards all uncommitted work
+git branch -f main HEAD~5       GREEN    `branch` is read-only
+python3 tool.py                 GREEN    tool.py may do anything
+```
+
+The instrument reads **syntax**; the property we want is an **effect**.
+
+### What §3 already said
+
+§3 lists `git status` / `git diff` / blast radius as a grounding source and rates it *fully*
+deterministic. §4–§6 then never use it. The doc named the right instrument in one section and
+specified the wrong one in the next three.
+
+### The correction
+
+**Split by reversibility, which is what §4 says scope is about anyway.**
+
+**Pre-action (`PreToolUse`), a short RED list only.** Things that cannot be undone after the fact,
+so there is no post-hoc measurement to take: force-push, package publish, `sudo`, credential-file
+writes, `rm -rf` outside cwd and scratch, sending or spending. This list *will* have bypasses —
+findings 1–4 above — and that is acceptable, because everything it misses is caught by the next
+stage. It should be small enough to audit by eye.
+
+**Post-action (`PostToolUse` / `Stop`), the real scope check.** `git status --porcelain` and
+`git diff --stat` answer *what actually changed, and can git undo it* with no parsing and no
+regexes. Untracked files, files outside the repo, and lockfile changes are all directly observable.
+Near-zero false positives, because it measures the effect rather than guessing it from the verb.
+
+This also repairs §5's timing argument, which was too broad. "Check before the action" is right for
+the irreversible list and unnecessary for everything else: a file write inside a git tree is
+revertible, so it can be reported after the fact and undone if wrong.
+
+### What it costs
+
+The gate stops being able to *prevent* an out-of-scope file write; it reports one and offers to
+revert. For the irreversible list nothing changes. Given that 82% of sessions see zero prompts
+(§7b) and the residue is dominated by in-repo writes, this trades a capability we cannot deliver
+accurately for one we can.
+
+### Decision needed
+
+S8: adopt this split, or keep §4–§6 and accept ~14% as the floor with YELLOW downgraded to
+log-only. **Owner: Oliver. Blocking: the gate cannot ship on either path until #57 reports against
+whichever instrument we pick**, and re-pointing calibration at the post-hoc measure is roughly the
+same work as calibrating the current one.
