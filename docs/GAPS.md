@@ -60,6 +60,29 @@ close to sufficient.
    suite any good", and unlike a pass count it cannot be satisfied by a do-nothing implementation.
    Target: publish the mutation score, whatever it is.
 
+**Closed (2026-09-19).** `eval/mutation/run.py` already implemented move 2; running it against
+the suite as it stood found **68% (15/22)**, with the 7 survivors printed by name -- each one a
+mutant the suite did not notice, not a guess. One more mutant (`claims.py`, "absolute paths are
+truncated again") reported "pattern did not apply" instead of a real result: its match pattern
+had stopped matching after a ruff-format pass reflowed the surrounding lines, so it had silently
+been testing nothing.
+
+Move 1: added five new liveness relations (`tests/metamorphic/test_relations.py` MR10-14) and
+two regression tests (`tests/unit/test_claims.py`: did-not-touch polarity, and the absolute-path
+truncation case its own code comment names but never had a test for), each targeting one of the
+7 survivors and grounded in the actual `rules.py`/`verdicts.py`/`claims.py` code path it
+exercises, not written to the mutant's diff. Also re-anchored the broken mutant's pattern on the
+current source (verified with `re.subn(count=1) == 1` against the live file) so it tests
+something again.
+
+Re-running the mutation score afterward: **96% (22/23)**. The one remaining survivor,
+`accusable()`'s "missing repo state" guard, appears to be dead code given the current call
+sites -- `rule_edit`/`rule_create`/`rule_delete` all gate on `RepoState.exists()`/`.changed()`,
+which already return `None` (not `False`) whenever `state.root` is invalid, so `accusable()`'s
+own root check is never reached with a `False`-shaped input in practice. Worth a second look from
+Oliver (rules.py is his file) to confirm before deleting the guard or leaving it as defence in
+depth -- left open rather than assumed.
+
 ---
 
 ## G3 — The labeller we scored against is unreliable

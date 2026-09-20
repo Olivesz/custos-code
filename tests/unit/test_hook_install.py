@@ -33,10 +33,13 @@ def _run(script: str, payload: str, env: dict[str, str]) -> subprocess.Completed
 def test_hook_command_is_absolute_and_needs_no_path(event: str) -> None:
     """Claude Code runs hooks in a shell that does not inherit our PATH.
 
-    `_hook_command` returns a shell line, so it must be taken apart with `shlex.split`, never a
-    whitespace split: a checkout under a path containing a space (Anush's is `HackMIT 2026`)
-    shell-quotes correctly and then fails a naive `.split()[0]` -- the same quoting bug this PR
-    exists to fix, relocated into its own regression test. Caught in review on PR #44.
+    `_hook_command` shell-quotes its path with `shlex.join`, so a naive `cmd.split()` breaks a
+    quoted path apart at any space inside it -- exactly the kind of checkout Anush's own folder
+    name (`HackMIT 2026`) produces, which is how he caught it in review on PR #44. Parse the
+    command line the way a shell would.
+
+    (Fixed independently on two branches; this keeps the stricter argv-tail assertion, which pins
+    the subcommand as its own argv element rather than as a suffix of the whole string.)
     """
     cmd = _hook_command(event)
     argv = shlex.split(cmd)
