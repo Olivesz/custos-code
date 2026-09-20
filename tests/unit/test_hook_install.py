@@ -146,6 +146,17 @@ def test_the_command_we_install_actually_runs(event: str, tmp_path: pathlib.Path
                           text=True, env=env, timeout=120)
     assert proc.returncode == 0, f"installed hook failed: rc={proc.returncode} {proc.stderr[:400]}"
     assert "Traceback" not in proc.stderr, proc.stderr[:400]
+    # Exit 0 and a clean stderr prove nothing on their own: `hooks.main()` catches everything and
+    # exits 0 by design, so a handler that raises on its first line still looks like this. An
+    # earlier version of this test asserted only those two things and passed with the entire
+    # recorder gutted -- the precise failure it was written to prevent. Assert the side effect.
+    assert "hook failed" not in proc.stderr, f"the hook caught and swallowed an error: {proc.stderr[:400]}"
+    if event == "post-tool-use":
+        live = pathlib.Path(tmp_path) / ".custos-code" / "live" / "e2e.jsonl"
+        assert live.exists(), "the hook ran and exited 0 but recorded nothing"
+        rows = [json.loads(ln) for ln in live.read_text().splitlines() if ln.strip()]
+        kinds = [r.get("kind") for r in rows]
+        assert "call" in kinds and "result" in kinds, f"ledger is missing events: {kinds}"
 
 
 @pytest.mark.parametrize("event", EVENTS)

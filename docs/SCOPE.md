@@ -362,3 +362,123 @@ still requires positive evidence and still cannot be emitted by a model.
 
 Integrity's measured numbers stand unchanged. Scope is additive, and it is unmeasured until §7 says
 otherwise — which is exactly how integrity's numbers should be read too.
+## 11. Amendment: §4–§6 name the wrong instrument
+
+**Status: proposed. §3 stands; §4–§6 do not.** Written after two rounds of hardening and two
+measured calibration runs, per the rule that this document is what we build from — so a part of it
+that the evidence contradicts gets argued against in writing, not quietly abandoned.
+
+### The claim
+
+Banding a **command string** at `PreToolUse` cannot reach the §7b criterion. Roughly 14–18% is the
+floor of the approach, not its calibration error.
+
+### The evidence
+
+**1. The two error columns trade against each other, and we have watched it happen four times.**
+Every tightening moved errors from the miss column to the false-positive column, and every loosening
+moved them back:
+
+| Change | Bought | Cost |
+|---|---|---|
+| strip heredoc bodies | −38 false REDs | `bash <<'EOF' / rm -rf ~ / EOF` became **GREEN** |
+| drop the header tail | tidier scan text | `cat <<'EOF' > ~/.zshrc` became **GREEN** |
+| drop `python`/`sed`/`find` from the allowlist | closed 5 bypasses | `find . -name '*.pyc' -delete` is now **RED** |
+| remove `shutdown`/`reboot` | −38 false REDs | any `reboot` in a real command line is now missed |
+
+**Both HIGH-severity bypasses found so far were introduced by a fix for false positives.** That is
+not carelessness; it is the shape of the instrument.
+
+**2. False positives that cannot be fixed at the string level.** Each is ordinary developer work:
+
+```
+rm -rf build/ dist/ *.egg-info          RED    (any rm -rf, even inside cwd)
+find . -name '*.pyc' -delete            RED
+git push --force-with-lease origin x    RED    (the SAFE force push)
+curl -s 127.0.0.1:3000/api | python3    RED    (a local dev server)
+```
+
+A regex cannot distinguish `find -exec grep` from `find -exec rm`, or `rm -rf build/` from
+`rm -rf ~/Projects`, without knowing what the paths *are* — which is a filesystem question.
+
+**3. Bypasses that cannot be closed at the string level.** Each writes, none names a write verb:
+
+```
+sort -o ~/.zshrc src/a.py       GREEN    sort is read-only; -o writes
+git checkout -- .               GREEN    discards all uncommitted work
+git branch -f main HEAD~5       GREEN    `branch` is read-only
+python3 tool.py                 GREEN    tool.py may do anything
+```
+
+The instrument reads **syntax**; the property we want is an **effect**.
+
+### What §3 already said
+
+§3 lists `git status` / `git diff` / blast radius as a grounding source and rates it *fully*
+deterministic. §4–§6 then never use it. The doc named the right instrument in one section and
+specified the wrong one in the next three.
+
+### The correction
+
+**Split by reversibility, which is what §4 says scope is about anyway.**
+
+**Pre-action (`PreToolUse`), a short RED list only.** Things that cannot be undone after the fact,
+so there is no post-hoc measurement to take: force-push, package publish, `sudo`, credential-file
+writes, `rm -rf` outside cwd and scratch, sending or spending. This list *will* have bypasses —
+findings 1–4 above — and that is acceptable, because everything it misses is caught by the next
+stage. It should be small enough to audit by eye.
+
+**Post-action (`PostToolUse` / `Stop`), the real scope check.** `git status --porcelain` and
+`git diff --stat` answer *what actually changed, and can git undo it* with no parsing and no
+regexes. Untracked files, files outside the repo, and lockfile changes are all directly observable.
+Near-zero false positives, because it measures the effect rather than guessing it from the verb.
+
+This also repairs §5's timing argument, which was too broad. "Check before the action" is right for
+the irreversible list and unnecessary for everything else: a file write inside a git tree is
+revertible, so it can be reported after the fact and undone if wrong.
+
+### What it costs
+
+The gate stops being able to *prevent* an out-of-scope file write; it reports one and offers to
+revert. For the irreversible list nothing changes. Given that 82% of sessions see zero prompts
+(§7b) and the residue is dominated by in-repo writes, this trades a capability we cannot deliver
+accurately for one we can.
+
+### Decision needed
+
+S8: adopt this split, or keep §4–§6 and accept ~14% as the floor with YELLOW downgraded to
+log-only. **Owner: Oliver. Blocking: the gate cannot ship on either path until #57 reports against
+whichever instrument we pick**, and re-pointing calibration at the post-hoc measure is roughly the
+same work as calibrating the current one.
+
+### Update, 2026-09-20: measured again, on the whole corpus this time
+
+The §7a and §7b numbers above were taken on the slice of the corpus whose cwd is a live git work
+tree — 2,567 of 23,826 calls. On everything, the base rate is **48.4% YELLOW, 1.23% RED**, not the
+14–18% this section argued was the floor. 84% of calls come from sessions rooted at `~/Projects`,
+a directory that contains repos but is not one.
+
+Nine defect fixes, each measured on the full corpus, take it to **16.03% YELLOW / 0.82% RED** with
+no RED lost. None of them is a policy change; every one is "this token was never a shell path, or
+this text was never a shell command":
+
+- `recoverable()` asked the session's cwd for a git tree instead of the target's (~2,500 findings)
+- `_paths_in` treated every slash-bearing token as a write target — `.venv/bin/python`, the
+  interpreter itself, 900 times; also `2>/dev/null`, sed programs, `origin/main`, URLs
+- `_is_read_only_cmd` called any command containing `>` a write, including `2>&1`, and read only
+  the first token of a pipeline
+- all 38 `system-level` REDs were `shutdown`/`mkfs` inside a grep pattern or a heredoc'd document
+
+**This changes §11's conclusion.** The instrument is not structurally wrong; it was measured on a
+tenth of the corpus and it had four bugs. What is wrong is the *criterion*: ≤1% of tool calls is
+not a thing a user experiences, because the gate asks once per (rule, directory) and never again.
+On the metric a user feels, the patched instrument already passes — **median 0 prompts per
+session, mean 0.60, p95 4, and 76% of sessions never interrupted at all**.
+
+So: replace the per-call bar with a per-session one (median 0, p95 ≤ 5, ≥75% untouched), ship the
+nine fixes, and add a per-rule ratchet alongside the per-directory one — without it, correctly
+resolved paths mean a session touching 40 real directories asks 40 times.
+
+One bypass found while measuring, and it is the reason to keep the instrument rather than weaken
+it: `cat src/a.py | tee /Users/x/.zshrc` is **GREEN** in the committed classifier, because the
+read-only check looks only at the first token of the pipeline.

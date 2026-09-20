@@ -25,10 +25,15 @@ import re
 from datetime import datetime
 from typing import Any
 
+from .. import parsers
 from ..ledger import MAX_OUTPUT_BYTES, chain, redact
 from ..models import EventFlags, EventKind, LedgerEvent, Session
 
-_PIPE_RE = re.compile(r"\|\s*(head|tail|grep|wc|less|more|cut|awk|sed)\b|2>\s*/dev/null|>\s*/dev/null|--silent\b|--quiet\b")
+# Pipe detection lives in `parsers.is_piped`, which every other adapter already used. The copy
+# that lived here missed `> file` and `>> file`, so `pytest -q > results.txt` was recorded
+# unfiltered and `rules._outcome` CONFIRMED the claim on exit status alone -- a run whose whole
+# output went to a file and was never parsed. This adapter and the live hook were the only two
+# users of the weaker list, which is the worst pair to have it in.
 _PATH_RE = re.compile(r"(?<![\w-])((?:\.{0,2}/)?[\w.-]+(?:/[\w.-]+)+\.[A-Za-z0-9]{1,8})")
 
 
@@ -128,7 +133,7 @@ def _flags_from_result(tool: str | None, inp: dict[str, Any] | None, block: dict
         f.error = True
     if isinstance(tur, dict) and bool(tur.get("interrupted")):
         f.interrupted = True
-    if tool == "Bash" and inp and isinstance(inp.get("command"), str) and _PIPE_RE.search(inp["command"]):
+    if tool == "Bash" and inp and isinstance(inp.get("command"), str) and parsers.is_piped(inp["command"]):
         f.piped = True
     return f
 

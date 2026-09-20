@@ -146,11 +146,12 @@ def test_the_gate_launches_nothing_by_itself(repo: pathlib.Path, monkeypatch: py
 
     monkeypatch.setattr(rerun_mod, "rerun_tests", boom)
     monkeypatch.setattr(rerun_mod, "spawn_async", boom)
-    should_rerun(_claim(), _rec(), str(repo))
+    # Assert the decision too. With no assertion this passed against a gate stubbed to return
+    # False -- it proved only that nothing launched, which a dead gate also satisfies.
+    assert should_rerun(_claim(), _rec(), str(repo)) is True
 
 
 # --- the integration bug: the gate could never have fired in production --------------------------
-
 def test_the_gate_works_on_claims_the_shipping_path_produces(repo: pathlib.Path) -> None:
     """`review.py` labels EVERY claim `ClaimType.OTHER`.
 
