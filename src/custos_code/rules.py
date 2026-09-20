@@ -39,6 +39,13 @@ _EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "str_replace_based_
 _READ_TOOLS = {"Read", "Glob", "Grep"}
 _PREFIX_RE = re.compile(r"^(?:cd\s+\S+\s*&&\s*|(?:[A-Z_][A-Z0-9_]*=\S+\s+)+|uv\s+run\s+|npx\s+|pnpm\s+exec\s+|poetry\s+run\s+|bunx\s+|pipenv\s+run\s+|sudo\s+)*")
 _FAIL_TEXT_RE = re.compile(r"\b(?:error|failed|failure|traceback|exception|E\d{3}\b|cannot find|not found)\b", re.I)
+# A digit that can only be a test tally, so the number must sit against a pass-word. A bare
+# "N tests" is not enough: "added 12 tests in tests/test_rate_limit.py" is a claim about writing
+# tests, and it is perfectly consistent with an earlier run reporting 9 passed. Accusing there
+# would be the unfounded accusation this project exists to prevent. A missed mismatch costs one
+# catch; a false one costs the product's credibility, and those are not symmetric.
+_TEST_COUNT_RE = re.compile(r"\b(\d+)\s*(?:tests?\s+)?(?:passed|passing|pass|green)\b", re.I)
+
 _LINT_OK_RE = re.compile(r"all checks passed|success: no issues|no issues found|0 errors|found 0 errors|✓|clean", re.I)
 _BASH_EDIT_RE = re.compile(r"\bsed\s+-i|\btee\b|>{1,2}\s*[\w./-]+|\bmv\b|\bcp\b|\bpatch\b|\bgit\s+apply\b")
 _RM_RE = re.compile(r"\b(?:rm\s+(?:-\w+\s+)*|git\s+rm\s+|unlink\s+)")
@@ -192,13 +199,24 @@ def _outcome_of(call: LedgerEvent, res: LedgerEvent | None, claim: Claim, label:
                         f"{parsed.runner} at #{res.seq}: {parsed.passed} passed, {parsed.failed} failed, {parsed.errors} errors.")
         if res.exit_code not in (None, 0) or res.flags.error:
             return _rec(claim, Verdict.CONTRADICTED, 2, "rule", [call, res], f"{parsed.runner} at #{res.seq} exited non-zero.")
-        qual = None
-        for o in claim.objects:
-            n = o.split("/")[-1] if "/" in o else o
-            if n.isdigit() and int(n) != parsed.passed:
-                qual = f"{o} claimed, {parsed.passed} passed"
-        if qual:
-            return _rec(claim, Verdict.QUALIFIED, 2, "rule", [call, res], f"{parsed.runner} at #{res.seq}: {parsed.passed} passed, 0 failed.", 0.85, qual)
+        # A test count the runner disagrees with is not a hedge, it is a false statement, and it is
+        # one of the few the log settles outright. Tier 2 owns it: this is arithmetic over parsed
+        # runner output, not a judgement, so AGENTS.md invariant 3 permits `contradicted` here.
+        #
+        # Read the count off the claim text rather than `claim.objects`, and only in a shape that
+        # can only mean a test tally. "3 test files" and a bare version number are digits too, and
+        # accusing on those would be exactly the unfounded accusation this project exists to stop.
+        # Every plausible reading of the run has to disagree before it fires.
+        plausible = {parsed.passed, parsed.passed + parsed.skipped}
+        if parsed.collected is not None:
+            plausible.add(parsed.collected)
+        for m in _TEST_COUNT_RE.finditer(claim.text):
+            n = int(next(g for g in m.groups() if g))
+            if n not in plausible:
+                shown = " or ".join(str(x) for x in sorted(plausible))
+                return _rec(claim, Verdict.CONTRADICTED, 2, "rule", [call, res],
+                            f"{parsed.runner} at #{res.seq} reports {shown}, not {n}.",
+                            0.95, f"{n} claimed, {parsed.passed} passed")
         return _rec(claim, Verdict.CONFIRMED, 2, "rule", [call, res], f"{parsed.runner} at #{res.seq}: {parsed.passed} passed, 0 failed.")
     # no runner-format output: fall back to exit status and failure text
     if res.exit_code not in (None, 0) or res.flags.error:

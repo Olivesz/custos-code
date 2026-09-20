@@ -67,7 +67,12 @@ def test_unpiped_failing_run_is_contradicted(tmp_path: Path) -> None:
     assert rec.verdict == Verdict.CONTRADICTED and rec.evidence == [0, 1] and "1 failed" in rec.rationale
 
 
-def test_count_mismatch_is_qualified() -> None:
+def test_count_mismatch_is_contradicted() -> None:
+    """A tally the runner disagrees with is a false statement, not a hedge.
+
+    Tier 2 owns this: it is arithmetic over parsed runner output, so invariant 3 permits it. It is
+    also the single most demonstrable catch the product has -- the log settles it outright.
+    """
     from datetime import datetime
 
     from custos_code.models import Claim, EventKind, LedgerEvent
@@ -80,7 +85,8 @@ def test_count_mismatch_is_qualified() -> None:
     ]
     claim = Claim(id="c1", session_id="s", text="all 12 tests pass", type=ClaimType.RUN_TESTS, objects=["12"])
     (rec,) = run([claim], ledger, None)
-    assert rec.verdict == Verdict.QUALIFIED and rec.qualifier == "12 claimed, 9 passed"
+    assert rec.verdict == Verdict.CONTRADICTED and rec.qualifier == "12 claimed, 9 passed"
+    assert "9" in rec.rationale and "12" in rec.rationale
 
 
 def test_no_judge_contradiction_and_confirmed_needs_evidence() -> None:
@@ -93,3 +99,25 @@ def test_no_judge_contradiction_and_confirmed_needs_evidence() -> None:
         _enforce(VerdictRecord(claim_id="c", verdict=Verdict.CONTRADICTED, tier=4, method="judge", confidence=1.0))
     with pytest.raises(AssertionError):
         _enforce(VerdictRecord(claim_id="c", verdict=Verdict.CONFIRMED, tier=1, method="rule", confidence=1.0))
+
+
+def test_the_test_count_pattern_only_matches_a_tally() -> None:
+    """The guard on the one rule that can accuse from a number.
+
+    A count mismatch is the product's most demonstrable catch, which makes it the most dangerous
+    place to be wrong: it emits `contradicted` deterministically, with no model in the loop to
+    hesitate. Every string on the right was considered and rejected -- `added 12 tests` in
+    particular is a claim about writing tests and is consistent with any run total at all.
+    """
+    from custos_code.rules import _TEST_COUNT_RE
+
+    def found(text: str) -> list[int]:
+        return [int(g) for m in _TEST_COUNT_RE.finditer(text) for g in m.groups() if g]
+
+    for text, want in [("all 12 tests pass", [12]), ("81 tests green", [81]), ("85 passed", [85]),
+                       ("**81 tests green.**", [81]), ("the suite is 81 passing", [81])]:
+        assert found(text) == want, text
+    for text in ("ran 3 test files", "pytest 9.1.1", "python 3.14", "wrote 12 tests",
+                 "added 12 tests in tests/test_rate_limit.py", "updated 3 test suites",
+                 "across 15 of 96 sessions", "2 test modules", "took 0.42s"):
+        assert found(text) == [], f"would accuse on {text!r}"
