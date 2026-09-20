@@ -7,7 +7,7 @@ import pytest
 
 from custos_code import rerun
 from custos_code.models import EventKind
-from custos_code.rerun import rerun_tests
+from custos_code.rerun import detect_command, rerun_tests
 
 
 def _init_repo(path: Path) -> Path:
@@ -115,6 +115,32 @@ def test_rerun_tests_detects_command_from_head_not_uncommitted_edits(tmp_path: P
 
     assert event.exit_code is None
     assert "no known test config" in (event.output or "")
+
+
+def test_build_detector_uses_committed_package_script(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "package.json").write_text('{"scripts": {"build": "vite build"}}\n')
+    _commit_all(repo)
+
+    assert detect_command(str(repo), "build") == ["npm", "run", "build", "--silent"]
+
+
+def test_build_detector_ignores_uncommitted_package_script(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "README.md").write_text("hi\n")
+    _commit_all(repo)
+
+    (repo / "package.json").write_text('{"scripts": {"build": "echo hacked"}}\n')
+
+    assert detect_command(str(repo), "build") is None
+
+
+def test_build_detector_supports_committed_go_module(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "go.mod").write_text("module example.com/fixture\n")
+    _commit_all(repo)
+
+    assert detect_command(str(repo), "build") == ["go", "build", "./..."]
 
 
 def test_rerun_tests_reports_no_known_test_config(tmp_path: Path) -> None:

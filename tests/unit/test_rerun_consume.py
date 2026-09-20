@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import subprocess
 
 import pytest
 
@@ -125,3 +126,35 @@ def test_on_stop_actually_calls_the_collector(monkeypatch: pytest.MonkeyPatch,
     rows = [json.loads(x) for x in open(live) if x.strip()]
     assert any(r["kind"] == "rerun" for r in rows), \
         "on_stop did not fold the Tier 3 result into the ledger"
+
+
+def test_on_stop_launches_build_rerun_with_build_command(monkeypatch: pytest.MonkeyPatch,
+                                                         tmp_path: pathlib.Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "package.json").write_text('{"scripts": {"build": "vite build"}}\n',
+                                       encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+                   cwd=repo, check=True)
+    _live("s5", [
+        dict(CALL, session_id="s5", input={"command": "echo preparing"}),
+        dict(RESULT, session_id="s5", output="ok\n", flags={}),
+    ])
+    launched: dict[str, object] = {}
+
+    def fake_spawn(session_id: str, claim_id: str, repo_root: str, report_seq: int,
+                   timeout_s: int = 60, cmd: list[str] | None = None,
+                   claim_text: str | None = None, claim_kind: str = "run_tests") -> pathlib.Path:
+        launched.update(session_id=session_id, claim_id=claim_id, repo_root=repo_root,
+                        report_seq=report_seq, timeout_s=timeout_s, cmd=cmd)
+        return tmp_path / "pending.json"
+
+    monkeypatch.setattr(h.judge_mod, "make_backend", lambda *a, **k: None)
+    monkeypatch.setattr(h.rerun, "spawn_async", fake_spawn)
+
+    h.on_stop({"session_id": "s5", "cwd": str(repo), "last_assistant_message": "The build is clean."})
+
+    assert launched["repo_root"] == str(repo)
+    assert launched["cmd"] == ["npm", "run", "build", "--silent"]

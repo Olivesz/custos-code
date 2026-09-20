@@ -31,11 +31,13 @@ Owner: Anush.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -59,20 +61,92 @@ _TEST_COMMANDS: tuple[tuple[str, list[str]], ...] = (
 )
 
 
+def _head_blob(repo_root: str, path: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", repo_root, "show", f"HEAD:{path}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def _head_has(repo_root: str, path: str) -> bool:
+    return _head_blob(repo_root, path) is not None
+
+
 def _detect_test_command(repo_root: str) -> list[str] | None:
     """Check HEAD's own committed blobs for a marker file, never the working tree -- an
     uncommitted edit to (or brand-new untracked) `package.json`/`pyproject.toml`/etc. must not
     change which runner gets picked (E3).
     """
     for marker, command in _TEST_COMMANDS:
-        result = subprocess.run(
-            ["git", "-C", repo_root, "cat-file", "-e", f"HEAD:{marker}"],
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode == 0:
+        if _head_has(repo_root, marker):
             return command
     return None
+
+
+def _package_script(repo_root: str, script: str) -> list[str] | None:
+    raw = _head_blob(repo_root, "package.json")
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    scripts = data.get("scripts")
+    if isinstance(scripts, dict) and isinstance(scripts.get(script), str):
+        return ["npm", "run", script, "--silent"]
+    return None
+
+
+def _make_target(repo_root: str, target: str) -> list[str] | None:
+    raw = (_head_blob(repo_root, "GNUmakefile") or _head_blob(repo_root, "makefile")
+           or _head_blob(repo_root, "Makefile"))
+    if raw is None:
+        return None
+    for line in raw.splitlines():
+        if line.startswith(f"{target}:"):
+            return ["make", target]
+    return None
+
+
+def _detect_build_command(repo_root: str) -> list[str] | None:
+    """Pick a build command from committed config only.
+
+    The detector is intentionally narrower than `rules.py`'s "build-ish command" recognizer. A
+    Tier 3 re-run executes code, so it needs an explicit committed build affordance rather than a
+    filename that happens to exist in the working tree.
+    """
+    if cmd := _package_script(repo_root, "build"):
+        return cmd
+    if _head_has(repo_root, "Cargo.toml"):
+        return ["cargo", "build"]
+    if _head_has(repo_root, "go.mod"):
+        return ["go", "build", "./..."]
+    if _head_has(repo_root, "pom.xml"):
+        return ["mvn", "package"]
+    if _head_has(repo_root, "build.gradle") or _head_has(repo_root, "build.gradle.kts"):
+        return ["gradle", "build"]
+    if cmd := _make_target(repo_root, "build"):
+        return cmd
+    raw_pyproject = _head_blob(repo_root, "pyproject.toml")
+    if raw_pyproject:
+        try:
+            config = tomllib.loads(raw_pyproject)
+        except tomllib.TOMLDecodeError:
+            return None
+        if isinstance(config.get("build-system"), dict):
+            return [sys.executable, "-m", "build"]
+    return None
+
+
+def detect_command(repo_root: str, kind: str) -> list[str] | None:
+    if kind == "build":
+        return _detect_build_command(repo_root)
+    return _detect_test_command(repo_root) if kind == "run_tests" else None
 
 
 def _tracked_files(repo_root: str) -> list[str]:
@@ -121,12 +195,30 @@ def _materialize_worktree(repo_root: str, worktree: Path) -> None:
         shutil.copy2(src, dst)
 
 
+_BUILD_CONFIGS = ("package.json", "Makefile", "makefile", "GNUmakefile", "Cargo.toml",
+                  "go.mod", "pom.xml", "build.gradle", "build.gradle.kts", "pyproject.toml")
+
+
+def _restore_build_config(repo_root: str, worktree: Path) -> None:
+    """Keep live source edits, but execute committed build entry-point configuration."""
+    for name in _BUILD_CONFIGS:
+        dest = worktree / name
+        blob = _head_blob(repo_root, name)
+        if dest.is_symlink():
+            dest.unlink()
+        if blob is not None:
+            dest.write_text(blob)
+        elif dest.is_file():
+            dest.unlink()
+
+
 def rerun_tests(
     repo_root: str,
     session_id: str = "",
     seq: int = -1,
     timeout_s: int = 60,
     cmd: list[str] | None = None,
+    claim_kind: str = "run_tests",
 ) -> LedgerEvent:
     """Replay the repo's test command against the final tree, in an isolated worktree, and
     return the result as a RERUN event. `session_id`/`seq` default to placeholders -- a caller
@@ -139,12 +231,18 @@ def rerun_tests(
         worktree = Path(tmp) / "worktree"
         _materialize_worktree(repo_root, worktree)
         try:
-            command = cmd if cmd is not None else _detect_test_command(repo_root)
+            if claim_kind == "build":
+                _restore_build_config(repo_root, worktree)
+            command = cmd if cmd is not None else detect_command(repo_root, claim_kind)
             started = datetime.now(UTC)
             timed_out = False
             if command is None:
                 output = "no known test config found (pyproject.toml, package.json, go.mod, Cargo.toml)"
                 exit_code: int | None = None
+            elif (command == [sys.executable, "-m", "build"]
+                  and importlib.util.find_spec("build") is None):
+                output = "Could not start runner: Python build module is not installed"
+                exit_code = None
             else:
                 try:
                     proc = subprocess.run(
@@ -156,6 +254,9 @@ def rerun_tests(
                     )
                     output = proc.stdout + proc.stderr
                     exit_code = proc.returncode
+                except OSError as exc:
+                    output = f"Could not start runner: {exc}"
+                    exit_code = None
                 except subprocess.TimeoutExpired as exc:
                     timed_out = True
                     stdout = exc.stdout if isinstance(exc.stdout, str) else ""
@@ -213,6 +314,8 @@ def _worker_argv(session_id: str, claim_id: str) -> list[str]:
     (pyproject.toml [project.scripts]) via -c rather than -m.
     """
     args = ["_hook", "rerun-worker", session_id, claim_id]
+    if importlib.util.find_spec("custos_code.cli") is not None:
+        return [sys.executable, "-c", "from custos_code.cli import app; app()", *args]
     script = shutil.which("custos-code")
     if script:
         return [script, *args]
@@ -227,6 +330,7 @@ def spawn_async(
     timeout_s: int = 60,
     cmd: list[str] | None = None,
     claim_text: str | None = None,
+    claim_kind: str = "run_tests",
 ) -> Path:
     """Launch Tier 3 detached and return immediately; never blocks the caller (E4).
 
@@ -248,6 +352,7 @@ def spawn_async(
     pending_path.write_text(json.dumps({
         "claim_id": claim_id,
         "claim_text": claim_text,
+        "claim_kind": claim_kind,
         "session_id": session_id,
         "repo_root": repo_root,
         "cmd": cmd,
@@ -286,9 +391,11 @@ def run_worker(session_id: str, claim_id: str) -> None:
         seq=0,
         timeout_s=pending["timeout_s"],
         cmd=pending.get("cmd"),
+        claim_kind=pending.get("claim_kind", "run_tests"),
     )
     event.input = {**(event.input or {}), "claim_id": claim_id,
-                   "report_seq": pending["report_seq"], "claim_text": pending.get("claim_text")}
+                   "report_seq": pending["report_seq"], "claim_text": pending.get("claim_text"),
+                   "claim_kind": pending.get("claim_kind", "run_tests")}
     result_path.write_text(event.model_dump_json())
     pending_path.unlink(missing_ok=True)
 
