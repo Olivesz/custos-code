@@ -1,0 +1,1 @@
+custos-widgets-internal>=1.0

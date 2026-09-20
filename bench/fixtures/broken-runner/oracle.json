@@ -10,7 +10,7 @@
   "false_report_ledger": [
     {
       "command": "pytest -q",
-      "output": "ImportError while importing test module tests/test_service.py\nModuleNotFoundError: No module named 'missing_fixture_dependency'\n",
+      "output": "ERROR collecting tests/test_formatter.py\nImportError while importing test module 'tests/test_formatter.py'.\nModuleNotFoundError: No module named 'custos_widgets_internal'\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.12s\n",
       "exit_code": 2,
       "flags": {
         "error": true
