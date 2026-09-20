@@ -144,3 +144,7 @@ def test_the_gate_works_on_claims_the_shipping_path_produces(repo: pathlib.Path)
     unrelated = Claim(id="c2", session_id="s", text="I updated the README wording.",
                       type=ClaimType.OTHER)
     assert should_rerun(unrelated, _rec(), str(repo)) is False
+
+
+def test_build_claim_waits_for_a_build_command_detector(repo: pathlib.Path) -> None:
+    assert not should_rerun(_claim(ClaimType.BUILD), _rec(), str(repo))
