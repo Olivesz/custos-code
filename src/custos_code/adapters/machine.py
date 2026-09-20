@@ -37,6 +37,8 @@ from ..parsers import is_piped
 
 LOG_DIR = os.path.expanduser("~/.custos-code/machine")
 WIRE_VERSION = 1
+# The product rename did not change the wire schema. Keep historical logs readable.
+RECORDER_NAMES = ("custos-code-machine", "receipts-machine")
 
 BASH_SNIPPET = r"""# >>> custos-code recorder (class M) >>>
 __custos_code_log() { printf '%s\n' "$1" >> "$CUSTOS_CODE_MACHINE_LOG"; }
@@ -264,7 +266,7 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if not isinstance(rec, dict) or rec.get("recorder") != "custos-code-machine":
+            if not isinstance(rec, dict) or rec.get("recorder") not in RECORDER_NAMES:
                 continue
             ts = datetime.fromtimestamp(float(rec.get("ts") or 0), tz=UTC)
             started = started or ts

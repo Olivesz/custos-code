@@ -15,8 +15,9 @@ import shutil
 import subprocess
 
 import pytest
+from typer.testing import CliRunner
 
-from custos_code.cli import _hook_command, hooks_snippet
+from custos_code.cli import _hook_command, app, hooks_snippet
 
 HOOKS = pathlib.Path(__file__).resolve().parents[2] / "hooks"
 BASH = shutil.which("bash") or "/bin/bash"  # resolved before any test empties PATH
@@ -48,13 +49,41 @@ def test_hook_command_is_absolute_and_needs_no_path(event: str) -> None:
     assert argv[-2:] == ["_hook", event], cmd
 
 
-def test_snippet_is_idempotent_against_its_own_output() -> None:
-    """Regression: the install de-dupe matched a literal string the command no longer contains."""
-    entry = hooks_snippet()["hooks"]
-    assert isinstance(entry, dict)
-    for ev in ("PreToolUse", "PostToolUse", "Stop"):
-        blob = json.dumps(entry[ev])
-        assert "_hook" in blob and "custos-code" in blob, f"{ev} would not be recognised as installed"
+@pytest.mark.parametrize("product", ["receipts", "custos-code"])
+@pytest.mark.parametrize("fallback", [False, True])
+def test_watch_replaces_old_hooks_and_preserves_unrelated_settings(
+    tmp_path, monkeypatch, product, fallback,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir()
+    other = {"type": "command", "command": "echo receipts custos-code _hook"}
+    groups = {}
+    for event, action in zip(("PreToolUse", "PostToolUse", "Stop"), EVENTS, strict=True):
+        argv = [f"/old install/bin/{product}", "_hook", action]
+        if fallback:
+            module = product.replace("-", "_")
+            argv = ["/old install/bin/python", "-c", f"from {module}.cli import app; app()",
+                    "_hook", action]
+        old = {"type": "command", "command": shlex.join(argv)}
+        groups[event] = [{"matcher": "Bash", "hooks": [old, other], "timeout": 19},
+                         {"matcher": "", "hooks": [old]}]
+    original = {"hooks": {**groups, "SessionStart": [{"hooks": [other]}]},
+                "permissions": {"allow": ["Read"]}}
+    settings.write_text(json.dumps(original))
+    result = CliRunner().invoke(app, ["watch", "--install"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(settings.with_suffix(".json.bak").read_text()) == original
+    installed = json.loads(settings.read_text())
+    assert installed["permissions"] == original["permissions"]
+    assert installed["hooks"]["SessionStart"] == original["hooks"]["SessionStart"]
+    for event, entries in hooks_snippet()["hooks"].items():
+        assert installed["hooks"][event] == [
+            {"matcher": "Bash", "hooks": [other], "timeout": 19}, *entries,
+        ]
+    result = CliRunner().invoke(app, ["watch", "--install"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(settings.read_text()) == installed
 
 
 @pytest.mark.parametrize("event", EVENTS)
@@ -79,12 +108,17 @@ def test_hook_never_exits_two_on_garbage_input(event: str) -> None:
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.skipif(not (HOOKS.parent / ".venv" / "bin").is_dir(),
+                    reason="no repo venv (git worktree or bare clone); nothing to resolve to")
 def test_runner_resolution_prefers_the_repo_venv() -> None:
     r = subprocess.run(
         [BASH, "-c", f'source "{HOOKS}/_run.sh" && custos_code_cmd'],
         capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip(), "resolved to nothing in a checkout that has a venv"
+    # This asserted a property of the *environment*, not the code, and so failed in every git
+    # worktree -- which is how PRs get reviewed here. Two reviewers reported it as a real failure
+    # on 2026-09-19. A test that cannot hold in a worktree must skip there, not fail.
 
 
 # --- the direct-binary path -------------------------------------------------------------

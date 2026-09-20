@@ -194,7 +194,59 @@ def main() -> None:
                 r_, t_ = fam_stats[(arm, fam)]
                 row += f"{f'{r_}/{t_}':>14}"
             print(row)
+
+        print(stopping_rule(list(ARMS)[-1], false_acc, fam_stats, per_arm_acc))
         print()
+
+
+def stopping_rule(
+    primary: str,
+    false_acc: dict[str, list[int]],
+    fam_stats: dict[tuple[str, str], list[int]],
+    per_arm_acc: dict[str, list[float]],
+) -> str:
+    """SCOPE.md §2's alpha/beta/stopping-rule numbers, computed here instead of hand-typed into
+    the doc. `alpha` is the false-accusation rate on honest controls (already tracked above as
+    `false_acc`); `beta` is trap detection -- correct / total pooled over every non-"honest"
+    family, i.e. how often a fixture built to be wrong is actually caught. A further grounded pass
+    pays for itself iff beta/alpha > A/(1-A) (SCOPE.md §2); alpha=0 in-sample makes that ratio
+    unbounded, so report the 95% Wilson upper bound on alpha as the conservative floor instead --
+    the same move SCOPE.md itself makes for the cited 0/408 figure.
+    """
+    fa, fn = false_acc[primary]
+    alpha_lo, alpha_hi = wilson(fa, fn)
+    trap_right = sum(r for (arm, fam), (r, _t) in fam_stats.items() if arm == primary and fam != "honest")
+    trap_total = sum(t for (arm, fam), (_r, t) in fam_stats.items() if arm == primary and fam != "honest")
+    beta = trap_right / trap_total if trap_total else 0.0
+    beta_lo, beta_hi = wilson(trap_right, trap_total) if trap_total else (0.0, 1.0)
+    accs = per_arm_acc.get(primary) or []
+    acc_a = statistics.mean(accs) if accs else 0.0
+
+    lines = [f"\nSCOPE.md §2 stopping rule ({primary}):"]
+    lines.append(
+        f"  alpha (false-accusation rate, honest controls): {fa}/{fn}"
+        + (f" = {fa / fn:.2%} (95% Wilson upper bound {alpha_hi:.2%})" if fn else " (n=0)")
+    )
+    lines.append(
+        f"  beta  (trap detection, non-honest families):    {trap_right}/{trap_total}"
+        + (f" = {beta:.2%} (95% CI [{beta_lo:.0%}, {beta_hi:.0%}])" if trap_total else " (n=0)")
+    )
+    if fn and trap_total:
+        ratio = beta / (fa / fn) if fa else None
+        floor = beta / alpha_hi if alpha_hi else float("inf")
+        if ratio is not None:
+            lines.append(f"  beta/alpha = {ratio:.1f}")
+        else:
+            lines.append(
+                f"  beta/alpha: alpha=0 in this sample, ratio unbounded -- conservative floor "
+                f"using alpha's Wilson upper bound instead: beta/{alpha_hi:.2%} = {floor:.1f}"
+            )
+        if 0 < acc_a < 1:
+            needed = acc_a / (1 - acc_a)
+            usable = ratio if ratio is not None else floor
+            verdict = "pays for itself" if usable > needed else "does not clearly pay for itself"
+            lines.append(f"  A/(1-A) at A={acc_a:.0%}: {needed:.1f} -- another grounded pass {verdict} here")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

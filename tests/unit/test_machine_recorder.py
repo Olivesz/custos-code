@@ -54,12 +54,14 @@ def test_record_line_redacts_secrets_in_the_command() -> None:
     assert "sk-abcdefghijklmnopqrstuvwx" not in line
 
 
-def test_parse_pairs_start_and_end_and_keeps_the_exit_code(tmp_path) -> None:
+@pytest.mark.parametrize("recorder", ["custos-code-machine", "receipts-machine"])
+def test_parse_pairs_start_and_end_and_keeps_the_exit_code(tmp_path, recorder) -> None:
     path = _log(
         tmp_path,
         [
-            _row(event="start", ts=1_758_276_000.0, cmd="pytest -q | tail -1"),
-            _row(event="end", ts=1_758_276_002.5, cmd="pytest -q | tail -1", exit=1, dur_ms=2500),
+            _row(recorder=recorder, event="start", ts=1_758_276_000.0, cmd="pytest -q | tail -1"),
+            _row(recorder=recorder, event="end", ts=1_758_276_002.5,
+                 cmd="pytest -q | tail -1", exit=1, dur_ms=2500),
         ],
     )
     sess, ledger, report = machine.parse(path)

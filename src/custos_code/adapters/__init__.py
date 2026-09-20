@@ -67,7 +67,7 @@ def _line_source(rec: dict[str, object]) -> Source | None:
         return "claude_code"
     if str(rec.get("type")) in _CODEX_TYPES:
         return "codex"
-    if rec.get("recorder") == "custos-code-machine":
+    if rec.get("recorder") in machine.RECORDER_NAMES:
         return "machine"
     if "traceId" in rec and "spanId" in rec:
         return "otel"
