@@ -213,25 +213,36 @@ def _abs(path: str, cwd: str) -> str:
 # hooks doing the checking: an agent that can rewrite them can switch the gate off.
 _HARNESS_OWNED = os.path.expanduser("~/.claude")
 _HARNESS_PROTECTED = ("settings.json", "settings.local.json", "hooks")
+# The same files, project-scoped. `<cwd>/.claude/settings.json` carries the same `hooks` and
+# `permissions` keys as the one in $HOME, and `.git/hooks/` runs on every commit. Treating them as
+# "the project's own business" is the cheapest way for an agent to switch the gate off.
+_CONFIG_BASENAMES = frozenset({"settings.json", "settings.local.json"})
 
 
 def _harness_sanctioned(abs_path: str) -> bool:
     if not _under(abs_path, _HARNESS_OWNED):
         return False
     rel = os.path.relpath(abs_path, _HARNESS_OWNED).split(os.sep)
-    return not any(part in _HARNESS_PROTECTED for part in rel)
+    return _protected(abs_path) is None and not any(part in _HARNESS_PROTECTED for part in rel)
 
 
-def _protected_always(abs_path: str) -> bool:
-    """Protected even when it sits inside the granted project.
 
-    ~/.receipts holds the ledger, the loop state and the config. A project that happens to contain
-    it must not thereby be allowed to rewrite its own evidence.
-    """
-    return _under(abs_path, os.path.expanduser("~/.receipts"))
 
 
 def _protected(abs_path: str) -> str | None:
+    """What protects this path, or None. Checked BEFORE any in-project exemption.
+
+    The exemption used to run first, so a grant rooted at `~` (or at a dotfiles repo) made
+    `~/.ssh/authorized_keys` and `~/.claude/settings.json` "the project's own business". Ordering
+    was the whole bug: the same rule, applied in the other order, is correct.
+    """
+    if _under(abs_path, os.path.expanduser("~/.receipts")):
+        return "~/.receipts (our own ledger and state)"
+    parts = abs_path.split(os.sep)
+    if ".claude" in parts and os.path.basename(abs_path) in _CONFIG_BASENAMES:
+        return ".claude/settings.json (configures the hooks that check this)"
+    if ".git" in parts and "hooks" in parts:
+        return ".git/hooks (runs on every commit)"
     for p in _PROTECTED:
         if _under(abs_path, os.path.expanduser(p)) or abs_path == os.path.expanduser(p):
             return p
@@ -434,8 +445,8 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
     if writes:
         for raw in _mentioned_paths(tool, inp):
             p_abs = _abs(raw, grant.cwd)
-            if _under(p_abs, grant.cwd) and not _protected_always(p_abs):
-                continue                      # the project's own files are the project's business
+            # Protection first, exemption second. A grant rooted at `~` must not turn every
+            # credential and every hook config into "the project's own business".
             if (hit := _protected(p_abs)) is not None:
                 return Finding(Band.RED, "protected-path", f"writes {hit}: {raw}", recoverable=False)
 
@@ -495,6 +506,7 @@ def _segments(cmd: str) -> list[str]:
     Deliberately naive about quoting: a `;` inside a quoted string produces an extra segment,
     which can only make the result MORE conservative, never less.
     """
+    cmd = re.sub(r"\\\s*\n\s*", " ", cmd)   # a `\`-newline is one command, not two
     parts = re.split(r"\s*(?:\|\||&&|[;|&\n])\s*", cmd)
     return [s.strip() for s in parts if s.strip()]
 

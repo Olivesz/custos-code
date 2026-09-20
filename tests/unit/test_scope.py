@@ -391,3 +391,45 @@ def test_a_data_heredoc_writing_inside_the_repo_is_free(repo: pathlib.Path) -> N
     f = classify("Bash", {"command": "cat <<'EOF' > ./notes.md\nhello\nEOF"},
                  _g(repo), RepoState(str(repo)))
     assert f.band is Band.GREEN, f.rule
+
+
+# --- ordering bugs found by adversarial review, 2026-09-20 ---------------------------------------
+
+def test_protection_outranks_the_project_exemption(tmp_path: pathlib.Path) -> None:
+    """A grant rooted at `~` made every credential "the project's own business".
+
+    The exemption ran before the protection check, so with cwd=~ the ssh keys, the hook config and
+    our own ledger were all in-radius. Same rules, correct order.
+    """
+    g = Grant.for_session(str(pathlib.Path.home()))
+    for path in ("~/.ssh/authorized_keys", "~/.aws/credentials",
+                 "~/.claude/settings.json", "~/.receipts/live/s.jsonl"):
+        f = classify("Write", {"file_path": path}, g)
+        assert f.band is Band.RED, f"{path} was in-radius under a ~ grant: {f.band.value}"
+
+
+def test_project_local_harness_config_is_gated(repo: pathlib.Path) -> None:
+    """`<cwd>/.claude/settings.json` carries the same hooks/permissions keys as the one in $HOME.
+
+    Only the $HOME copy was gated, so the project-scoped file was the cheapest way to switch the
+    gate off from inside the project it was gating.
+    """
+    for rel in (".claude/settings.json", ".claude/settings.local.json", ".git/hooks/pre-commit"):
+        f = classify("Write", {"file_path": str(repo / rel)}, _g(repo), RepoState(str(repo)))
+        assert f.band is Band.RED, f"{rel}: {f.band.value} ({f.rule})"
+
+
+def test_a_line_continuation_is_one_command(repo: pathlib.Path) -> None:
+    """`_segments` split on \\n without honouring a trailing backslash, so a command split in half
+    and each half was harmless. Splitting made RED become GREEN -- the one property the splitter's
+    docstring claims is impossible."""
+    f = classify("Bash", {"command": "rm \\\n  -rf /Users/someone/Projects"},
+                 _g(repo), RepoState(str(repo)))
+    assert f.band is Band.RED, f"continuation split the command: {f.band.value} ({f.rule})"
+
+
+def test_a_repos_own_test_fixtures_stay_free(repo: pathlib.Path) -> None:
+    """The other direction of the same reordering: exact basenames, so `dummy.pem` is not a key."""
+    f = classify("Edit", {"file_path": str(repo / "tests" / "fixtures" / "dummy.pem")},
+                 _g(repo), RepoState(str(repo)))
+    assert f.band is Band.GREEN, f.rule
