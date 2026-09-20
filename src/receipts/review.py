@@ -154,6 +154,7 @@ class Reviewed:
     claims: list[Claim] = field(default_factory=list)
     verdicts: list[VerdictRecord] = field(default_factory=list)
     input_tokens: int = 0
+    cached_input_tokens: int = 0      # billed at a fraction of input; see review() for why it matters
     output_tokens: int = 0
     requests: int = 0
 
@@ -206,6 +207,13 @@ def review(report: str, ledger: list[LedgerEvent], session_id: str, backend: Any
     if u is not None:
         out.input_tokens = getattr(u, "input_tokens", 0) or 0
         out.output_tokens = getattr(u, "output_tokens", 0) or 0
+        # Cached input is billed at a fraction of the input rate, and this call is unusually
+        # cacheable: the SYSTEM prompt is fixed and the annotated ledger is a growing prefix, so
+        # auto mode's second and third passes re-send almost the same bytes. Without this, `cost`
+        # prices every input token at full rate and UNDERSTATES the saving -- on the Token Company
+        # track, where the whole claim is cost, that is the wrong direction to be wrong in.
+        details = getattr(u, "input_tokens_details", None)
+        out.cached_input_tokens = int(getattr(details, "cached_tokens", 0) or 0) if details else 0
     out.requests = 1
     seqs = {e.seq for e in ledger}
     for i, item in enumerate(json.loads(resp.output_text).get("claims", []), 1):
