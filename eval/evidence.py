@@ -19,8 +19,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from custos_code import parsers  # noqa: E402
+from custos_code import parsers
 from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.ledger import MAX_OUTPUT_BYTES  # noqa: E402
 from custos_code.models import EventKind  # noqa: E402
 
 # What a command was for. Order matters: first match wins.
@@ -70,6 +71,14 @@ def _outcome(res: object, cmd: str) -> dict[str, object]:
         d["flags"] = flags
     if parsers.is_piped(cmd):
         d["output_filtered"] = True
+    # The whole retained output, not a summary of it. Showing only the last line made a careful
+    # reader conclude three verifiable claims were unverifiable: a `cat -n` of the source file and
+    # a pytest failure diff containing the exact literal a claim quoted were both in the ledger,
+    # and both rendered as one unrelated trailing line. A renderer that decides what the recorder
+    # kept is the same defect this project exists to catch, committed by the tool doing the
+    # catching. `output_filtered` still says the agent's own pipe may have cut it upstream.
+    d["output"] = out[:MAX_OUTPUT_BYTES]
+    d["output_lines"] = len(out.splitlines())
     d["outcome"] = (out.strip().splitlines() or ["(no output)"])[-1][:140]
     return d
 
