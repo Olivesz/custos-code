@@ -68,7 +68,10 @@ def test_audit_never_launches_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*args: object, **kwargs: object) -> None:
         raise AssertionError("audit launched a job")
     monkeypatch.setattr(rerun, "spawn_async", fail)
-    verdicts.run([claim()], [], ".")
+    # Bind and assert. Unasserted, this passed against `verdicts.run` stubbed to return [] --
+    # a function that does nothing trivially satisfies "did not launch a job".
+    (rec,) = verdicts.run([claim()], [], ".")
+    assert rec.verdict is Verdict.UNWITNESSED
 
 
 def test_worker_result_survives_collection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
