@@ -2,6 +2,15 @@
 name = "custos-code"
 version = "0.0.1"
 description = "Checks a coding agent's final report against the log of what it actually did."
+readme = "README.md"
+license = "MIT"
+keywords = ["agents", "verification", "claude-code", "hooks", "observability"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+]
 requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.7",
