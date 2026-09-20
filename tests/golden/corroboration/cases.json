@@ -1,0 +1,5 @@
+[
+  {"name":"failed run followed by a passing retry","runs":[["pytest","collected 2 items\n1 failed, 1 passed",1],["pytest","collected 2 items\n2 passed",0]],"verdict":"unrecorded"},
+  {"name":"unrelated git failure does not disprove passing tests","runs":[["git show missing","fatal: unknown revision",1]],"verdict":"unrecorded"},
+  {"name":"latest relevant failure is a deterministic contradiction","runs":[["pytest","collected 2 items\n1 failed, 1 passed",1]],"verdict":"contradicted"}
+]

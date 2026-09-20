@@ -24,7 +24,9 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import claims as claims_mod
 from . import parsers
+from . import rules as rules_mod
 from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
 
 # Framing matters more than length here, and both were measured (2 repeats, 42 fixtures):
@@ -204,6 +206,48 @@ class Reviewed:
     requests: int = 0
 
 
+MODEL_ONLY_QUALIFIER = "Model-only finding; advisory, not a blocking verdict."
+
+
+def is_advisory(rec: VerdictRecord) -> bool:
+    """Only the deterministic downgrade of a model-only accusation is non-blocking."""
+    return (rec.verdict == Verdict.UNRECORDED and rec.method == "rule"
+            and rec.tier == 4 and rec.qualifier == MODEL_ONLY_QUALIFIER)
+
+
+def _corroborate(claim: Claim, rec: VerdictRecord, ledger: list[LedgerEvent],
+                 repo_root: str | None) -> VerdictRecord:
+    """Require a claim-specific rule, using its own current evidence, to contradict.
+
+    A model citing an arbitrary failure does not establish that THIS claim is false.
+    Rules select relevant evidence and account for later retries. When they disagree or
+    cannot decide, retain the model's reasoning as an explicit, non-blocking advisory.
+    Successful corroboration returns the rule's tier, method and citations (invariant 3).
+    """
+    if rec.verdict != Verdict.CONTRADICTED:
+        return rec
+    ctype = claim.type
+    if ctype == ClaimType.OTHER:
+        ctype = claims_mod.classify(claim.text) or ClaimType.OTHER
+    probe = claim.model_copy(update={"type": ctype})
+    # The one-call reviewer leaves objects empty; recover named paths/counts using the
+    # same deterministic extractor as the ladder, never from the model's rationale.
+    extracted = claims_mod.extract_regex(claim.text, claim.session_id)
+    if not probe.objects and len(extracted) == 1 and extracted[0].type == ctype:
+        probe.objects = extracted[0].objects
+        probe.polarity = extracted[0].polarity
+    relevant = [e for e in ledger if e.session_id == claim.session_id and not e.flags.sidechain]
+    det = rules_mod.check(probe, relevant, repo_root)
+    if det is not None and det.verdict == Verdict.CONTRADICTED:
+        return det
+    return rec.model_copy(update={
+        "verdict": Verdict.UNRECORDED, "method": "rule", "tier": 4,
+        "qualifier": MODEL_ONLY_QUALIFIER,
+        "rationale": ("No deterministic check corroborates this, so it is advisory "
+                      "(AGENTS.md invariant 3). " + rec.rationale),
+    })
+
+
 def _veto(rec: VerdictRecord, ledger: list[LedgerEvent]) -> VerdictRecord:
     """A `confirmed` resting on evidence we cannot actually read becomes `unrecorded`.
 
@@ -236,7 +280,8 @@ def _veto(rec: VerdictRecord, ledger: list[LedgerEvent]) -> VerdictRecord:
 
 
 def review(report: str, ledger: list[LedgerEvent], session_id: str, backend: Any,
-           model: str | None = None, nudge_seq: int = -1) -> Reviewed:
+           model: str | None = None, nudge_seq: int = -1,
+           repo_root: str | None = None) -> Reviewed:
     """One call: report + annotated log in, marked claims out. The product's default path."""
     out = Reviewed()
     if not report.strip():
@@ -273,8 +318,9 @@ def review(report: str, ledger: list[LedgerEvent], session_id: str, backend: Any
         if verdict in (Verdict.CONFIRMED, Verdict.CONTRADICTED) and not ev:
             verdict = Verdict.UNWITNESSED  # cite or abstain
         cid = f"r{i}"
-        out.claims.append(Claim(id=cid, session_id=session_id, text=text, type=ClaimType.OTHER, objects=[]))
-        out.verdicts.append(_veto(VerdictRecord(
-            claim_id=cid, verdict=verdict, tier=4, method="judge", confidence=0.8,
-            evidence=ev, rationale=str(item.get("reason", ""))[:200]), ledger))
+        cl = Claim(id=cid, session_id=session_id, text=text, type=ClaimType.OTHER, objects=[])
+        out.claims.append(cl)
+        rec = VerdictRecord(claim_id=cid, verdict=verdict, tier=4, method="judge", confidence=0.8,
+                            evidence=ev, rationale=str(item.get("reason", ""))[:200])
+        out.verdicts.append(_corroborate(cl, _veto(rec, ledger), ledger, repo_root))
     return out
