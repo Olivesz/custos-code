@@ -346,34 +346,89 @@ def _record_line() -> None:
 @app.command()
 def cost(
     session: str | None = typer.Argument(
-        None, help="Path to a session transcript (Claude Code JSONL)."
+        None, help="Path to a session transcript, rollout, or bundle."
     ),
-    last: bool = typer.Option(False, "--last", help="Use the most recent Claude Code session."),
+    last: bool = typer.Option(False, "--last", help="Use the most recent session of --agent (default Claude Code)."),
+    agent: str | None = typer.Option(
+        None, "--agent", help="claude_code | codex | devin | copilot | machine | otel (default: detect)."
+    ),
+    path: str = typer.Option(
+        "review", "--path",
+        help="review | ladder | judge-all: which pipeline to price (E12; default is what actually ships).",
+    ),
     repo: str | None = typer.Option(
         None, "--repo", help="Repo root for state checks (default: the session's cwd)."
     ),
-    judge: bool = typer.Option(
-        False, "--judge", help="Escalate semantic claims to the Tier 4 judge (needs an API key)."
+    compress: bool = typer.Option(
+        False, "--compress",
+        help="Measure a real bear-2 pass on the judge window and report projected savings "
+             "(ladder/judge-all only; needs [compress].enabled and RECEIPTS_TTC_API_KEY).",
     ),
     json_out: bool = typer.Option(False, "--json", help="Print JSON instead of a table."),
 ) -> None:
-    """Tokens and dollars by tier for one session."""
-    from . import cost as cost_mod
+    """Tokens and dollars by tier for one session, priced by the path actually run.
 
+    E12: `cost` used to always run the ladder regardless of what `check` defaults to, so the
+    Token Company chart priced a pipeline (verdicts.run) that's no longer the shipping one
+    (review.py, 86% vs the ladder's 70%, eval/arms/RESULTS.md). `--path` makes the pipeline an
+    explicit argument instead of an inherited default, because comparing paths is this command's
+    whole job -- `cost.compute()` was already agnostic to which path produced its VerdictRecords.
+    """
+    from . import compress as compress_mod
+    from . import cost as cost_mod
+    from . import review as review_mod
+
+    if path not in ("review", "ladder", "judge-all"):
+        raise typer.BadParameter("--path must be review, ladder, or judge-all")
     if last:
-        session = claude_code.find_last_session()
+        session = codex.find_last_session() if agent == "codex" else claude_code.find_last_session()
     if not session:
         raise typer.BadParameter("give a session path or --last")
-    sess, ledger, report = claude_code.parse(session)
-    cl = claims_mod.extract(report or "", sess.id)
-    backend = judge_mod.make_backend() if judge else None
-    if judge and backend is None:
-        console.print(
-            "[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic)[/]"
-        )
-    recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
-    usage = backend.usage if backend is not None else None
-    c = cost_mod.compute(sess.id, recs, ledger, judge_usage=usage)
+    sess, ledger, report = adapters_mod.parse(session, agent)
+
+    backend = judge_mod.make_backend()
+    if backend is None and path != "ladder":
+        console.print(f"[yellow]no judge backend: set OPENAI_API_KEY (or RECEIPTS_JUDGE_BACKEND=anthropic); "
+                       f"falling back to the rules ladder instead of --path {path}[/]")
+        path = "ladder"
+
+    cl: list[Claim] = []
+    recs: list[VerdictRecord] = []
+    usage = None
+    if report:
+        if path == "review":
+            out = review_mod.review(report, ledger, sess.id, backend)
+            cl, recs = out.claims, out.verdicts
+            usage = judge_mod.Usage(requests=out.requests, input_tokens=out.input_tokens,
+                                    output_tokens=out.output_tokens, model=getattr(backend, "judge_model", "") or "")
+        elif path == "judge-all":
+            cl = claims_mod.extract(report, sess.id)
+            recs = backend.judge(cl, ledger) if cl and backend is not None else []
+            usage = backend.usage if backend is not None else None
+        else:  # ladder
+            cl = claims_mod.extract(report, sess.id)
+            recs = verdicts_mod.run(cl, ledger, repo or sess.cwd, backend)
+            usage = backend.usage if backend is not None else None
+
+    compress_usage = None
+    if compress:
+        if path == "review":
+            console.print("[yellow]--compress has no effect on --path review yet: review.py doesn't window "
+                           "the ledger the way compress.Compressor expects (E11, still open). Skipped.[/]")
+        else:
+            compressor = compress_mod.make_compressor()
+            if compressor is None:
+                console.print("[yellow]compressor off: set [compress].enabled and RECEIPTS_TTC_API_KEY[/]")
+            else:
+                # ladder: only the residue that actually reached the judge, same as eval/cost_report.py's
+                # arm_ladder_compressed; judge-all: the whole ledger, matching what judge-all actually sent.
+                pending = [c for c, r in zip(cl, recs, strict=True) if r.method == "judge"] if path == "ladder" else cl
+                if pending:
+                    win = judge_mod.window_for_all(ledger, pending) if path == "ladder" else ledger
+                    compressor.compress_window(win)
+                    compress_usage = compressor.usage
+
+    c = cost_mod.compute(sess.id, recs, ledger, judge_usage=usage, compress_usage=compress_usage)
     if json_out:
         console.print_json(data=c.to_dict())
     else:
