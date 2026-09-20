@@ -75,6 +75,14 @@ def _detect_test_command(repo_root: str) -> list[str] | None:
     return None
 
 
+def can_rerun_tests(repo_root: str) -> bool:
+    """True when Tier 3 can find a committed test command for this repo."""
+    try:
+        return _detect_test_command(repo_root) is not None
+    except OSError:
+        return False
+
+
 def _tracked_files(repo_root: str) -> list[str]:
     out = subprocess.run(
         ["git", "-C", repo_root, "ls-files", "-z"],
