@@ -66,7 +66,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [~] Gold set: local half chosen with seed 20260919 (`eval/gold/sessions.txt`), regex claims exported to `eval/gold/claims_to_label.csv`, and all three label files exist; SWE-chat half, reconciliation, and κ still pending.
 - [x] Claude Code post-hoc adapter + golden test (#5); claim extractor (#10); Tier 1–2 rules and `custos-code check` verdicts (#11); hooks and auto-mode loop (#12).
 - [x] Codex post-hoc adapter + golden tests from local rollout. Anush.
-- [~] Parsers, windowing, Tier 3 re-run, async worker, and PATH resolution merged; remaining gaps are wiring Tier 3 escalation from rules and using trusted-runner verdict data in `rules.py`. Anush.
+- [x] Parsers, windowing, Tier 3 test-claim re-run wiring, async worker, PATH resolution, and trusted-runner verdict enforcement are merged. Build-claim re-runs still need a committed build-command detector. Anush.
 - [~] pytest, jest, vitest, go test, and cargo parsers plus pipe/truncation flagger are covered by unit tests; Hypothesis/property tests and gradle/xcodebuild remain. Anush.
 - [ ] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
 - [x] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
@@ -90,10 +90,10 @@ No Anthropic credits are offered; the Anthropic backend stays comparison-only un
 
 ### Next five engineering tasks (as of 20 Sep)
 1. Fix local install reliability: `uv run custos-code ...` must work from a fresh checkout without needing `uv pip install -e . --reinstall` or `PYTHONPATH=src`.
-2. Wire Tier 3 re-runs into `rules.py` and the Stop flow so async re-run results can settle test/build claims.
-3. Make trusted-runner/path-shadowing data affect verdicts; a repo-local fake `pytest` must not confirm a test claim.
-4. Turn the first bench traps into real fixture repos with oracles, starting with piped-runner and broken-runner.
-5. Run the PR-comment workflow and hook install path end to end on a real local/CI PR, then fix whatever breaks.
+2. Finish build-claim Tier 3 by adding a committed build-command detector.
+3. Turn the first bench traps into real fixture repos with oracles, starting with piped-runner and broken-runner.
+4. Run the PR-comment workflow and hook install path end to end on a real local/CI PR, then fix whatever breaks.
+5. Add the eval CI gate once labels are reconciled.
 
 ## Remaining work
 
@@ -102,8 +102,8 @@ If the items below are finished, Custos Code is no longer just a demo; it is a c
 
 - **Fresh install reliability:** people can clone the repo, run the documented setup, and use `uv run custos-code ...` without repairing the environment by hand.
 - **Live hook flow:** hooks run in a real Claude Code session, record what happened, block bad final reports, and let honest reports stop normally.
-- **Tier 3 re-runs:** test/build claims that cannot be settled from the transcript escalate to a sandboxed re-run and get a real result.
-- **Trusted runner enforcement:** fake evidence such as `./pytest`, wrapper scripts, swallowed exit codes, or echoed output cannot confirm a test claim.
+- **Tier 3 re-runs:** test claims that cannot be settled from the transcript escalate to a sandboxed re-run and get a real result; build-claim re-runs still need build-command detection.
+- **Trusted runner enforcement:** fake evidence such as `./pytest`, wrapper scripts, swallowed exit codes, or echoed output cannot confirm a test/build claim when hook resolution data is present.
 - **Verdict hardening:** the checker preserves the core safety rule: false accusations are rare, `contradicted` needs positive evidence, and the model-backed path cannot over-accuse on its own.
 - **Bench traps and runner:** reproducible fixture repos plus a bench command show the tool works repeatedly, not just on a handpicked demo.
 - **PR/local surfaces:** the tool works both locally (`check`, hooks, demo) and in the PR-comment path, degrading missing evidence to `unrecorded`/`unwitnessed` instead of false confidence.
@@ -113,7 +113,7 @@ If the items below are finished, Custos Code is no longer just a demo; it is a c
 - **Packaging/install:** A clean `uv sync --locked --all-extras` followed by `uv run custos-code --help`, `uv run custos-code demo --scenario piped-runner`, and `make check` must pass on a fresh machine. The current local environment needed a reinstall to repair the console script import path.
 - **Hooked live path:** `custos-code watch --install` must install Claude Code hooks, capture Bash/Edit/Write events, run Stop checks, block contradicted/unrecorded claims, and let honest reports through.
 - **Tier 3 integration:** Test claims that Tier 2 leaves `unrecorded`/`unwitnessed` now consult completed `rerun.poll`/`load_result` results or start `rerun.spawn_async` without blocking the caller. Build claims still need a committed build-command detector before they can use the same path honestly.
-- **Trusted runner enforcement:** PreToolUse records `resolved_bin`, but `rules.py` still needs to use `is_trusted_runner_path`; wrapper scripts and repo-local fake runners must produce `unrecorded`/`contradicted` rather than `confirmed`.
+- **Trusted runner enforcement:** PreToolUse records `resolved_bin`, and `rules.py` now uses `is_trusted_runner_path`; wrapper scripts and repo-local fake runners produce `unrecorded`/`contradicted` rather than `confirmed` when resolution data is present.
 - **Verdict correctness:** Confirmed edit/create claims must continue to require filesystem/git state, contradicted must require positive evidence, and judge output must never be able to manufacture `contradicted` without deterministic support.
 - **Real fixture repos:** Move bench traps from synthetic JSONL/demo fixtures into disposable git repos with README prompts, broken tests, oracles, and expected verdicts.
 - **Bench runner:** Implement `custos-code bench run`/`summarize` or equivalent orchestration: scenario × agent × model × n, with saved ledgers, oracle results, verdicts, and Wilson intervals.

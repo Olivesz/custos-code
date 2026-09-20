@@ -175,6 +175,72 @@ def test_tier3_does_not_spawn_without_repo_state(monkeypatch) -> None:  # type: 
     assert rec.tier == 2 and rec.method == "rule"
 
 
+def test_repo_local_fake_runner_cannot_confirm_test_claim(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    from custos_code.models import Claim, EventKind, LedgerEvent
+
+    ts = datetime(2026, 9, 19)
+    fake = tmp_path / "pytest"
+    fake.write_text("#!/bin/sh\necho '5 passed'\n")
+    ledger = [
+        LedgerEvent(seq=0, ts=ts, session_id="s", kind=EventKind.CALL, tool="Bash",
+                    input={"command": "./pytest -q", "resolved_bin": str(fake)}, cwd=str(tmp_path)),
+        LedgerEvent(seq=1, ts=ts, session_id="s", kind=EventKind.RESULT, tool="Bash",
+                    output="============ test session starts ============\ncollected 5 items\n\n5 passed in 0.2s\n",
+                    exit_code=0),
+    ]
+    claim = Claim(id="c1", session_id="s", text="all 5 tests pass", type=ClaimType.RUN_TESTS, objects=["5"])
+
+    (rec,) = run([claim], ledger, str(tmp_path))
+
+    assert rec.verdict == Verdict.UNRECORDED
+    assert "untrusted" in rec.rationale
+
+
+def test_runner_resolution_failure_with_nonzero_exit_contradicts(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    from custos_code.models import Claim, EventKind, LedgerEvent
+
+    ts = datetime(2026, 9, 19)
+    ledger = [
+        LedgerEvent(seq=0, ts=ts, session_id="s", kind=EventKind.CALL, tool="Bash",
+                    input={"command": "pytest -q", "resolved_bin": None}, cwd=str(tmp_path)),
+        LedgerEvent(seq=1, ts=ts, session_id="s", kind=EventKind.RESULT, tool="Bash",
+                    output="pytest: command not found\n", exit_code=127),
+    ]
+    claim = Claim(id="c1", session_id="s", text="all tests pass", type=ClaimType.RUN_TESTS)
+
+    (rec,) = run([claim], ledger, str(tmp_path))
+
+    assert rec.verdict == Verdict.CONTRADICTED
+    assert "trusted runner" in rec.rationale
+
+
+def test_venv_runner_still_confirms_test_claim(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    from custos_code.models import Claim, EventKind, LedgerEvent
+
+    ts = datetime(2026, 9, 19)
+    venv_pytest = tmp_path / ".venv" / "bin" / "pytest"
+    venv_pytest.parent.mkdir(parents=True)
+    venv_pytest.touch()
+    ledger = [
+        LedgerEvent(seq=0, ts=ts, session_id="s", kind=EventKind.CALL, tool="Bash",
+                    input={"command": "pytest -q", "resolved_bin": ".venv/bin/pytest"}, cwd=str(tmp_path)),
+        LedgerEvent(seq=1, ts=ts, session_id="s", kind=EventKind.RESULT, tool="Bash",
+                    output="============ test session starts ============\ncollected 5 items\n\n5 passed in 0.2s\n",
+                    exit_code=0),
+    ]
+    claim = Claim(id="c1", session_id="s", text="all 5 tests pass", type=ClaimType.RUN_TESTS, objects=["5"])
+
+    (rec,) = run([claim], ledger, str(tmp_path))
+
+    assert rec.verdict == Verdict.CONFIRMED
+
+
 def test_no_judge_contradiction_and_confirmed_needs_evidence() -> None:
     import pytest
 

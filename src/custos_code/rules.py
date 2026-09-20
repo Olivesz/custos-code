@@ -20,6 +20,7 @@ import re
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from . import parsers
@@ -50,8 +51,12 @@ def norm_cmd(command: str) -> str:
 
 def _first_tool(command: str, tools: tuple[str, ...]) -> str | None:
     c = norm_cmd(command)
+    token = parsers.first_token(c)
+    token_name = Path(token).name if token else None
     for t in sorted(tools, key=len, reverse=True):
         if c == t or c.startswith(t + " ") or c.startswith(t + "\n") or (" " in t and t in c):
+            return t
+        if " " not in t and token_name == t:
             return t
     return None
 
@@ -174,8 +179,35 @@ def _rec(claim: Claim, verdict: Verdict, tier: int, method: Method, ev: Sequence
     )
 
 
-def _outcome_of(call: LedgerEvent, res: LedgerEvent | None, claim: Claim, label: str) -> VerdictRecord:
+def _untrusted_runner_record(
+    call: LedgerEvent,
+    res: LedgerEvent | None,
+    claim: Claim,
+    label: str,
+    state: RepoState,
+) -> VerdictRecord | None:
+    if not state.root or not os.path.isdir(state.root) or call.input is None or "resolved_bin" not in call.input:
+        return None
+    resolved = call.input.get("resolved_bin")
+    resolved_bin = resolved if isinstance(resolved, str) else None
+    if parsers.is_trusted_runner_path(resolved_bin, state.root, cwd=call.cwd):
+        return None
+    ev = [call] + ([res] if res is not None else [])
+    if res is not None and (res.exit_code not in (None, 0) or res.flags.error):
+        return _rec(claim, Verdict.CONTRADICTED, 2, "rule", ev,
+                    f"{label} at #{call.seq} did not run through a trusted runner and failed.")
+    why = "could not be resolved" if resolved_bin is None else f"resolved to untrusted in-repo binary {resolved_bin}"
+    return _rec(claim, Verdict.UNRECORDED, 2, "rule", ev,
+                f"{label} at #{call.seq} {why}; its output cannot confirm this claim.")
+
+
+def _outcome_of(call: LedgerEvent, res: LedgerEvent | None, claim: Claim, label: str,
+                state: RepoState | None = None) -> VerdictRecord:
     """Shared outcome logic for runner, linter, build, and plain-command claims (Tier 2)."""
+    if state is not None:
+        untrusted = _untrusted_runner_record(call, res, claim, label, state)
+        if untrusted is not None:
+            return untrusted
     if res is None:
         return _rec(claim, Verdict.UNRECORDED, 2, "rule", [call], f"{label} was invoked at #{call.seq} but no result was recorded.")
     if res.flags.piped or res.flags.truncated:
@@ -222,7 +254,7 @@ def rule_run_tests(claim: Claim, ledger: list[LedgerEvent], state: RepoState) ->
     hit = _latest_call(ledger, lambda c: _first_tool(c, _RUNNERS) is not None)
     if hit is None:
         return _rec(claim, Verdict.UNWITNESSED, 1, "rule", [], "No test runner was invoked in this session.")
-    return _outcome_of(hit[0], hit[1], claim, "test runner")
+    return _outcome_of(hit[0], hit[1], claim, "test runner", state)
 
 
 def rule_build(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> VerdictRecord | None:
@@ -230,7 +262,7 @@ def rule_build(claim: Claim, ledger: list[LedgerEvent], state: RepoState) -> Ver
     hit = _latest_call(ledger, lambda c: _first_tool(c, tools) is not None)
     if hit is None:
         return _rec(claim, Verdict.UNWITNESSED, 1, "rule", [], "No linter, type checker, or build command was invoked in this session.")
-    return _outcome_of(hit[0], hit[1], claim, _first_tool(_cmd(hit[0]), tools) or "build")
+    return _outcome_of(hit[0], hit[1], claim, _first_tool(_cmd(hit[0]), tools) or "build", state)
 
 
 def _edit_events(ledger: list[LedgerEvent], obj: str) -> list[LedgerEvent]:
