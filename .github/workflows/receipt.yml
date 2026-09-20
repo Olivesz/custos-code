@@ -122,6 +122,29 @@ jobs:
             --pr-url "$PR_URL" \
             --out "$RUNNER_TEMP/receipt.md"
 
+      - name: Render the architecture scope check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$PR/files?per_page=100" \
+            --jq '.[].filename' > "$RUNNER_TEMP/touched.txt"
+          touched=$(paste -sd, "$RUNNER_TEMP/touched.txt")
+          {
+            printf '\n\n---\n\n'
+            printf '### Architecture scope\n\n'
+            if [ -z "$touched" ]; then
+              printf 'No changed files found for this PR.\n'
+            else
+              printf '```text\n'
+              uv run custos-code arch --repo . --touched "$touched" || true
+              printf '```\n'
+            fi
+          } >> "$RUNNER_TEMP/receipt.md"
+
       - name: Post or update the one receipt comment
         env:
           GH_TOKEN: ${{ github.token }}

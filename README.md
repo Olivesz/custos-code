@@ -38,6 +38,18 @@ did, what it said, the receipt, and the deterministic nudge that goes back. `cus
 the claims, the ledger they cite, and what the check cost, with no JavaScript in it.
 `--format markdown` writes what the PR bot posts. Both are options on `check`, not `demo`.
 
+## Architecture Scope
+
+`custos-code arch` reads Mermaid flowcharts in repo docs and reports when touched files span
+components with no declared edge:
+
+```bash
+custos-code arch --repo . --touched "$(git diff --name-only | paste -sd, -)"
+```
+
+The diagram should live in a Markdown file such as `docs/ARCHITECTURE.md`, and component names
+should roughly match folders or files, for example `Billing` -> `src/billing/`.
+
 ## Prototype
 
 `docs/prototype/index.html` is an interactive, non-functional mock of the editor experience: marks on the agent's message, the evidence panel, editor decorations, the auto-mode loop, and the PR receipt. It is a single self-contained file:

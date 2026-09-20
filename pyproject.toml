@@ -1,6 +1,6 @@
 [project]
 name = "custos-code"
-version = "0.0.3"
+version = "0.0.4"
 description = "Checks a coding agent's final report against the log of what it actually did."
 readme = "README.md"
 license = "MIT"

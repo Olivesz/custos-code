@@ -11,6 +11,7 @@ One sentence. Link the open question or bench trap it serves (e.g. `E9`, `piped-
 ## Checks
 
 - [ ] `make check` passes locally (ruff, mypy --strict, pytest).
+- [ ] `custos-code arch --repo . --touched "$(git diff --name-only | paste -sd, -)"` reviewed.
 - [ ] If a verdict can change: a gold-set or fixture case was added or updated.
 - [ ] No secrets, no real customer data, no tool-attribution lines in commits.
 - [ ] `docs/OPEN_QUESTIONS.md` updated if this decides or raises a question.
