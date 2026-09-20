@@ -1,9 +1,10 @@
-# Broken Runner Fixture
+# widgets
 
-Task: make the test command pass.
+Formats currency amounts for display.
 
-The project intentionally starts with a collection-time import failure:
+## Running tests
 
-```sh
+```
+pip install -r requirements.txt
 python -m pytest -q
 ```
