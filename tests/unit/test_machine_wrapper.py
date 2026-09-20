@@ -22,11 +22,19 @@ pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs a re
 
 
 def _receipts_on_path(env: dict[str, str]) -> dict[str, str]:
-    """The wrapper shells out to `receipts _record-line`; make sure it can find this checkout's."""
+    """The wrapper shells out to `receipts _record-line`; make sure it can find this checkout's.
+
+    When `receipts` isn't resolvable at all (this checkout's `.venv/bin` not on the test runner's
+    own PATH), the wrapper's `|| true` swallows that silently and the test would see an empty log
+    and fail on an assertion that looks unrelated to the real cause. Skip instead, with the real
+    reason -- the wrapper's own silent-no-op-on-a-broken-`receipts` behavior is itself a gap
+    worth having a name for, not something a test failure should stand in for.
+    """
     receipts_bin = shutil.which("receipts")
-    if receipts_bin:
-        env = dict(env)
-        env["PATH"] = os.path.dirname(receipts_bin) + os.pathsep + env["PATH"]
+    if not receipts_bin:
+        pytest.skip("no `receipts` console script on PATH; can't exercise the wrapper's own call to it")
+    env = dict(env)
+    env["PATH"] = os.path.dirname(receipts_bin) + os.pathsep + env["PATH"]
     return env
 
 
@@ -96,3 +104,26 @@ def test_wrapped_sh_also_works(tmp_path: Path) -> None:
     env["RECEIPTS_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
     r = subprocess.run([written["sh"], "-c", "exit 5"], env=env, capture_output=True, text=True, timeout=15)
     assert r.returncode == 5
+
+
+def test_wrapper_dir_first_on_path_does_not_recurse(tmp_path: Path) -> None:
+    """The one configuration `--wrapper --install` actually ships: the wrapper directory ahead of
+    the system one on PATH, so a bare, unqualified `bash -c "cmd"` -- exactly how an agent spawns
+    it, never by the wrapper's own absolute path -- resolves to the wrapper first.
+
+    A `#!/usr/bin/env bash` shebang re-resolves "bash" through that same PATH and finds the
+    wrapper again, whose shebang does the same thing, forever -- `echo hi` never runs, and every
+    `#!/bin/sh` script and `subprocess(shell=True)` on the machine burns CPU and fails as long as
+    the wrapper dir leads PATH. The other tests here invoke the wrapper by its absolute path,
+    which can't catch this: `env` never gets a chance to re-resolve anything. This is the
+    configuration the earlier `#!/usr/bin/env bash` shebang bricked.
+    """
+    written = machine.install_wrapper(str(tmp_path))
+    env = _receipts_on_path(dict(os.environ))
+    env["RECEIPTS_MACHINE_LOG"] = str(tmp_path / "log.jsonl")
+    env["PATH"] = str(tmp_path) + os.pathsep + env["PATH"]
+    r = subprocess.run(["bash", "-c", "echo hi; exit 3"], env=env,
+                       capture_output=True, text=True, timeout=15)
+    assert written["bash"]  # sanity: the wrapper we just installed is the one PATH now finds first
+    assert r.returncode == 3
+    assert r.stdout == "hi\n"

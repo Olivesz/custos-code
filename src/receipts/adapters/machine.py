@@ -106,29 +106,55 @@ def install_snippet(shell: str) -> str:
 # directory (the same "bake in the real path instead of re-resolving through PATH" idiom already
 # used by `hooks._run.sh`'s `receipts_cmd` and `rerun._worker_argv`) -- re-resolving "bash" via
 # PATH inside the wrapper would just find itself again if its own directory is still first.
-WRAPPER_TEMPLATE = r"""#!/usr/bin/env bash
+#
+# The shebang is `#!/bin/bash`, not `#!/usr/bin/env bash`: `env` re-resolves `bash` through PATH,
+# and `--wrapper --install` puts this wrapper's own directory *first* on PATH, so `env` would find
+# the wrapper again, whose shebang runs `env bash` again -- forever. `REAL` is baked in precisely
+# to avoid this trap for the interpreter *inside* the script; the shebang needs the same treatment
+# for the interpreter that runs the script itself, and unlike `REAL` it cannot be resolved at
+# install time (it has to be correct before the script has run a single line), so it is the one
+# absolute path in this file that is not `which`-resolved -- `/bin/bash` is as close to universal
+# as a hardcoded path gets on the platforms this targets.
+#
+# The two `receipts _record-line` calls redirect stderr to /dev/null *before* redirecting stdout
+# to the log (`2>/dev/null >> "$LOG"`, not `>> "$LOG" 2>/dev/null`): bash sets up redirections in
+# order, so if the log's directory does not exist, the `>>` open failure is itself an error, and
+# whichever fd swap happened first decides where that error goes. With `2>/dev/null` first, it's
+# already gone before the failing `>>` has anywhere else to send it. The same reasoning is why
+# `mkdir -p` gets its own `2>/dev/null`: with no redirect at all, a permission-denied `mkdir` would
+# print straight to the wrapped command's own stderr -- exactly the failure mode `3433813` fixed
+# elsewhere (receipts' own instrumentation manufacturing the evidence a rule then judges).
+#
+# `RECEIPTS_MACHINE_LOG` is assigned, not exported: exporting it would hand every child process
+# (including `$REAL "$@"` and everything it spawns) the ledger's own path, letting an agent that
+# only needed to run a command also overwrite or forge rows in the log describing it. Making that
+# safe against a *deliberately* adversarial agent needs harness signatures and per-row provenance
+# marking -- real design work, tracked separately -- so this only closes the accidental case for
+# now: nothing downstream of the wrapper can find the path by looking at its own environment.
+WRAPPER_TEMPLATE = r"""#!/bin/bash
 # >>> receipts recorder (class M), PATH-first wrapper >>>
 # Installed by `receipts record --wrapper`; intercepts a PATH lookup for {name} that an
 # agent-spawned, non-interactive shell (`{name} -c "cmd"`) would otherwise resolve straight to the
 # real interpreter, invisibly to install_snippet's rc-file hooks. Logs start/end the same way the
 # interactive snippets do (`receipts _record-line`, same wire format), then runs the real {name}
 # and exits with its exact status. Never captures stdout/stderr: those pass straight through.
-REAL="{real}"
-if [ "$1" = "-c" ] && [ "$#" -ge 2 ]; then
-  __RECEIPTS_CMD="$2"
-else
-  __RECEIPTS_CMD="$*"
-fi
-export RECEIPTS_MACHINE_LOG="${{RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}}"
-mkdir -p "$(dirname "$RECEIPTS_MACHINE_LOG")"
+REAL={real}
+case "$1" in
+  -*c*) if [ "$#" -ge 2 ]; then __RECEIPTS_CMD="$2"; else __RECEIPTS_CMD="$*"; fi ;;
+  # a login/command flag bundle (-c, -lc, -ic, ...) carries the command as $2; anything else
+  # (including a script on stdin, which has no argv command at all) falls back to argv itself.
+  *) __RECEIPTS_CMD="$*" ;;
+esac
+RECEIPTS_MACHINE_LOG="${{RECEIPTS_MACHINE_LOG:-$HOME/.receipts/machine/$(hostname -s)-$(date +%F).jsonl}}"
+mkdir -p "$(dirname "$RECEIPTS_MACHINE_LOG")" 2>/dev/null || true
 __T0=$(date +%s.%N)
 RECEIPTS_EVENT=start RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
-  receipts _record-line >> "$RECEIPTS_MACHINE_LOG" 2>/dev/null || true
+  receipts _record-line 2>/dev/null >> "$RECEIPTS_MACHINE_LOG" || true
 "$REAL" "$@"
 __RC=$?
 RECEIPTS_EVENT=end RECEIPTS_CMD="$__RECEIPTS_CMD" RECEIPTS_RC=$__RC RECEIPTS_T0="$__T0" \
   RECEIPTS_PID=$$ RECEIPTS_PPID=$PPID \
-  receipts _record-line >> "$RECEIPTS_MACHINE_LOG" 2>/dev/null || true
+  receipts _record-line 2>/dev/null >> "$RECEIPTS_MACHINE_LOG" || true
 exit $__RC
 # <<< receipts recorder (class M) <<<
 """
@@ -138,7 +164,9 @@ WRAPPER_DIR = os.path.expanduser("~/.receipts/bin")
 
 def wrapper_script(name: str, real_path: str) -> str:
     """Render the PATH-first wrapper for `name` (`bash` or `sh`), calling through to `real_path`."""
-    return WRAPPER_TEMPLATE.format(name=name, real=real_path)
+    import shlex
+
+    return WRAPPER_TEMPLATE.format(name=name, real=shlex.quote(real_path))
 
 
 def install_wrapper(bin_dir: str | None = None, which: Any = None) -> dict[str, str]:
