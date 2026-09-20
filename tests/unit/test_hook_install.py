@@ -34,14 +34,18 @@ def test_hook_command_is_absolute_and_needs_no_path(event: str) -> None:
     """Claude Code runs hooks in a shell that does not inherit our PATH.
 
     `_hook_command` shell-quotes its path with `shlex.join`, so a naive `cmd.split()` breaks a
-    quoted path apart at any space inside it -- exactly the kind of checkout this repo's own
-    folder name (`HackMIT 2026`) produces. Parse the command line the same way a shell would.
+    quoted path apart at any space inside it -- exactly the kind of checkout Anush's own folder
+    name (`HackMIT 2026`) produces, which is how he caught it in review on PR #44. Parse the
+    command line the way a shell would.
+
+    (Fixed independently on two branches; this keeps the stricter argv-tail assertion, which pins
+    the subcommand as its own argv element rather than as a suffix of the whole string.)
     """
     cmd = _hook_command(event)
-    first = shlex.split(cmd)[0]
-    assert first.startswith("/"), f"not absolute: {cmd}"
-    assert os.path.exists(first), cmd
-    assert cmd.endswith(f"_hook {event}")
+    argv = shlex.split(cmd)
+    assert argv[0].startswith("/"), f"not absolute: {cmd}"
+    assert os.path.exists(argv[0]), cmd
+    assert argv[-2:] == ["_hook", event], cmd
 
 
 def test_snippet_is_idempotent_against_its_own_output() -> None:
@@ -81,3 +85,39 @@ def test_runner_resolution_prefers_the_repo_venv() -> None:
         capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip(), "resolved to nothing in a checkout that has a venv"
+
+
+# --- the direct-binary path -------------------------------------------------------------
+# `receipts watch --install` writes a command that runs the console script with no shell wrapper,
+# so nothing appends `|| true`. These exercise that path specifically: the .sh tests above pass
+# even when main() raises, because the wrapper swallows it.
+
+DIRECT = [shlex.split(_hook_command(e)) for e in EVENTS]
+
+
+def _direct(argv: list[str], payload: str) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["RECEIPTS_AUTO"] = "0"          # never block from a test
+    env["HOME"] = env.get("TMPDIR", "/tmp")  # keep the real ~/.receipts untouched
+    return subprocess.run(argv, input=payload, capture_output=True, text=True, env=env, timeout=120)
+
+
+@pytest.mark.parametrize("argv", DIRECT, ids=EVENTS)
+@pytest.mark.parametrize("payload", ["", "not json", "{unclosed", "[]", "null", '"a string"',
+                                     '{"session_id": "x"}'],
+                         ids=["empty", "garbage", "truncated", "array", "null", "string", "minimal"])
+def test_direct_invocation_never_crashes_or_blocks(argv: list[str], payload: str) -> None:
+    r = _direct(argv, payload)
+    assert r.returncode == 0, f"exit {r.returncode}\nstdout={r.stdout}\nstderr={r.stderr}"
+    assert "Traceback" not in r.stderr, r.stderr
+    assert '"decision": "block"' not in r.stdout
+    assert '"decision":"block"' not in r.stdout
+
+
+def test_direct_stop_survives_a_payload_that_breaks_the_ledger() -> None:
+    """A malformed tool_response must not stop the Stop hook from producing a receipt."""
+    argv = shlex.split(_hook_command("stop"))
+    r = _direct(argv, json.dumps({"session_id": "t", "last_assistant_message": "done",
+                                  "cwd": "/nonexistent/path/that/does/not/exist"}))
+    assert r.returncode == 0, r.stderr
+    assert "Traceback" not in r.stderr, r.stderr
