@@ -44,7 +44,17 @@ def _scan_counts(text: str) -> dict[str, int]:
     return counts
 
 
-_PYTEST_SIGNATURE_RE = re.compile(r"test session starts|collected \d+ item", re.IGNORECASE)
+# `pytest -q` prints neither the session banner nor "collected N items" -- only a tail like
+# `86 passed in 1.2s`. Requiring the banner meant the single most common invocation parsed as
+# "not a test runner at all", so `rules._outcome` fell through to its exit-code branch and
+# CONFIRMED a report claiming 81 when 86 ran. Worse, `feedback` was nudging agents toward `-q`,
+# so obeying the nudge flipped the verdict from contradicted to confirmed on an unchanged lie.
+_PYTEST_SIGNATURE_RE = re.compile(
+    r"test session starts|collected \d+ item"
+    r"|^=*\s*\d+ (?:passed|failed|error|skipped|xfailed|xpassed)"
+    r"|^=*\s*no tests ran",
+    re.IGNORECASE | re.MULTILINE,
+)
 _PYTEST_COLLECTED_RE = re.compile(r"collected (\d+) item")
 _PYTEST_COUNT_RE = re.compile(r"(\d+)\s+(passed|failed|error(?:s)?|skipped|xfailed|xpassed)")
 
