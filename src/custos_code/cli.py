@@ -210,6 +210,34 @@ def hooks_snippet() -> dict[str, object]:
     }
 
 
+def _is_installed_hook(hook: object) -> bool:
+    """Recognize our console and Python fallback hooks, including pre-rename installs."""
+    import shlex
+
+    if not isinstance(hook, dict) or hook.get("type") != "command":
+        return False
+    command = hook.get("command")
+    if not isinstance(command, str):
+        return False
+    try:
+        args = shlex.split(command)
+    except ValueError:
+        return False
+    if len(args) < 3:
+        return False
+    if pathlib.Path(args[0]).name in ("receipts", "custos-code"):
+        return args[1] == "_hook"
+    return (
+        len(args) >= 5
+        and args[1] == "-c"
+        and args[2] in (
+            "from receipts.cli import app; app()",
+            "from custos_code.cli import app; app()",
+        )
+        and args[3] == "_hook"
+    )
+
+
 @app.command()
 def watch(
     install: bool = typer.Option(
@@ -240,11 +268,19 @@ def watch(
     for ev, entries in snippet.items():
         existing = hooks.setdefault(ev, [])
         assert isinstance(existing, list)
-        # Idempotence: match on the two stable tokens, not the literal command line. The command is
-        # now an absolute path that varies per machine and per install layout, so the old
-        # `"custos-code _hook" in ...` test silently stopped matching and stacked duplicate hooks.
-        if not any(("_hook" in (blob := _json.dumps(e)) and "custos-code" in blob) for e in existing):
-            existing.extend(entries)
+        # Replace our old/current commands, including stale absolute paths. A group may also
+        # contain other tools' hooks; retain those and all of their matcher/metadata fields.
+        retained = []
+        for entry in existing:
+            if not isinstance(entry, dict) or not isinstance(entry.get("hooks"), list):
+                retained.append(entry)
+                continue
+            remaining = [h for h in entry["hooks"] if not _is_installed_hook(h)]
+            if len(remaining) == len(entry["hooks"]):
+                retained.append(entry)
+            elif remaining:
+                retained.append({**entry, "hooks": remaining})
+        hooks[ev] = [*retained, *entries]
     with open(path, "w", encoding="utf-8") as fh:
         _json.dump(data, fh, indent=2)
     console.print(f"installed into {path} (backup at {path}.bak)")

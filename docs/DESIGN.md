@@ -547,6 +547,13 @@ Codex is the build teammate throughout: it scaffolds the adapters and parsers fr
 
 - Name. "Custos Code" is a placeholder.
 
+## 14b. The second checker
+
+This document covers one question: did the agent do what it said? [SCOPE.md](SCOPE.md) adds the
+second -- did what it did match what was asked? -- and states the architecture both run under (one
+ledger, two checkers asking different questions, neither reading the other's verdict). Nothing here
+is retracted by it; integrity's measured numbers are the evidence base that design rests on.
+
 ## 15. Prize strategy
 
 One engine, one repo, one demo, seven submissions. Each challenge gets the same core plus one tailored surface and its own 90-second framing. Nothing below changes the architecture; it changes what is shown and which backend is default.

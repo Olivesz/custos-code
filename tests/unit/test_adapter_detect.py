@@ -24,12 +24,13 @@ def test_detect_names_the_adapter_for_every_golden_fixture(fixture: str, expecte
     assert adapters.detect(os.path.join(GOLDEN, fixture)) == expected
 
 
-def test_detect_machine_log(tmp_path) -> None:
+@pytest.mark.parametrize("recorder", ["custos-code-machine", "receipts-machine"])
+def test_detect_machine_log(tmp_path, recorder) -> None:
     path = tmp_path / "host-2025-09-19.jsonl"
     path.write_text(
         json.dumps(
             {
-                "recorder": "custos-code-machine",
+                "recorder": recorder,
                 "v": 1,
                 "event": "end",
                 "ts": 1.0,
@@ -40,6 +41,8 @@ def test_detect_machine_log(tmp_path) -> None:
         + "\n"
     )
     assert adapters.detect(str(path)) == "machine"
+    _, events, _ = adapters.parse(str(path))
+    assert len(events) == 1 and events[0].exit_code == 0
 
 
 def test_a_copilot_bundle_with_a_session_id_is_not_read_as_devin(tmp_path) -> None:

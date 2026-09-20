@@ -14,7 +14,12 @@ Owner: Oliver.
 
 from __future__ import annotations
 
-from . import parsers, rerun
+import hashlib
+import os
+import subprocess
+
+from . import claims as claims_mod
+from . import rerun as rerun_mod
 from .judge import Backend, window_for_all
 from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
 from .rules import check as rules_check
@@ -61,145 +66,6 @@ def _escalates(rec: VerdictRecord | None) -> bool:
     return rec.verdict == Verdict.UNWITNESSED and rec.tier >= 4
 
 
-def _tier3_candidate(claim: Claim, rec: VerdictRecord, repo_root: str | None) -> bool:
-    """Whether an incomplete deterministic test verdict should start/consult a re-run."""
-    if repo_root is None:
-        return False
-    return (
-        claim.type == ClaimType.RUN_TESTS
-        and rec.verdict in (Verdict.UNRECORDED, Verdict.UNWITNESSED)
-        and rerun.can_rerun_tests(repo_root)
-    )
-
-
-def _from_rerun(claim: Claim, event: LedgerEvent) -> VerdictRecord:
-    """Turn a finished Tier 3 event into the claim verdict it proves."""
-    parsed = parsers.parse(event.output or "", event.exit_code)
-    evidence = [event.seq] if event.seq >= 0 else []
-    if event.flags.timed_out:
-        return VerdictRecord(
-            claim_id=claim.id,
-            verdict=Verdict.UNRECORDED,
-            tier=3,
-            method="rerun",
-            confidence=0.8,
-            evidence=evidence,
-            rationale="Tier 3 re-run timed out before producing a test result.",
-        )
-    if event.flags.truncated and parsed is None:
-        return VerdictRecord(
-            claim_id=claim.id,
-            verdict=Verdict.UNRECORDED,
-            tier=3,
-            method="rerun",
-            confidence=0.7,
-            evidence=evidence,
-            rationale="Tier 3 re-run output was truncated before a recognisable test summary.",
-        )
-    if parsed is not None:
-        if parsed.collected == 0 and parsed.passed == 0:
-            verdict = Verdict.CONTRADICTED
-            why = f"Tier 3 re-run collected 0 tests with {parsed.runner}; nothing ran."
-        elif parsed.failed or parsed.errors:
-            verdict = Verdict.CONTRADICTED
-            why = (
-                f"Tier 3 re-run with {parsed.runner}: "
-                f"{parsed.passed} passed, {parsed.failed} failed, {parsed.errors} errors."
-            )
-        elif event.exit_code not in (None, 0) or event.flags.error:
-            verdict = Verdict.CONTRADICTED
-            why = f"Tier 3 re-run with {parsed.runner} exited non-zero."
-        else:
-            qualifier = None
-            for obj in claim.objects:
-                n = obj.split("/")[-1] if "/" in obj else obj
-                if n.isdigit() and int(n) != parsed.passed:
-                    qualifier = f"{obj} claimed, {parsed.passed} passed"
-            if qualifier:
-                return VerdictRecord(
-                    claim_id=claim.id,
-                    verdict=Verdict.QUALIFIED,
-                    tier=3,
-                    method="rerun",
-                    confidence=0.85,
-                    evidence=evidence,
-                    rationale=f"Tier 3 re-run with {parsed.runner}: {parsed.passed} passed, 0 failed.",
-                    qualifier=qualifier,
-                )
-            verdict = Verdict.CONFIRMED
-            why = f"Tier 3 re-run with {parsed.runner}: {parsed.passed} passed, 0 failed."
-        return VerdictRecord(
-            claim_id=claim.id,
-            verdict=verdict,
-            tier=3,
-            method="rerun",
-            confidence=0.9,
-            evidence=evidence,
-            rationale=why,
-        )
-    if event.exit_code not in (None, 0) or event.flags.error:
-        return VerdictRecord(
-            claim_id=claim.id,
-            verdict=Verdict.CONTRADICTED,
-            tier=3,
-            method="rerun",
-            confidence=0.85,
-            evidence=evidence,
-            rationale=f"Tier 3 re-run failed (exit {event.exit_code if event.exit_code is not None else 'non-zero'}).",
-        )
-    if event.exit_code == 0:
-        return VerdictRecord(
-            claim_id=claim.id,
-            verdict=Verdict.CONFIRMED,
-            tier=3,
-            method="rerun",
-            confidence=0.75,
-            evidence=evidence,
-            rationale="Tier 3 re-run exited 0, but no known runner summary was parsed.",
-        )
-    return VerdictRecord(
-        claim_id=claim.id,
-        verdict=Verdict.UNRECORDED,
-        tier=3,
-        method="rerun",
-        confidence=0.6,
-        evidence=evidence,
-        rationale="Tier 3 re-run could not determine a test outcome.",
-    )
-
-
-def _maybe_tier3(claim: Claim, rec: VerdictRecord, repo_root: str | None, report_seq: int) -> VerdictRecord:
-    """Use a completed Tier 3 re-run, or spawn one for a future pass."""
-    if not _tier3_candidate(claim, rec, repo_root):
-        return rec
-    assert repo_root is not None
-    status = rerun.poll(claim.session_id, claim.id)
-    if status is rerun.RerunStatus.DONE:
-        event = rerun.load_result(claim.session_id, claim.id)
-        if event is not None:
-            return _from_rerun(claim, event)
-    if status is rerun.RerunStatus.NONE:
-        rerun.spawn_async(claim.session_id, claim.id, repo_root, report_seq)
-        return VerdictRecord(
-            claim_id=claim.id,
-            verdict=Verdict.UNRECORDED,
-            tier=3,
-            method="rerun",
-            confidence=0.7,
-            evidence=rec.evidence,
-            rationale=f"{rec.rationale} Tier 3 re-run has been started; run the check again after it finishes.",
-        )
-    return VerdictRecord(
-        claim_id=claim.id,
-        verdict=Verdict.UNRECORDED,
-        tier=3,
-        method="rerun",
-        confidence=0.7,
-        evidence=rec.evidence,
-        rationale=f"{rec.rationale} Tier 3 re-run is still running.",
-    )
-
-
 def run(
     claims: list[Claim],
     ledger: list[LedgerEvent],
@@ -208,7 +74,6 @@ def run(
 ) -> list[VerdictRecord]:
     settled: dict[str, VerdictRecord] = {}
     pending: list[Claim] = []
-    report_seq = max((e.seq for e in ledger), default=-1)
     for claim in claims:
         found = rules_check(claim, ledger, repo_root)
         if _escalates(found):
@@ -226,7 +91,6 @@ def run(
                 rationale="No deterministic rule applies to this claim type.",
             )
         )
-        rec = _maybe_tier3(claim, rec, repo_root, report_seq)
         settled[claim.id] = _enforce(rec)
 
     if backend is not None and pending:
@@ -255,3 +119,88 @@ def summary(records: list[VerdictRecord]) -> dict[str, int]:
     for r in records:
         s[r.verdict.value] += 1
     return s
+
+
+# ---------------------------------------------------------------------------------------------
+# Tier 3 gating: when re-execution is worth launching at all.
+#
+# `rerun.py` (Anush's) knows HOW to re-run safely -- committed config only, read from the git
+# object store so the agent cannot steer it, in a worktree, with a timeout, async off the Stop
+# hook's critical path. Nothing decided WHEN, so nothing ever called it.
+#
+# The failure mode to design against is not a bad re-run, it is a checker that spends a minute
+# re-running things that settle nothing. So the gate is deliberately narrow: every condition below
+# must hold, and the common case is that none of them do.
+# ---------------------------------------------------------------------------------------------
+
+RERUN_BUDGET_PER_SESSION = 2
+
+# Claim types a re-execution can actually settle. Re-running proves a suite passes; it cannot
+# prove a file was edited, a commit was made, or a page was read.
+_RERUNNABLE = frozenset({ClaimType.RUN_TESTS, ClaimType.BUILD})
+
+
+def _tree_key(repo_root: str) -> str | None:
+    """A fingerprint of the tree a re-run would execute against.
+
+    Re-running the same commit with the same working tree gives the same answer, so the second
+    attempt is pure cost. HEAD alone is not enough -- uncommitted edits are part of what the
+    report is about (rerun.py's E3) -- so the porcelain status goes in too.
+    """
+    try:
+        head = subprocess.run(["git", "-C", repo_root, "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=5)
+        status = subprocess.run(["git", "-C", repo_root, "status", "--porcelain"],
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if head.returncode != 0:
+        return None
+    return hashlib.sha256((head.stdout + status.stdout).encode()).hexdigest()[:16]
+
+
+def should_rerun(claim: Claim, rec: VerdictRecord, repo_root: str | None,
+                 already: set[str] | None = None, budget: int = RERUN_BUDGET_PER_SESSION) -> bool:
+    """True when re-executing could change this verdict and has not been tried on this tree.
+
+    Every condition has to hold. In order, and each exists because of a way this wastes time:
+
+    1. The verdict is still open. A `confirmed` or `contradicted` is settled on evidence; re-running
+       cannot improve it and a disagreement would be a second opinion, not a second source.
+    2. The claim is about running something. Tier 3 answers "does it pass", nothing else.
+    3. There is a repo. No git work tree means no worktree to materialise, so `rerun_tests` would
+       raise -- which is the bug PR #51's review found in the eval harness.
+    4. There is a committed runner config. Auto-detection reads HEAD, so a repo with no test
+       configuration has nothing to run and would fail for reasons unrelated to the claim.
+    5. Budget, and not already tried on this exact tree. Same commit plus same working tree gives
+       the same answer, so repeating it is pure latency.
+    """
+    if rec.verdict not in (Verdict.UNWITNESSED, Verdict.UNRECORDED):
+        return False
+    # `review.py` -- the path that actually ships -- labels every claim `OTHER`, because its one
+    # call extracts and judges but does not classify. Keying the gate on the type alone meant it
+    # could only ever fire on the superseded ladder, i.e. never. Fall back to the deterministic
+    # text classifier in claims.py, which is what the ladder uses anyway.
+    ctype = claim.type
+    if ctype in (ClaimType.OTHER, None):
+        ctype = claims_mod.classify(claim.text) or ClaimType.OTHER
+    if ctype not in _RERUNNABLE:
+        return False
+    if not repo_root or not os.path.isdir(repo_root):
+        return False
+    if not os.path.isdir(os.path.join(repo_root, ".git")) and \
+            not os.path.isfile(os.path.join(repo_root, ".git")):
+        return False
+    if rerun_mod._detect_test_command(repo_root) is None:
+        return False
+    seen = already if already is not None else set()
+    if len(seen) >= budget:
+        return False
+    key = _tree_key(repo_root)
+    return key is not None and f"{claim.id}:{key}" not in seen
+
+
+def rerun_key(claim: Claim, repo_root: str) -> str | None:
+    """The dedupe key `should_rerun` checks, for a caller to record after launching."""
+    key = _tree_key(repo_root)
+    return f"{claim.id}:{key}" if key else None
