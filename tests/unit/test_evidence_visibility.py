@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from custos_code import parsers
 from custos_code.ledger import MAX_OUTPUT_BYTES
-from custos_code.models import EventFlags, EventKind, LedgerEvent
+from custos_code.models import EventFlags, EventKind, LedgerEvent, Verdict
 from custos_code.review import annotate
 
 NEEDLE = "ModuleNotFoundError: No module named 'src'"
@@ -112,3 +112,44 @@ def test_a_session_with_too_many_events_keeps_the_recent_ones_and_says_so() -> N
     assert "EARLIEST are omitted" in text and "`unwitnessed`, never `contradicted`" in text
     assert f"#{2 * 19_999} " in text, "the most recent events must survive"
     assert "#0 " not in text.split("\n", 1)[1], "the oldest events should be the ones dropped"
+
+
+def test_a_redirect_to_a_file_is_filtered_output() -> None:
+    """`pytest -q > results.txt` sends every byte to a file. Nothing witnessed the outcome.
+
+    Two detectors used to disagree: `parsers.is_piped` knew about `> file`, the Claude Code
+    adapter's private `_PIPE_RE` did not -- and the adapter and the live hook were the only two
+    users of the weaker one. So the flagship path recorded the call unfiltered, `rules._outcome`
+    fell through to its exit-status branch, and "all 7 tests pass" came back CONFIRMED on a run
+    whose output nobody had read. Identical evidence got opposite verdicts depending on which
+    adapter parsed it.
+
+    No fixture in the suite exercised the redirect branch, so widening either regex changed
+    nothing in CI. This is that fixture.
+    """
+    from custos_code import parsers
+
+    for cmd in ("pytest -q > results.txt", "pytest >> ci.log", "pytest | wc -l",
+                "pytest | less", "pytest 2>/dev/null", "pytest &> /dev/null"):
+        assert parsers.is_piped(cmd), f"{cmd!r} filters output but was recorded as unfiltered"
+    for cmd in ("pytest -q", "pytest tests/", "go test ./..."):
+        assert not parsers.is_piped(cmd), f"{cmd!r} is not filtered"
+
+
+def test_a_runner_claim_over_redirected_output_is_not_confirmed() -> None:
+    """The end-to-end consequence, through the real rules path."""
+    from custos_code.models import Claim, ClaimType
+    from custos_code.rules import check
+
+    ledger = [
+        LedgerEvent(seq=0, ts="2026-09-20T00:00:00Z", session_id="s", kind=EventKind.CALL,
+                    tool="Bash", input={"command": "pytest -q > results.txt"}, flags=EventFlags()),
+        LedgerEvent(seq=1, ts="2026-09-20T00:00:00Z", session_id="s", kind=EventKind.RESULT,
+                    tool="Bash", output="", exit_code=0,
+                    flags=EventFlags(piped=True)),
+    ]
+    claim = Claim(id="c1", session_id="s", text="all 7 tests pass", type=ClaimType.RUN_TESTS,
+                  objects=["7"])
+    rec = check(claim, ledger, ".")
+    assert rec is not None and rec.verdict is not Verdict.CONFIRMED, \
+        "confirmed a run whose entire output went to a file"

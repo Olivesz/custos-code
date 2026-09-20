@@ -341,7 +341,7 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
                        paths=claude_code._paths_from_input(tool, dict(inp), cwd), cwd=cwd, flags=EventFlags(sidechain=side))
     flags = EventFlags(sidechain=side)
     cmd = inp.get("command")
-    if tool == "Bash" and isinstance(cmd, str) and claude_code._PIPE_RE.search(cmd):
+    if tool == "Bash" and isinstance(cmd, str) and parsers.is_piped(cmd):
         flags.piped = True
     if len(text.encode()) > MAX_OUTPUT_BYTES:
         flags.truncated = True

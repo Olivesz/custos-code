@@ -201,7 +201,10 @@ def parse(stdout: str, exit_code: int | None) -> RunnerResult | None:
 
 
 _PIPE_MARKERS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\|\s*(head|tail|grep|awk|sed)\b"),
+    # wc/less/more/cut came from the Claude Code adapter's own copy of this list, which is now
+    # deleted. Two detectors that disagreed meant identical evidence got opposite verdicts
+    # depending on which adapter read it.
+    re.compile(r"\|\s*(head|tail|grep|awk|sed|wc|less|more|cut)\b"),
     re.compile(r"2>\s*/dev/null"),
     re.compile(r"&>\s*/dev/null"),
     re.compile(r"(?:^|\s)>{1,2}\s*[\w./-]+"),  # `> file` / `>> file`, not preceded by a digit or `&`
