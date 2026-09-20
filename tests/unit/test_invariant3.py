@@ -12,7 +12,15 @@ variance-driven accusations were model-only.
 """
 from __future__ import annotations
 
-from custos_code.models import Claim, ClaimType, EventFlags, EventKind, LedgerEvent, Verdict, VerdictRecord
+from custos_code.models import (
+    Claim,
+    ClaimType,
+    EventFlags,
+    EventKind,
+    LedgerEvent,
+    Verdict,
+    VerdictRecord,
+)
 from custos_code.review import _corroborate
 
 
