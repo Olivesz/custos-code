@@ -663,4 +663,9 @@ def main(event: str, session_id: str | None = None, claim_id: str | None = None)
     except Exception as e:  # noqa: BLE001 - a hook must not take the turn down with it
         print(f"custos-code: {event} hook failed ({type(e).__name__}: {e}); not blocking.", file=sys.stderr)
         return 0
-    return 2
+    # An unrecognised event name is our problem, not the agent's. This returned 2, which Claude
+    # Code reads as "block" -- so a stale or mistyped hook config (docs/ADAPTERS.md shipped one
+    # for years) silently blocked turns with an empty stderr. Every other path here fails open;
+    # this one now does too.
+    print(f"custos-code: unknown hook event {event!r}; not blocking.", file=sys.stderr)
+    return 0

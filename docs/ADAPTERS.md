@@ -20,14 +20,17 @@ What changes between classes is only *which claims are settleable*: class M cann
 ### Live (hooks)
 Config the user installs with `custos-code watch` (or ships in `.claude/settings.json` for a repo):
 
-```json
-{"hooks": {
-  "PreToolUse":  [{"matcher": "Bash", "hooks": [{"type": "command", "command": "custos-code _hook pre",  "timeout": 5}]}],
-  "PostToolUse": [{"matcher": "",     "hooks": [{"type": "command", "command": "custos-code _hook post", "timeout": 10}]}],
-  "Stop":        [{"matcher": "",     "hooks": [{"type": "command", "command": "custos-code _hook stop", "timeout": 120}]}],
-  "SubagentStop":[{"matcher": "",     "hooks": [{"type": "command", "command": "custos-code _hook subagent-stop"}]}]
-}}
+Do not paste this by hand. `custos-code watch --install` writes it, resolving absolute paths and
+replacing any older install; `custos-code watch` prints it without writing.
+
+```bash
+custos-code watch --install --only-in ~/your-project
 ```
+
+The three events are `pre`, `post-tool-use` and `stop`. An earlier version of this page named
+`post` and `subagent-stop`: neither exists, both exit non-zero, and the result was a PostToolUse
+that failed on every call, so no ledger was ever written and the Stop hook then marked every
+claim `unwitnessed` -- a checker that looks alive while seeing nothing.
 
 | Hook payload field | Ledger field | Notes |
 |---|---|---|

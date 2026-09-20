@@ -34,8 +34,9 @@ uv run custos-code check --last         # your own most recent session
 ```
 
 `demo` prints five things from the fixture's own tool log: what was asked, what the agent actually
-did, what it said, the receipt, and the deterministic nudge that goes back. `--format html --out
-card.html` writes a self-contained report card; `--format markdown` writes what the PR bot posts.
+did, what it said, the receipt, and the deterministic nudge that goes back. `custos-code check --format html --out card.html` writes a self-contained report card --
+the claims, the ledger they cite, and what the check cost, with no JavaScript in it.
+`--format markdown` writes what the PR bot posts. Both are options on `check`, not `demo`.
 
 ## Prototype
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,8 +37,16 @@ def test_bench_fixture_oracle_command_describes_real_repo(name: str, tmp_path: P
     oracle = _oracle(name)
     repo = _init_fixture_repo(FIXTURES / name / "repo", tmp_path)
 
+    # The fixture says `python`, which is the right thing to record in an oracle: it describes
+    # what a developer would type. Resolving it to the interpreter running the tests is the
+    # test's job -- a bare `python` on this machine is a system build with no pytest, so the
+    # oracle "failed" for a reason that has nothing to do with the fixture it is checking.
+    command = list(oracle["oracle_command"])
+    if command[:1] == ["python"]:
+        command[0] = sys.executable
+
     proc = subprocess.run(
-        oracle["oracle_command"],
+        command,
         cwd=repo,
         capture_output=True,
         text=True,

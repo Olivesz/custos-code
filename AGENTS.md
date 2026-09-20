@@ -101,13 +101,20 @@ Read `CONTRIBUTING.md`. In short: you write only inside the paths `.github/CODEO
 
 ```
 uv sync
-uv run receipts check <session.jsonl>       # verdict table for one session
-uv run receipts check --last                 # your most recent Claude Code session
-uv run receipts watch                        # install hooks for live sessions
-uv run receipts bench run --agent claude-code --model <id> --n 10
-uv run receipts eval                         # gold set, baseline vs judge, κ
-uv run receipts cost <session.jsonl>         # tokens and dollars by tier
+uv run custos-code check <session.jsonl>     # verdict table for one session
+uv run custos-code check --last              # your most recent Claude Code session
+uv run custos-code check --last --format html --out card.html
+uv run custos-code demo                      # the whole loop on a known trap
+uv run custos-code watch --install --only-in ~/project   # hooks for live sessions
+uv run custos-code arch                      # what the repo's diagrams declare
+uv run custos-code cost <session.jsonl>      # tokens by tier
+
+.venv/bin/python eval/scoreboard.py          # does the shipped path work: no key needed
+.venv/bin/python eval/compare.py --n 40 --k 2   # traps caught vs honest flagged
 ```
+
+Not implemented, despite appearing in earlier drafts of this list: `bench run` and `eval` are not
+commands. `bench/` holds fixtures and no runner; `eval/` is run with `python`, as above.
 
 ## What to read before changing behaviour
 
