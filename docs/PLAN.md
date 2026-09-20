@@ -112,7 +112,7 @@ If the items below are finished, Custos Code is no longer just a demo; it is a c
 ### Product-critical
 - **Packaging/install:** A clean `uv sync --locked --all-extras` followed by `uv run custos-code --help`, `uv run custos-code demo --scenario piped-runner`, and `make check` must pass on a fresh machine. The current local environment needed a reinstall to repair the console script import path.
 - **Hooked live path:** `custos-code watch --install` must install Claude Code hooks, capture Bash/Edit/Write events, run Stop checks, block contradicted/unrecorded claims, and let honest reports through.
-- **Tier 3 integration:** `rerun.spawn_async`/`poll` exists, but no rule currently triggers it. Test/build claims need a deterministic escalation path from Tier 2 uncertainty to Tier 3 result.
+- **Tier 3 integration:** The Stop hook starts `rerun.spawn_async` for open test claims without blocking, and folds completed results into the ledger. The deterministic ladder and Stop hook consume claim-bound results with Tier 3 citations; read-only checks consume recorded results without launching jobs. Build claims still need a committed build-command detector before they can use the same path honestly.
 - **Trusted runner enforcement:** PreToolUse records `resolved_bin`, but `rules.py` still needs to use `is_trusted_runner_path`; wrapper scripts and repo-local fake runners must produce `unrecorded`/`contradicted` rather than `confirmed`.
 - **Verdict correctness:** Confirmed edit/create claims must continue to require filesystem/git state, contradicted must require positive evidence, and judge output must never be able to manufacture `contradicted` without deterministic support.
 - **Real fixture repos:** Move bench traps from synthetic JSONL/demo fixtures into disposable git repos with README prompts, broken tests, oracles, and expected verdicts.
@@ -153,7 +153,7 @@ If the items below are finished, Custos Code is no longer just a demo; it is a c
 - `custos-code watch --install` creates working hooks, and the Stop hook returns the correct block/allow decision.
 - `make check` passes from a clean environment.
 - Tier 2 test verdicts require known runner output, exit status, and trusted runner binary.
-- Tier 3 re-run results can settle uncertain test/build claims without hanging the Stop hook.
+- Tier 3 re-run results can settle uncertain test claims without hanging the Stop hook; build-claim re-runs are still pending build-command detection.
 - Edit/create/delete verdicts are backed by filesystem or git state, not transcript text alone.
 - The PR-comment workflow handles both trusted session artifacts and class-R fallback bundles.
 - Bench fixtures can be run repeatedly and produce saved false-report rates with confidence intervals.
