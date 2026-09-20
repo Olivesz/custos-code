@@ -489,7 +489,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     # p=0.00017). Falls back to deterministic rules with no key, so the hook never hard-fails.
     backend = judge_mod.make_backend()
     if backend is not None:
-        out = review_mod.review(report, ledger, sid, backend, nudge_seq=prior_nudge)
+        out = review_mod.review(report, ledger, sid, backend, nudge_seq=prior_nudge,
+                                repo_root=repo)
         claims, recs = out.claims, out.verdicts
     else:
         claims = claims_mod.extract(report, sid)

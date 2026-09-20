@@ -24,7 +24,9 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import claims as claims_mod
 from . import parsers
+from . import rules as rules_mod
 from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
 
 SYSTEM = """You are given an AI coding agent's final report to its user, and an independent log of every
@@ -180,6 +182,56 @@ class Reviewed:
     requests: int = 0
 
 
+def _corroborate(claim: Claim, rec: VerdictRecord, ledger: list[LedgerEvent],
+                 repo_root: str | None) -> VerdictRecord:
+    """A model may not convict on its own. AGENTS.md invariant 3.
+
+    `verdicts._enforce` raises if the tiered ladder ever emits a judge-produced `contradicted`.
+    When `review.py` became the default path it never called that, so for the whole time this has
+    shipped, a single non-deterministic call could block a turn with no corroboration. Every bad
+    block observed so far traces here: on 2026-09-20 a user lost four minutes to three auto-mode
+    passes over a `contradicted` on a statement that was true, and it could not be reproduced
+    afterwards because it was variance.
+
+    A `contradicted` now has to be backed by something that does not depend on the model's
+    judgement:
+
+      - a deterministic rule reaching the same verdict (rules.check), or
+      - a structural fact in the cited evidence: a non-zero exit code, or a parsed runner result
+        showing failures or an empty collection.
+
+    Without either, the finding survives as `unrecorded` -- still surfaced, still in the receipt,
+    still nudged on -- but it does not assert that the agent lied, and it does not block. The cost
+    of being wrong in that direction is a weaker mark; the cost in the other direction is accusing
+    someone who told the truth.
+    """
+    if rec.verdict != Verdict.CONTRADICTED:
+        return rec
+    byseq = {e.seq: e for e in ledger}
+    for s in rec.evidence:
+        e = byseq.get(s)
+        if e is None:
+            continue
+        if e.exit_code not in (None, 0):
+            return rec                                   # a real failure, deterministically
+        parsed = parsers.parse(e.output or "", e.exit_code)
+        if parsed and (parsed.failed or parsed.collected == 0):
+            return rec                                   # the runner itself says so
+    ctype = claim.type
+    if ctype in (ClaimType.OTHER, None):
+        ctype = claims_mod.classify(claim.text) or ClaimType.OTHER
+    probe = Claim(id=claim.id, session_id=claim.session_id, text=claim.text, type=ctype,
+                  objects=list(claim.objects))
+    det = rules_mod.check(probe, ledger, repo_root)
+    if det is not None and det.verdict == Verdict.CONTRADICTED:
+        return rec                                       # the rules agree, on their own evidence
+    rec.verdict = Verdict.UNRECORDED
+    rec.method = "rule"
+    rec.rationale = ("No deterministic check corroborates this, so it is reported rather than "
+                     "asserted (AGENTS.md invariant 3). " + rec.rationale)
+    return rec
+
+
 def _veto(rec: VerdictRecord, ledger: list[LedgerEvent]) -> VerdictRecord:
     """A `confirmed` resting on evidence we cannot actually read becomes `unrecorded`.
 
@@ -212,7 +264,8 @@ def _veto(rec: VerdictRecord, ledger: list[LedgerEvent]) -> VerdictRecord:
 
 
 def review(report: str, ledger: list[LedgerEvent], session_id: str, backend: Any,
-           model: str | None = None, nudge_seq: int = -1) -> Reviewed:
+           model: str | None = None, nudge_seq: int = -1,
+           repo_root: str | None = None) -> Reviewed:
     """One call: report + annotated log in, marked claims out. The product's default path."""
     out = Reviewed()
     if not report.strip():
@@ -249,8 +302,9 @@ def review(report: str, ledger: list[LedgerEvent], session_id: str, backend: Any
         if verdict in (Verdict.CONFIRMED, Verdict.CONTRADICTED) and not ev:
             verdict = Verdict.UNWITNESSED  # cite or abstain
         cid = f"r{i}"
-        out.claims.append(Claim(id=cid, session_id=session_id, text=text, type=ClaimType.OTHER, objects=[]))
-        out.verdicts.append(_veto(VerdictRecord(
-            claim_id=cid, verdict=verdict, tier=4, method="judge", confidence=0.8,
-            evidence=ev, rationale=str(item.get("reason", ""))[:200]), ledger))
+        cl = Claim(id=cid, session_id=session_id, text=text, type=ClaimType.OTHER, objects=[])
+        out.claims.append(cl)
+        rec = VerdictRecord(claim_id=cid, verdict=verdict, tier=4, method="judge", confidence=0.8,
+                            evidence=ev, rationale=str(item.get("reason", ""))[:200])
+        out.verdicts.append(_corroborate(cl, _veto(rec, ledger), ledger, repo_root))
     return out

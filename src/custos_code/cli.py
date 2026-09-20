@@ -111,7 +111,8 @@ def check(
     if backend is not None and not ladder:
         # Default: one call over the report and the annotated ledger. 86% vs the ladder's 70%
         # on construction-truth fixtures, McNemar p=0.00017 (eval/arms/RESULTS.md).
-        reviewed = review_mod.review(report, ledger, sess.id, backend)
+        reviewed = review_mod.review(report, ledger, sess.id, backend,
+                                     repo_root=repo or sess.cwd)
         claims, recs = reviewed.claims, reviewed.verdicts
         tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
     else:
