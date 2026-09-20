@@ -132,28 +132,23 @@ caveat attached, or drop it from the pitch.
 **Finding.** Of 121 claims extracted across the real corpus, the checker answers 8 and abstains on
 113. A tool that is safe because it almost never speaks is not yet a product.
 
-**The experiment that closes it.** An **ablation**: run the same corpus with tiers progressively
-enabled (rules only; + re-run; + judge) and report coverage and accusation count at each step. That
-answers two questions at once: how much coverage each tier buys, and whether any tier is dead
-weight. If the judge moves coverage from 7% to something material without adding accusations, it has
-earned its place; if it does not, we should say so and cut it.
+**The experiment that closes it.** An **ablation**: run the same corpus through rules-only, rules
+with judge escalation, and `review.review()` (the shipping default), and report coverage and
+accusation count for each. That answers two questions at once: how much coverage moving to the
+real pipeline buys over rules alone, and whether judge escalation earns its place over rules alone
+when extraction is held constant. If a tier moves coverage from 7% to something material without
+adding accusations, it has earned its place; if it does not, we should say so and cut it.
 
 Part of the low coverage is upstream: the regex extracts unanswerable junk, which inflates the
 denominator. Measure coverage against classifier-extracted claims too, and report both.
 
-**Partially run (2026-09-19).** `eval/coverage_ablation.py` implements the ablation and ran it --
-not against the 93-session gold corpus, which this environment doesn't have (see the script's own
-module docstring), but against this machine's own 9 local dogfooding sessions (21 claims):
-rules-only 9/21 (43%) coverage, 2 accusations; + re-run 10/21 (48%), 3 accusations; + judge
-skipped (no API key). Full writeup: `eval/results/2026-09-19-coverage-ablation.md`. The re-run
-tier moved one claim from `unwitnessed` to a genuine new `contradicted` on this sample -- not
-dead weight here, though n=1 is far too small to generalize. Also built, not just measured: the
-Tier-3 escalation path itself didn't exist before this script (E4/E5's own admission that
-`rule_run_tests` has no path from rules to a re-run); `_reclassify_from_rerun` is a standalone
-harness for measurement, not a change to `rules.py`/`verdicts.py` -- wiring re-run into the ladder
-for real is still open. The judge tier and the classifier-extracted-claims comparison are both
-still unmeasured, and the real 93-session numbers still need whoever has that corpus to run this
-script against it.
+`eval/coverage_ablation.py` implements this (rewritten after review -- Oliver, #51 -- to measure
+`review.review()`, the pipeline that actually ships, instead of the superseded `--ladder` path the
+first version measured, with Wilson intervals on every coverage number and the corpus scoped
+explicitly rather than by `os.path.isdir(cwd)`). Not run for a real number yet: this environment
+has no `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`, so the judge and review arms haven't produced a score
+here, and the real 93-session gold corpus still lives on whoever ran the original G5 measurement.
+Whoever has both should run it and report back.
 
 ---
 
