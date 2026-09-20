@@ -66,7 +66,7 @@ Status: `open` · `decided` · `deferred (post-event)`
 | L2 | OpenAI challenge registration (credits only for submitters) | Oliver | open | Do first. |
 | L3 | Token Company sign-in (opens Friday the 18th) | Anush | open | Needed for the compressor comparison. |
 | L4 | Maximor: staff it (needs cross-run memory, 4–5 h) or one slide? | All | open | Default: one slide unless a fourth person appears. |
-| L5 | Repo public or private, and when | Oliver | open | Private until the attribution and secrets scan passes; public for the OSS-maintainer angle. |
+| L5 | Repo public or private, and when | Oliver | open | Private until the attribution and secrets scan passes; public for the OSS-maintainer angle. **Secrets half done (2026-09-19, Anush)**: scanned all 107 commits across every branch (openai/anthropic/github/aws/slack/jwt/private-key/mongodb/generic-secret-assign patterns) -- 14 pattern hits, all confirmed false positives on inspection (placeholder keys in golden test fixtures like `sk-abcdefghijklmnopqrstuvwx`, an OTel trace ID, variable names containing "token"). No `.env` or credential-shaped filename was ever committed; `.gitignore` covers `.env`/`.env.*`. Timing is still Oliver's call, and the attribution half is a separate open question (see AGENTS.md's tool-attribution rule, currently violated by 4 already-merged commits -- decided to leave those as-is rather than rewrite shared history, see git log 6aad06d/43e9485/e877d3b/dc3b0c0). |
 | L6 | License | Oliver | decided | MIT. `LICENSE` already exists at the repo root (Oliver's copyright) and has been in effect; this row just hadn't been flipped to match. |
 
 ## Research gaps carried forward

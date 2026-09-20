@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 
@@ -30,10 +31,16 @@ def _run(script: str, payload: str, env: dict[str, str]) -> subprocess.Completed
 
 @pytest.mark.parametrize("event", EVENTS)
 def test_hook_command_is_absolute_and_needs_no_path(event: str) -> None:
-    """Claude Code runs hooks in a shell that does not inherit our PATH."""
+    """Claude Code runs hooks in a shell that does not inherit our PATH.
+
+    `_hook_command` shell-quotes its path with `shlex.join`, so a naive `cmd.split()` breaks a
+    quoted path apart at any space inside it -- exactly the kind of checkout this repo's own
+    folder name (`HackMIT 2026`) produces. Parse the command line the same way a shell would.
+    """
     cmd = _hook_command(event)
-    assert cmd.split()[0].startswith("/"), f"not absolute: {cmd}"
-    assert os.path.exists(cmd.split()[0].strip("'\"")), cmd
+    first = shlex.split(cmd)[0]
+    assert first.startswith("/"), f"not absolute: {cmd}"
+    assert os.path.exists(first), cmd
     assert cmd.endswith(f"_hook {event}")
 
 
