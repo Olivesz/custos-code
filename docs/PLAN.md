@@ -66,9 +66,9 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [~] Gold set: local half chosen with seed 20260919 (`eval/gold/sessions.txt`), regex claims exported to `eval/gold/claims_to_label.csv`, and all three label files exist; SWE-chat half, reconciliation, and κ still pending.
 - [x] Claude Code post-hoc adapter + golden test (#5); claim extractor (#10); Tier 1–2 rules and `custos-code check` verdicts (#11); hooks and auto-mode loop (#12).
 - [x] Codex post-hoc adapter + golden tests from local rollout. Anush.
-- [~] Parsers, windowing, Tier 3 re-run, async worker, and PATH resolution merged; remaining gaps are wiring Tier 3 escalation from rules and using trusted-runner verdict data in `rules.py`. Anush.
+- [x] Parsers, windowing, Tier 3 re-run (test and build), trusted-runner enforcement, async worker, and PATH resolution all wired and merged (#67, #69, #73). Anush.
 - [~] pytest, jest, vitest, go test, and cargo parsers plus pipe/truncation flagger are covered by unit tests; Hypothesis/property tests and gradle/xcodebuild remain. Anush.
-- [ ] Bench traps 1–2 as real fixture repos with oracles (piped runner, broken runner). Anush.
+- [x] Bench traps 1–2 shipped as real fixture repos with oracles (piped-runner, broken-runner) (#75). Anush.
 - [x] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
 - [ ] Devin: booth or email for access; VERIFY list in docs/DEVIN.md. Oliver asks; work paused until then.
 - [~] Token Company comparison arm: cost command can compare `review`, `ladder`, and `judge-all`; Token Company key and compressor wiring into judge prompt assembly remain. Anush/Oliver.
@@ -88,12 +88,14 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 | Not needed | Runpod, Voloridge compute, Elastic, Deepgram, Linq, Fragment, Notability, hardware | — |
 No Anthropic credits are offered; the Anthropic backend stays comparison-only unless someone has a key.
 
-### Next five engineering tasks (as of 20 Sep)
-1. Fix local install reliability: `uv run custos-code ...` must work from a fresh checkout without needing `uv pip install -e . --reinstall` or `PYTHONPATH=src`.
-2. Wire Tier 3 re-runs into `rules.py` and the Stop flow so async re-run results can settle test/build claims.
-3. Make trusted-runner/path-shadowing data affect verdicts; a repo-local fake `pytest` must not confirm a test claim.
-4. Turn the first bench traps into real fixture repos with oracles, starting with piped-runner and broken-runner.
-5. Run the PR-comment workflow and hook install path end to end on a real local/CI PR, then fix whatever breaks.
+### Next five engineering tasks (as of 20 Sep) — all shipped, refreshed 20 Sep
+1. ~~Fix local install reliability...~~ **Done (#62).** Renamed to `custos-code`, fixed the console-script/`PYTHONPATH` resolution, and CI now covers locked installs, wheel smoke tests, and `uvx` source installs.
+2. ~~Wire Tier 3 re-runs into `rules.py` and the Stop flow...~~ **Done (#67, #73).** Test claims settle from rerun evidence and build claims can launch reruns from committed build config; the ladder, Stop hook, and CLI review path all consume Tier 3 results with citations.
+3. ~~Make trusted-runner/path-shadowing data affect verdicts...~~ **Done (#69).** `rules.py` uses the hook-recorded `resolved_bin`; a repo-local fake `pytest` no longer confirms a test claim, while trusted dependency binaries (`.venv/bin/pytest`) still do.
+4. ~~Turn the first bench traps into real fixture repos with oracles...~~ **Done (#75).** `bench/fixtures/piped-runner` and `bench/fixtures/broken-runner` are real git repos with oracles and CI smoke tests.
+5. Run the PR-comment workflow and hook install path end to end on a real local/CI PR, then fix whatever breaks. **Mostly done.** `.github/workflows/receipt.yml` has posted a green `receipt` check on every real PR in this repo since #55/#56, and #74 added a test that installs the hooks via `watch --install` and executes the installed command through a real shell. Still open: no live staged Claude Code session has re-confirmed the Stop-hook block/allow decision since the rename (#62) and the invariant-3 conviction change (#72).
+
+Beyond this original five, #72 (a model may not convict on its own — AGENTS.md invariant 3) and #76 (`out_of_scope` verdict, request/plan extraction, policy file — closing #58/#64) also shipped in this batch; they extend verdict hardening and start the scope/authorization checker, which isn't covered by the five tasks above. See "Remaining work" below for what's actually next.
 
 ## Remaining work
 
