@@ -25,6 +25,7 @@ from . import claims as claims_mod
 from . import feedback, parsers, rerun
 from . import judge as judge_mod
 from . import review as review_mod
+from . import scope as scope_mod
 from . import verdicts as verdicts_mod
 from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
@@ -81,6 +82,91 @@ def _config() -> dict[str, Any]:
     if (mp := os.environ.get("RECEIPTS_AUTO_MAX_PASSES")) and mp.isdigit():
         cfg["auto_max_passes"] = int(mp)
     return cfg
+
+
+def _scope_mode() -> str:
+    """`off` | `warn` | `on`, from RECEIPTS_SCOPE or config.toml. Default OFF, deliberately.
+
+    Every threshold in scope.py is a default I wrote, not a measurement. Issue #57 calibrates them
+    against ~400 sessions of accepted work, and until that reports, a scope gate that interrupts
+    good work is strictly worse than no scope gate -- see the Stop-hook latency that made the
+    terminal unusable on 2026-09-19. So this ships inert and is switched on by a number, not by
+    confidence.
+
+    `warn` bands and records without ever denying: that is the mode #57's harness runs in.
+    """
+    v = (os.environ.get("RECEIPTS_SCOPE") or _config().get("scope") or "off")
+    v = str(v).strip().lower()
+    return v if v in ("off", "warn", "on") else "off"
+
+
+def _scope_grant(payload: dict[str, Any]) -> scope_mod.Grant:
+    cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else ""
+    sid = str(payload.get("session_id", "unknown"))
+    approved: tuple[str, ...] = ()
+    _, state_p, _ = _paths(sid)
+    if os.path.exists(state_p):
+        try:
+            with open(state_p, encoding="utf-8") as fh:
+                got = json.load(fh).get("scope_approved")
+            if isinstance(got, list):
+                approved = tuple(str(x) for x in got)
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    return scope_mod.Grant.for_session(cwd or os.getcwd(), approved=approved)
+
+
+def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Band this call and, if the mode allows, stop it before it happens.
+
+    docs/SCOPE.md §5: scope is checked at PreToolUse, BEFORE the action -- "ask before doing
+    something irreversible" is what every permission system does, not halting on an opinion. And
+    the cost asymmetry inverts against integrity: a scope false positive costs one pause, a scope
+    false negative costs a force-push.
+
+    The mode decides the response, because a flag is a message to a human and an unattended run has
+    nobody reading it:
+
+                GREEN     YELLOW    RED
+      attended  pass      ask       deny
+      unattended pass     deny      deny
+
+    Fails OPEN on any error. A checker that cannot run is not evidence about the agent.
+    """
+    mode = _scope_mode()
+    if mode == "off":
+        return None
+    try:
+        raw = payload.get("tool_input")
+        inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+        f = scope_mod.classify(str(payload.get("tool_name", "")), inp, _scope_grant(payload))
+    except Exception as e:  # noqa: BLE001 - never take the turn down over a scope check
+        print(f"receipts: scope check failed ({type(e).__name__}); allowing.", file=sys.stderr)
+        return None
+    if not f.gates or mode == "warn":
+        return None
+    unattended = bool(_config().get("auto"))
+    decision = "deny" if (f.band is scope_mod.Band.RED or unattended) else "ask"
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": decision,
+        "permissionDecisionReason": _scope_reason(f, decision),
+    }}
+
+
+def _scope_reason(f: scope_mod.Finding, decision: str) -> str:
+    """Say why, in terms of the actual finding. A generic reason trains people to click through."""
+    if f.band is scope_mod.Band.RED:
+        why = "this cannot be undone"
+    elif f.rule == "write-outside-cwd":
+        why = "this writes outside the directory this session was started in"
+    elif f.rule == "unrecoverable-write":
+        why = "there is no git work tree here, so this cannot be reverted"
+    else:
+        why = "this reaches outside the workspace"
+    tail = ("" if decision == "deny"
+            else " Approve it and it will not be asked again this session.")
+    return f"receipts/scope [{f.band.value}] {f.rule} — {why}: {f.detail}.{tail}"
 
 
 def _paths(session_id: str) -> tuple[str, str, str]:
@@ -150,6 +236,10 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
     """
     if _out_of_scope(payload):
         return None
+    # Scope first: a RED action must never get wrapped and run. The E5 rewrite below only makes a
+    # command observable; it does not make it safe.
+    if (gate := _scope_gate(payload)) is not None:
+        return gate
     if payload.get("tool_name") != "Bash":
         return None
     inp = payload.get("tool_input")
