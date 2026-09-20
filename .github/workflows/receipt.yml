@@ -93,7 +93,7 @@ jobs:
               --slurpfile commits "$RUNNER_TEMP/evidence/commits.json" \
               --slurpfile checks "$RUNNER_TEMP/evidence/checks.json" \
               --slurpfile files "$RUNNER_TEMP/evidence/files.json" \
-              -f .github/pr_bundle.jq > "$file"
+              -f .github/workflows/pr_bundle.jq > "$file"
             # both remote agents produce the same class-R bundle; the author picks the parser
             author=$(jq -r '.pull_request.user.login // ""' "$file")
             case "$author" in
