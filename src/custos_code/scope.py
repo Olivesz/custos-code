@@ -33,13 +33,17 @@ Owner: Oliver.
 """
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 import shlex
+import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
 from .rules import RepoState
 
 
@@ -83,6 +87,55 @@ _READ_TOOLS = frozenset({"Read", "Glob", "Grep", "NotebookRead", "WebFetch", "We
 _WRITE_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "str_replace_based_edit_tool"})
 
 
+_POLICY_PATH = os.path.expanduser("~/.custos-code/policy.toml")
+
+
+@dataclass(frozen=True)
+class Policy:
+    """User-widened or -narrowed scope rules, from `~/.custos-code/policy.toml` (SCOPE.md §6.4).
+
+    Every rule in this module keeps working with no file at all: `Policy()` adds nothing and
+    narrows nothing. Everything here is ADDITIVE -- a policy file can widen what counts as scratch
+    or protected, but it cannot silently drop a built-in RED rule out from under a user who never
+    asked for that; narrowing a built-in would need a code change and review, same as any other
+    safety-critical default.
+
+    `max_files_changed` is carried through but not yet consulted by `classify` -- SCOPE.md §7's
+    calibration against the real corpus reported thresholds as UNSET at this sample size (9
+    sessions vs. the ~400 the design calls for), and a magnitude rule that fires on a guess is the
+    same mistake the whole scope gate ships OFF to avoid.
+    """
+    scratch: tuple[str, ...] = ()
+    red: tuple[str, ...] = ()
+    protect: tuple[str, ...] = ()
+    max_files_changed: int = 0
+
+    @staticmethod
+    def load(path: str | None = None) -> Policy:
+        p = path or _POLICY_PATH
+        if not os.path.exists(p):
+            return Policy()
+        try:
+            with open(p, "rb") as fh:
+                data = tomllib.load(fh)
+        except (OSError, tomllib.TOMLDecodeError):
+            return Policy()
+        scope = data.get("scope")
+        scope = scope if isinstance(scope, dict) else {}
+
+        def _tup(key: str) -> tuple[str, ...]:
+            v = scope.get(key)
+            return tuple(str(x) for x in v) if isinstance(v, list) else ()
+
+        max_files = scope.get("max_files_changed")
+        return Policy(
+            scratch=_tup("scratch"),
+            red=_tup("red"),
+            protect=_tup("protect"),
+            max_files_changed=max_files if isinstance(max_files, int) else 0,
+        )
+
+
 @dataclass(frozen=True)
 class Grant:
     """The blast radius the user allowed, explicitly and implicitly.
@@ -98,10 +151,13 @@ class Grant:
     approved: tuple[str, ...] = ()
 
     @staticmethod
-    def for_session(cwd: str, named: tuple[str, ...] = (), approved: tuple[str, ...] = ()) -> Grant:
+    def for_session(cwd: str, named: tuple[str, ...] = (), approved: tuple[str, ...] = (),
+                     policy: Policy | None = None) -> Grant:
+        extra = [os.path.realpath(os.path.expandvars(os.path.expanduser(p)))
+                 for p in (policy.scratch if policy else ())]
         scratch = [os.path.realpath(p) for p in
                    (os.environ.get("TMPDIR", "/tmp"), "/tmp", "/private/tmp",
-                   os.path.expanduser("~/.custos-code")) if p]
+                   os.path.expanduser("~/.custos-code"), *extra) if p]
         root = os.path.realpath(os.path.expanduser(cwd)) if cwd else ""
         # Scratch roots are kept whole. An earlier version dropped any root that CONTAINED the
         # project -- which deleted /tmp from the list whenever cwd was anywhere beneath it, so
@@ -150,7 +206,7 @@ def _abs(path: str, cwd: str) -> str:
     return p if os.path.isabs(p) else os.path.normpath(os.path.join(cwd or os.getcwd(), p))
 
 
-def _protected(abs_path: str) -> str | None:
+def _protected(abs_path: str, extra: tuple[str, ...] = ()) -> str | None:
     for p in _PROTECTED:
         if _under(abs_path, os.path.expanduser(p)) or abs_path == os.path.expanduser(p):
             return p
@@ -158,6 +214,10 @@ def _protected(abs_path: str) -> str | None:
     for suf in _PROTECTED_SUFFIX:
         if base == suf or base.endswith(suf):
             return suf
+    for pat in extra:
+        expanded = os.path.expanduser(pat)
+        if fnmatch.fnmatch(abs_path, expanded) or fnmatch.fnmatch(base, expanded):
+            return pat
     return None
 
 
@@ -202,14 +262,18 @@ def _paths_in(tool: str, inp: dict[str, Any]) -> list[str]:
 
 
 def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
-             state: RepoState | None = None) -> Finding:
+             state: RepoState | None = None, policy: Policy | None = None) -> Finding:
     """Band one tool call. Pure, deterministic, no model call.
 
     Order matters: RED first (an irreversible action is RED wherever it points), then reads (free),
     then writes and the YELLOW command families. The first match wins, so a `sudo rm -rf` reports
     as `rm-recursive-force` rather than as whichever rule happens to be checked last.
+
+    `policy` widens the built-in bands (SCOPE.md §6.4); it never narrows one, so an empty or
+    missing policy file classifies identically to no policy at all.
     """
     st = state if state is not None else RepoState(grant.cwd or None)
+    pol = policy or Policy()
     inp = tool_input or {}
     cmd = inp.get("command") if isinstance(inp.get("command"), str) else ""
 
@@ -223,10 +287,13 @@ def classify(tool: str, tool_input: dict[str, Any], grant: Grant,
                     if targets and all(_in_scratch(t, grant) for t in targets):
                         return GREEN_OK
                 return Finding(Band.RED, rule, f"{rule}: {cmd[:160]}", recoverable=False)
+        for phrase in pol.red:
+            if phrase and phrase.lower() in cmd.lower():
+                return Finding(Band.RED, "policy-red", f"policy-red: {cmd[:160]}", recoverable=False)
 
     for raw in _paths_in(tool, inp):
         p = _abs(raw, grant.cwd)
-        if (hit := _protected(p)) and (tool in _WRITE_TOOLS or (tool == "Bash" and cmd and
+        if (hit := _protected(p, pol.protect)) and (tool in _WRITE_TOOLS or (tool == "Bash" and cmd and
                                                                 not _is_read_only_cmd(cmd))):
             return Finding(Band.RED, "protected-path", f"writes {hit}: {raw}", recoverable=False)
 
@@ -290,3 +357,58 @@ def _is_read_only_cmd(cmd: str) -> bool:
     if head == "git":
         return len(parts) > 1 and parts[1] in _GIT_READ_ONLY
     return head in _READ_ONLY_FIRST
+
+
+# ---------------------------------------------------------------------------------------------
+# Reaching the receipt (issue #64). `PreToolUse` (hooks.py) decides ask/deny before an action
+# runs and never itself writes to the ledger -- a denied call leaves no CALL event to report on,
+# by design. But plenty of gated actions DO end up in the ledger anyway: warn mode never blocks,
+# an attended "ask" the user approved still ran, and a class-R bundle (Copilot, Devin) has no live
+# gate in front of it at all. `scan` is how those reach a receipt post-hoc, by re-running the same
+# pure `classify` over the CALL events a session already recorded.
+# ---------------------------------------------------------------------------------------------
+
+def scan(ledger: Sequence[LedgerEvent], grant: Grant, state: RepoState | None = None,
+         policy: Policy | None = None) -> list[tuple[LedgerEvent, Finding]]:
+    """Every top-level tool call that would have gated, paired with the event that made it.
+
+    Sidechain (sub-agent) calls are excluded -- the same rule integrity already applies to
+    evidence: a sub-agent's actions have no write path either checker treats as the top-level
+    agent's own.
+    """
+    st = state if state is not None else RepoState(grant.cwd or None)
+    hits: list[tuple[LedgerEvent, Finding]] = []
+    for event in ledger:
+        if event.kind is not EventKind.CALL or event.flags.sidechain or not event.tool:
+            continue
+        finding = classify(event.tool, event.input or {}, grant, st, policy)
+        if finding.gates:
+            hits.append((event, finding))
+    return hits
+
+
+def to_verdict(event: LedgerEvent, finding: Finding) -> tuple[Claim, VerdictRecord]:
+    """One scope hit as a (Claim, VerdictRecord) pair, so report.py renders it like any other row.
+
+    Deliberately `out_of_scope`, never `contradicted` -- SCOPE.md §4: this is an action against a
+    boundary, not positive evidence a claim is false, and `contradicted` is reserved for that.
+    """
+    claim = Claim(
+        id=f"scope-{event.seq}",
+        session_id=event.session_id,
+        text=f"{event.tool} at #{event.seq}: {finding.detail}",
+        type=ClaimType.OTHER,
+        polarity="did",
+        source="scope",
+    )
+    record = VerdictRecord(
+        claim_id=claim.id,
+        verdict=Verdict.OUT_OF_SCOPE,
+        tier=2,
+        method="rule",
+        confidence=1.0,
+        evidence=[event.seq],
+        rationale=f"[{finding.band.value}] {finding.rule}: {finding.detail}",
+        band=finding.band.value,
+    )
+    return claim, record

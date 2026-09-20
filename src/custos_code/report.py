@@ -4,7 +4,7 @@ One `Reviewed` in, three surfaces out. The terminal receipt is the demo; the mar
 GitHub Action posts; the HTML card is what the usability sessions put in front of a person.
 
 Marks are the product's vocabulary and never change between surfaces:
-    ✓ confirmed   ✗ contradicted   ? unwitnessed   ○ unrecorded   ≈ qualified
+    ✓ confirmed   ✗ contradicted   ? unwitnessed   ○ unrecorded   ≈ qualified   ⚠ out_of_scope
 
 Owner: Oliver (terminal, HTML), Ananya (PR comment).
 """
@@ -22,6 +22,7 @@ from .models import Claim, Coverage, LedgerEvent, Session, Verdict, VerdictRecor
 MARKER = "<!-- custos-code-bot: pr-receipt -->"
 ORDER = [
     Verdict.CONTRADICTED,
+    Verdict.OUT_OF_SCOPE,
     Verdict.QUALIFIED,
     Verdict.UNRECORDED,
     Verdict.UNWITNESSED,
@@ -34,6 +35,7 @@ MARK: dict[Verdict, tuple[str, str]] = {
     Verdict.UNWITNESSED: ("?", "yellow"),
     Verdict.UNRECORDED: ("○", "bright_black"),
     Verdict.QUALIFIED: ("≈", "cyan"),
+    Verdict.OUT_OF_SCOPE: ("⚠", "magenta"),
 }
 _HEX = {
     Verdict.CONFIRMED: "#1E7B4E",
@@ -41,6 +43,7 @@ _HEX = {
     Verdict.UNWITNESSED: "#B25E09",
     Verdict.UNRECORDED: "#5B6675",
     Verdict.QUALIFIED: "#2457C5",
+    Verdict.OUT_OF_SCOPE: "#8A2BB2",
 }
 
 
@@ -297,6 +300,12 @@ def pr_comment(
             "> A contradicted claim means the log carries positive evidence against it "
             "(a failing exit code, a command that never ran, a file that is not there). "
             "Unwitnessed is not an accusation: the record simply does not say.",
+        ]
+    if counts[Verdict.OUT_OF_SCOPE]:
+        lines += [
+            "",
+            "> `out_of_scope` means an action reached outside what this session was asked to "
+            "touch (SCOPE.md §4) -- a boundary violation, not evidence a claim is false.",
         ]
     footer = []
     if receipt_url:
