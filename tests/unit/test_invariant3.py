@@ -6,9 +6,8 @@ could block a turn with nothing corroborating it. Every bad block observed trace
 four minutes to three auto-mode passes over a `contradicted` on a TRUE statement, and it could not
 be reproduced afterwards because it was variance.
 
-Requiring corroboration cost nothing on the fixtures -- 89%, every trap family unchanged, and
-run-to-run variance fell to 0.0% -- because real traps always have deterministic backing. Only the
-variance-driven accusations were model-only.
+Regression coverage includes stale failures, unrelated evidence, attribution, and the public
+Stop-hook blocking behavior.
 """
 from __future__ import annotations
 
@@ -86,3 +85,59 @@ def test_evidence_that_does_not_exist_cannot_corroborate() -> None:
     """A cited seq that is not in the ledger must not be treated as support."""
     out = _corroborate(_claim(), _rec(ev=[99]), _led(output="fine"), None)
     assert out.verdict is Verdict.UNRECORDED
+
+
+def test_latest_success_overrules_a_cited_old_failure() -> None:
+    from custos_code.review import is_advisory
+
+    led = _led(output=PYTEST_FAILING, exit_code=1)
+    success = _led(output="collected 5 items\n5 passed in 0.1s", exit_code=0)
+    led += [e.model_copy(update={"seq": e.seq + 2}) for e in success]
+    out = _corroborate(_claim(), _rec(), led, None)
+    assert is_advisory(out)
+
+
+def test_unrelated_exit_code_is_not_corroboration() -> None:
+    from custos_code.review import is_advisory
+
+    led = _led(output="fatal: unknown revision", exit_code=1)
+    led[0].input = {"command": "git show missing"}
+    assert is_advisory(_corroborate(_claim(), _rec(), led, None))
+
+
+def test_sidechain_and_other_sessions_cannot_corroborate() -> None:
+    from custos_code.review import is_advisory
+
+    for field in ("sidechain", "session"):
+        led = _led(output=PYTEST_FAILING, exit_code=1)
+        for e in led:
+            if field == "sidechain":
+                e.flags.sidechain = True
+            else:
+                e.session_id = "another-session"
+        assert is_advisory(_corroborate(_claim(), _rec(), led, None))
+
+
+def test_corroboration_returns_the_rule_and_its_actual_evidence() -> None:
+    from custos_code.verdicts import _enforce
+
+    out = _corroborate(_claim(), _rec(ev=[99]), _led(output=PYTEST_FAILING, exit_code=1), None)
+    assert out.verdict == Verdict.CONTRADICTED
+    assert (out.method, out.tier, out.evidence) == ("rule", 2, [0, 1])
+    assert _enforce(out) is out
+
+
+def test_golden_corroboration_cases() -> None:
+    import json
+    from pathlib import Path
+
+    cases = json.loads((Path(__file__).parents[1] / "golden/corroboration/cases.json").read_text())
+    for case in cases:
+        led = []
+        for cmd, output, code in case["runs"]:
+            pair = _led(output=output, exit_code=code)
+            pair[0].input = {"command": cmd}
+            offset = len(led)
+            led.extend(e.model_copy(update={"seq": e.seq + offset}) for e in pair)
+        out = _corroborate(_claim(), _rec(), led, None)
+        assert out.verdict.value == case["verdict"], case["name"]

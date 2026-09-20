@@ -491,7 +491,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     if backend is not None:
         out = review_mod.review(report, ledger, sid, backend, nudge_seq=prior_nudge,
                                 repo_root=repo)
-        claims, recs = out.claims, out.verdicts
+        claims = out.claims
+        recs = verdicts_mod.apply_reruns(claims, out.verdicts, ledger)
     else:
         claims = claims_mod.extract(report, sid)
         recs = verdicts_mod.run(claims, ledger, repo)
@@ -513,7 +514,7 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
             key = verdicts_mod.rerun_key(c, repo)
             try:
                 # report_seq anchors the RERUN event after the evidence it re-checks
-                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq)
+                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq, claim_text=c.text)
             except Exception as e:  # noqa: BLE001 - a failed launch must not fail the turn
                 print(f"receipts: rerun launch failed ({type(e).__name__}); skipping.", file=sys.stderr)
                 continue
@@ -537,7 +538,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     clear = set(cfg.get("auto_clear", []))
     by = {c.id: c for c in claims}
-    open_pairs = [(by[r.claim_id], r) for r in recs if r.verdict.value in clear]
+    open_pairs = [(by[r.claim_id], r) for r in recs
+                  if r.verdict.value in clear and not review_mod.is_advisory(r)]
     if bool(payload.get("stop_hook_active")) and "nudge_seq" in state:
         # a continuation: a previously open claim clears only on evidence newer than the nudge (docs/DESIGN.md §6).
         # A reworded claim that now "confirms" on old evidence stays open as unwitnessed.

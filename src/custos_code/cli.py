@@ -113,7 +113,8 @@ def check(
         # on construction-truth fixtures, McNemar p=0.00017 (eval/arms/RESULTS.md).
         reviewed = review_mod.review(report, ledger, sess.id, backend,
                                      repo_root=repo or sess.cwd)
-        claims, recs = reviewed.claims, reviewed.verdicts
+        claims = reviewed.claims
+        recs = verdicts_mod.apply_reruns(claims, reviewed.verdicts, ledger)
         tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
     else:
         if backend is None and not rules_only:

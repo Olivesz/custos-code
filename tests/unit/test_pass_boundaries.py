@@ -66,7 +66,7 @@ def test_the_prompt_explains_what_the_line_means() -> None:
     """A marker the model has not been told how to read is decoration."""
     assert "Superseded evidence" in SYSTEM
     assert "boundary" in SYSTEM
-    assert "superseded, not repeated" in SYSTEM
+    assert "past-tense narration" in SYSTEM   # must not swallow "X failed, then I fixed it"
 
 
 def test_the_stale_citation_case_end_to_end() -> None:

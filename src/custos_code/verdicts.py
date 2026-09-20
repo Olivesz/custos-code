@@ -19,6 +19,7 @@ import os
 import subprocess
 
 from . import claims as claims_mod
+from . import parsers
 from . import rerun as rerun_mod
 from .judge import Backend, window_for_all
 from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
@@ -66,6 +67,70 @@ def _escalates(rec: VerdictRecord | None) -> bool:
     return rec.verdict == Verdict.UNWITNESSED and rec.tier >= 4
 
 
+def apply_reruns(
+    claims: list[Claim], records: list[VerdictRecord], ledger: list[LedgerEvent],
+) -> list[VerdictRecord]:
+    """Settle open test claims from claim-bound, numbered harness reruns.
+
+    Launching remains in the Stop hook so read-only audits never execute repository code.
+    A result cannot stand in for a different claim/session or survive later tool activity.
+    Legacy events without a launch boundary remain available to the judge, not this rule.
+    """
+    settled = []
+    for claim, rec in zip(claims, records, strict=True):
+        ctype = claim.type
+        if ctype == ClaimType.OTHER:
+            ctype = claims_mod.classify(claim.text) or ClaimType.OTHER
+        if ctype != ClaimType.RUN_TESTS or claim.polarity != "did" or rec.verdict not in (
+            Verdict.UNWITNESSED, Verdict.UNRECORDED,
+        ):
+            settled.append(rec)
+            continue
+        candidates = []
+        for event in ledger:
+            meta = event.input or {}
+            boundary = meta.get("report_seq")
+            if (event.kind != EventKind.RERUN or event.tool != "rerun_tests"
+                    or event.session_id != claim.session_id or event.flags.sidechain
+                    or meta.get("claim_id") != claim.id or meta.get("claim_text") != claim.text
+                    or not isinstance(boundary, int)
+                    or event.seq <= boundary):
+                continue
+            if any(e.session_id == claim.session_id and not e.flags.sidechain
+                   and e.kind in (EventKind.CALL, EventKind.RESULT) and e.seq > boundary
+                   for e in ledger):
+                continue
+            candidates.append(event)
+        if not candidates:
+            settled.append(rec)
+            continue
+        event = max(candidates, key=lambda e: e.seq)
+        parsed = parsers.parse(event.output or "", event.exit_code)
+        verdict = Verdict.UNRECORDED
+        why = "Tier 3 re-run has no complete, recognised test outcome."
+        qualifier = None
+        flags = event.flags
+        if not (flags.timed_out or flags.interrupted or flags.truncated or flags.piped):
+            if parsed is not None and event.exit_code is not None:
+                if parsed.failed or parsed.errors or parsed.collected == 0:
+                    verdict = Verdict.CONTRADICTED
+                    why = (f"Tier 3 {parsed.runner}: {parsed.passed} passed, "
+                           f"{parsed.failed} failed, {parsed.errors} errors"
+                           + ("; no tests collected." if parsed.collected == 0 else "."))
+                elif event.exit_code == 0 and not flags.error and parsed.passed > 0:
+                    verdict = Verdict.CONFIRMED
+                    why = f"Tier 3 {parsed.runner}: {parsed.passed} passed, 0 failed."
+                    counts = [o for o in claim.objects if o.isdigit()]
+                    if counts and any(int(n) != parsed.passed for n in counts):
+                        verdict = Verdict.QUALIFIED
+                        qualifier = f"{', '.join(counts)} claimed, {parsed.passed} passed"
+        settled.append(_enforce(VerdictRecord(
+            claim_id=claim.id, verdict=verdict, tier=3, method="rerun",
+            confidence=0.9, evidence=[event.seq], rationale=why, qualifier=qualifier,
+        )))
+    return settled
+
+
 def run(
     claims: list[Claim],
     ledger: list[LedgerEvent],
@@ -111,7 +176,7 @@ def run(
             if rec.verdict is Verdict.UNWITNESSED and claim.type in NEEDS_TOOL_LOG:
                 rec.verdict = Verdict.UNRECORDED
                 rec.rationale = f"{note}; this claim needs one."
-    return [settled[c.id] for c in claims]
+    return apply_reruns(claims, [settled[c.id] for c in claims], ledger)
 
 
 def summary(records: list[VerdictRecord]) -> dict[str, int]:
@@ -137,7 +202,7 @@ RERUN_BUDGET_PER_SESSION = 2
 
 # Claim types a re-execution can actually settle. Re-running proves a suite passes; it cannot
 # prove a file was edited, a commit was made, or a page was read.
-_RERUNNABLE = frozenset({ClaimType.RUN_TESTS, ClaimType.BUILD})
+_RERUNNABLE = frozenset({ClaimType.RUN_TESTS})
 
 
 def _tree_key(repo_root: str) -> str | None:
@@ -175,7 +240,7 @@ def should_rerun(claim: Claim, rec: VerdictRecord, repo_root: str | None,
     5. Budget, and not already tried on this exact tree. Same commit plus same working tree gives
        the same answer, so repeating it is pure latency.
     """
-    if rec.verdict not in (Verdict.UNWITNESSED, Verdict.UNRECORDED):
+    if claim.polarity != "did" or rec.verdict not in (Verdict.UNWITNESSED, Verdict.UNRECORDED):
         return False
     # `review.py` -- the path that actually ships -- labels every claim `OTHER`, because its one
     # call extracts and judges but does not classify. Keying the gate on the type alone meant it
