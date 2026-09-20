@@ -162,21 +162,33 @@ def html_card(
 
     # --- the report, with a mark on each claim and nothing on anything else -----------------
     marked = esc(report)
+    # Find each claim's span in the ORIGINAL text first, then insert anchors in one pass, right to
+    # left. Mutating `marked` claim-by-claim (the previous approach) let a later claim's needle
+    # match *inside* an earlier claim's already-inserted text -- a claim whose text is a substring
+    # of another's landed its mark mid-sentence, splitting the clause it was quoting. Two claims
+    # with identical text produced the same corruption. Skipping an overlapping match instead of
+    # inserting into it costs one unmarked claim, never a broken sentence.
+    spans: list[tuple[int, int, VerdictRecord]] = []
+    claimed: list[tuple[int, int]] = []
     for rec in verdicts:
         claim = by.get(rec.claim_id)
         if claim is None or not claim.text.strip():
             continue
         needle = esc(claim.text.strip())
-        if needle not in marked:
+        start = marked.find(needle)
+        if start < 0:
             continue
+        end = start + len(needle)
+        if any(start < c_end and end > c_start for c_start, c_end in claimed):
+            continue
+        claimed.append((start, end))
+        spans.append((start, end, rec))
+    for _start, end, rec in sorted(spans, key=lambda s: s[0], reverse=True):
         mark, _ = MARK[rec.verdict]
         colour = _HEX[rec.verdict]
-        marked = marked.replace(
-            needle,
-            f"{needle}<a class='mk' style='color:{colour}' href='#claim-{esc(rec.claim_id)}' "
-            f"title='{esc(rec.verdict.value)} · tier {rec.tier} · {esc(rec.method)}'>{mark}</a>",
-            1,
-        )
+        anchor = (f"<a class='mk' style='color:{colour}' href='#claim-{esc(rec.claim_id)}' "
+                  f"title='{esc(rec.verdict.value)} · tier {rec.tier} · {esc(rec.method)}'>{mark}</a>")
+        marked = marked[:end] + anchor + marked[end:]
 
     # --- claims ------------------------------------------------------------------------------
     crows = []
@@ -294,8 +306,6 @@ border-bottom:1px solid var(--rule);font-family:ui-monospace,SFMono-Regular,mono
 font-size:12px;align-items:baseline}}
 .led .s{{color:var(--muted)}} .led .k{{color:var(--accent)}} .led .tool{{color:#B45309}}
 .led .o{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-.led.hl{{background:color-mix(in srgb,#D29922 26%,transparent);outline:1px solid #D29922;
-outline-offset:-1px}}
 .rc{{color:#2E7D32}} .rc.bad{{color:#C62828}}
 .flag{{color:#B26A00;font-size:11px;margin-left:8px;font-family:ui-sans-serif,system-ui,sans-serif}}
 .cost{{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}}

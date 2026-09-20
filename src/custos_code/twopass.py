@@ -114,13 +114,33 @@ class Checked:
 
 def _ask(backend: Any, system: str, user: str, schema: dict[str, Any], name: str,
          usage: Checked) -> dict[str, Any]:
-    resp = backend.client().responses.create(
-        model=backend.judge_model, instructions=system, input=user,
-        text={"format": {"type": "json_schema", "name": name, "schema": schema, "strict": True}})
+    """One structured call, in whichever shape `backend`'s underlying SDK client actually speaks.
+
+    `backend.client()` returns the raw vendor client (see judge.py's OpenAIBackend/AnthropicBackend),
+    not a shared shim, and the two SDKs are not interchangeable: OpenAI's Responses API takes a
+    strict JSON schema directly; Anthropic's Messages API has no equivalent, so the schema has to be
+    asked for in the prompt and the reply parsed back out of the response text. Hardcoding the
+    OpenAI shape here made this crash on `AnthropicBackend` with AttributeError before the first
+    DECOMPOSE call.
+    """
     usage.requests += 1
+    client = backend.client()
+    if hasattr(client, "responses"):
+        resp = client.responses.create(
+            model=backend.judge_model, instructions=system, input=user,
+            text={"format": {"type": "json_schema", "name": name, "schema": schema, "strict": True}})
+        if getattr(resp, "usage", None) is not None:
+            usage.input_tokens += int(getattr(resp.usage, "input_tokens", 0) or 0)
+        return dict(json.loads(resp.output_text))
+    resp = client.messages.create(
+        model=backend.judge_model, max_tokens=4000, system=system,
+        messages=[{"role": "user", "content": f"{user}\n\nReply with JSON matching this schema "
+                   f"and nothing else:\n{json.dumps(schema)}"}])
     if getattr(resp, "usage", None) is not None:
         usage.input_tokens += int(getattr(resp.usage, "input_tokens", 0) or 0)
-    return dict(json.loads(resp.output_text))
+    text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+    start, end = text.find("{"), text.rfind("}")
+    return dict(json.loads(text[start:end + 1])) if start >= 0 else {}
 
 
 def run(report: str, evidence: dict[str, Any], backend: Any,

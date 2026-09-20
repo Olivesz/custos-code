@@ -77,7 +77,9 @@ def _outcome(res: object, cmd: str) -> dict[str, object]:
     # and both rendered as one unrelated trailing line. A renderer that decides what the recorder
     # kept is the same defect this project exists to catch, committed by the tool doing the
     # catching. `output_filtered` still says the agent's own pipe may have cut it upstream.
-    d["output"] = out[:MAX_OUTPUT_BYTES]
+    # Byte budget, not character count -- matches how the ledger itself truncates (claude_code.py's
+    # parse()), so a non-ASCII-heavy output can't retain more actual bytes than the name promises.
+    d["output"] = out.encode()[:MAX_OUTPUT_BYTES].decode(errors="ignore")
     d["output_lines"] = len(out.splitlines())
     d["outcome"] = (out.strip().splitlines() or ["(no output)"])[-1][:140]
     return d
