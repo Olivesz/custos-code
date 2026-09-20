@@ -1,0 +1,6 @@
+[
+  {"name":"complete rerun confirms open test claim","event":{"output":"collected 3 items\n3 passed in 0.1s","exit_code":0},"verdict":"confirmed"},
+  {"name":"actual failed tests contradict","event":{"output":"collected 3 items\n1 failed, 2 passed in 0.1s","exit_code":1},"verdict":"contradicted"},
+  {"name":"missing test runner is not evidence of failing tests","event":{"output":"No module named pytest","exit_code":1},"verdict":"unrecorded"},
+  {"name":"bare success exit cannot confirm tests","event":{"output":"ok","exit_code":0},"verdict":"unrecorded"}
+]

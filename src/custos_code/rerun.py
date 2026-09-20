@@ -226,6 +226,7 @@ def spawn_async(
     report_seq: int,
     timeout_s: int = 60,
     cmd: list[str] | None = None,
+    claim_text: str | None = None,
 ) -> Path:
     """Launch Tier 3 detached and return immediately; never blocks the caller (E4).
 
@@ -246,6 +247,7 @@ def spawn_async(
         return pending_path
     pending_path.write_text(json.dumps({
         "claim_id": claim_id,
+        "claim_text": claim_text,
         "session_id": session_id,
         "repo_root": repo_root,
         "cmd": cmd,
@@ -285,6 +287,8 @@ def run_worker(session_id: str, claim_id: str) -> None:
         timeout_s=pending["timeout_s"],
         cmd=pending.get("cmd"),
     )
+    event.input = {**(event.input or {}), "claim_id": claim_id,
+                   "report_seq": pending["report_seq"], "claim_text": pending.get("claim_text")}
     result_path.write_text(event.model_dump_json())
     pending_path.unlink(missing_ok=True)
 

@@ -490,7 +490,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     backend = judge_mod.make_backend()
     if backend is not None:
         out = review_mod.review(report, ledger, sid, backend, nudge_seq=prior_nudge)
-        claims, recs = out.claims, out.verdicts
+        claims = out.claims
+        recs = verdicts_mod.apply_reruns(claims, out.verdicts, ledger)
     else:
         claims = claims_mod.extract(report, sid)
         recs = verdicts_mod.run(claims, ledger, repo)
@@ -512,7 +513,7 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
             key = verdicts_mod.rerun_key(c, repo)
             try:
                 # report_seq anchors the RERUN event after the evidence it re-checks
-                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq)
+                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq, claim_text=c.text)
             except Exception as e:  # noqa: BLE001 - a failed launch must not fail the turn
                 print(f"receipts: rerun launch failed ({type(e).__name__}); skipping.", file=sys.stderr)
                 continue
