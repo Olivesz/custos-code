@@ -266,38 +266,7 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     return {"decision": "block", "reason": reason}
 
 
-def _load_env_file() -> None:
-    """Load ~/.receipts/env into the environment for keys the hook shell does not inherit.
-
-    Claude Code runs hooks in a non-login, non-interactive shell, so exports from .zshrc or a
-    profile are not present. Without a key, `judge.make_backend()` returns None and the Stop hook
-    silently falls back to the deterministic rules -- a quieter, measurably worse receipt (70% vs
-    92%) with no indication that it happened. This is the difference between a working install and
-    one that looks like it works.
-
-    Deliberately NOT a repo-level .env: the file lives under ~/.receipts so it cannot be committed
-    by accident. Existing environment variables always win, so CI and explicit exports override it.
-    Format is KEY=VALUE, one per line, `#` comments and surrounding quotes allowed.
-    """
-    p = os.path.join(HOME, "env")
-    if not os.path.exists(p):
-        return
-    try:
-        with open(p, encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, _, v = line.partition("=")
-                k = k.strip().removeprefix("export ").strip()
-                if k and k not in os.environ:
-                    os.environ[k] = v.strip().strip("'\"")
-    except OSError:
-        return  # unreadable key file is not a reason to fail a hook
-
-
 def main(event: str, session_id: str | None = None, claim_id: str | None = None) -> int:
-    _load_env_file()
     if event == "rerun-worker":
         # E4: a detached subprocess `rerun.spawn_async` launched directly -- no hook payload,
         # no stdin to read; its identity is these two args.

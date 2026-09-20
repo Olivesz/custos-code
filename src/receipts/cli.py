@@ -257,17 +257,26 @@ def demo(
     console.rule("[bold]3. what the agent said")
     console.print(f"  [italic]{report}[/]")
 
+    # No key is a reason to show a quieter receipt, not to abandon the demo three stages in. The
+    # deterministic rules catch this fixture's piped runner on their own, so the demo still runs
+    # end to end; it just says less about why.
     backend = judge_mod.make_backend()
-    if backend is None:
-        console.print("\n[yellow]no model backend: set OPENAI_API_KEY to run the review[/]")
-        raise typer.Exit(code=2)
-    reviewed = review_mod.review(report or "", ledger, sess.id, backend)
+    if backend is not None:
+        reviewed = review_mod.review(report or "", ledger, sess.id, backend)
+        dclaims, drecs = reviewed.claims, reviewed.verdicts
+        tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
+    else:
+        console.print("\n[yellow]no model backend — running the deterministic rules instead.[/]")
+        console.print("[dim]  set OPENAI_API_KEY, or put it in ~/.receipts/env, for the full review.[/]")
+        dclaims = claims_mod.extract(report or "", sess.id)
+        drecs = verdicts_mod.run(dclaims, ledger, sess.cwd, None)
+        tail = "rules only · 0 tokens"
 
     console.rule("[bold]4. the receipt")
-    report_mod.terminal(reviewed.claims, reviewed.verdicts, ledger, console, show_evidence=True)
-    console.print(f"[dim]  one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out[/]")
+    report_mod.terminal(dclaims, drecs, ledger, console, show_evidence=True)
+    console.print(f"[dim]  {tail}[/]")
 
-    open_pairs = [(c, r) for c, r in zip(reviewed.claims, reviewed.verdicts, strict=True)
+    open_pairs = [(c, r) for c, r in zip(dclaims, drecs, strict=True)
                   if r.verdict.value in ("contradicted", "unrecorded")]
     console.rule("[bold]5. what goes back to the agent")
     if open_pairs:
