@@ -174,19 +174,42 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
 
 # ---------- ledger assembly for Stop ----------
 def _ledger_for(payload: dict[str, Any]) -> tuple[Session, list[LedgerEvent]]:
+    """The ledger for this session: the live hook file first, the transcript only as a fallback.
+
+    Order matters, and it used to be backwards -- the transcript was preferred whenever
+    `transcript_path` existed, which is always. Two consequences, both observed on a real session
+    (adc885ec, 2026-09-19):
+
+    1. **We discarded the output we exist to capture.** PostToolUse records each tool's FULL
+       stdout before the harness truncates it; that is the whole reason the hook exists
+       (docs/DESIGN.md §5: 42% of test output was piped away). On that session the live file held
+       28,437 bytes of captured output against the transcript's 20,424. Reading the transcript
+       threw away 8KB of evidence and produced a receipt full of `unrecorded ... not visible due
+       to truncation` for claims the live file could have settled.
+    2. **Citations pointed at the wrong lines.** The two sources number events independently --
+       the transcript also numbers assistant/user text records, the live file only tool events. On
+       that session `git mv` was seq 16 in the transcript and seq 14 in the live file. The receipt
+       cited #16; a reader checking ~/.receipts/live/<id>.jsonl, which is the artifact we tell
+       people to audit, finds an unrelated pytest run there. Every citation in that receipt was
+       unverifiable against the ledger on disk.
+
+    So: live file when it has events, transcript otherwise (a session whose hooks were installed
+    mid-flight has no live file for its earlier turns, which is the case this fallback is for).
+    """
     sid = str(payload.get("session_id", "unknown"))
     live, _, _ = _paths(sid)
-    tpath = payload.get("transcript_path")
-    if isinstance(tpath, str) and os.path.exists(tpath):
-        sess, ledger, _ = claude_code.parse(tpath)
-        if ledger or not os.path.exists(live):
-            return sess, ledger
     events: list[LedgerEvent] = []
     if os.path.exists(live):
         with open(live, encoding="utf-8") as fh:
             for line in fh:
                 if line.strip():
                     events.append(LedgerEvent.model_validate_json(line))
+    if not events:
+        tpath = payload.get("transcript_path")
+        if isinstance(tpath, str) and os.path.exists(tpath):
+            sess, ledger, _ = claude_code.parse(tpath)
+            if ledger:
+                return sess, ledger
     events = chain(events)
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     sess = Session(id=sid, source="claude_code", agent="claude-code", cwd=cwd, n_events=len(events),
