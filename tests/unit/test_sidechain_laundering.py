@@ -7,9 +7,9 @@ evidence matching happens), but neither had a test pinning the behavior down. Th
 """
 from datetime import UTC, datetime
 
-from receipts.models import Claim, ClaimType, EventFlags, EventKind, LedgerEvent, Verdict
-from receipts.review import annotate
-from receipts.rules import check
+from custos_code.models import Claim, ClaimType, EventFlags, EventKind, LedgerEvent, Verdict
+from custos_code.review import annotate
+from custos_code.rules import check
 
 
 def _event(seq: int, kind: EventKind, sidechain: bool, **kw: object) -> LedgerEvent:

@@ -12,9 +12,9 @@ import subprocess
 
 import pytest
 
-from receipts import adapters, claims, verdicts
-from receipts.models import Verdict
-from receipts.report import MARKER, pr_comment
+from custos_code import adapters, claims, verdicts
+from custos_code.models import Verdict
+from custos_code.report import MARKER, pr_comment
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROGRAM = os.path.join(ROOT, ".github", "workflows", "pr_bundle.jq")

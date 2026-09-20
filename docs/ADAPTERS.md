@@ -18,14 +18,14 @@ What changes between classes is only *which claims are settleable*: class M cann
 ## 2. Claude Code adapter (class H live, class F post-hoc)
 
 ### Live (hooks)
-Config the user installs with `receipts watch` (or ships in `.claude/settings.json` for a repo):
+Config the user installs with `custos-code watch` (or ships in `.claude/settings.json` for a repo):
 
 ```json
 {"hooks": {
-  "PreToolUse":  [{"matcher": "Bash", "hooks": [{"type": "command", "command": "receipts _hook pre",  "timeout": 5}]}],
-  "PostToolUse": [{"matcher": "",     "hooks": [{"type": "command", "command": "receipts _hook post", "timeout": 10}]}],
-  "Stop":        [{"matcher": "",     "hooks": [{"type": "command", "command": "receipts _hook stop", "timeout": 120}]}],
-  "SubagentStop":[{"matcher": "",     "hooks": [{"type": "command", "command": "receipts _hook subagent-stop"}]}]
+  "PreToolUse":  [{"matcher": "Bash", "hooks": [{"type": "command", "command": "custos-code _hook pre",  "timeout": 5}]}],
+  "PostToolUse": [{"matcher": "",     "hooks": [{"type": "command", "command": "custos-code _hook post", "timeout": 10}]}],
+  "Stop":        [{"matcher": "",     "hooks": [{"type": "command", "command": "custos-code _hook stop", "timeout": 120}]}],
+  "SubagentStop":[{"matcher": "",     "hooks": [{"type": "command", "command": "custos-code _hook subagent-stop"}]}]
 }}
 ```
 
@@ -42,9 +42,9 @@ Config the user installs with `receipts watch` (or ships in `.claude/settings.js
 | `last_assistant_message` (Stop, SubagentStop) | TEXT event = the report | never read the transcript for the current turn |
 | `stop_hook_active` | loop state | true means we are inside our own continuation |
 
-**Exit code.** Not provided. Order of resolution: (1) parse the runner summary from `tool_response` (`12 passed`, `1 failed`, `collected 0 items`, `FAIL`, `error TS`); (2) for commands whose first token resolves to a known runner or build tool, the `PreToolUse` hook returns `hookSpecificOutput.updatedInput.command` = `(<original>); __rc=$?; printf '\n__RECEIPTS_RC=%s\n' "$__rc"; exit $__rc` and the Post hook strips the trailer from what it stores and records `exit_code`; `VERIFY` whether the model sees the trailer, and if it does, keep the wrapper only for runners and document it; (3) Tier 3 re-run. Never wrap commands containing heredocs, `&`, or `nohup`.
+**Exit code.** Not provided. Order of resolution: (1) parse the runner summary from `tool_response` (`12 passed`, `1 failed`, `collected 0 items`, `FAIL`, `error TS`); (2) for commands whose first token resolves to a known runner or build tool, the `PreToolUse` hook returns `hookSpecificOutput.updatedInput.command` = `(<original>); __rc=$?; printf '\n__CUSTOS_CODE_RC=%s\n' "$__rc"; exit $__rc` and the Post hook strips the trailer from what it stores and records `exit_code`; `VERIFY` whether the model sees the trailer, and if it does, keep the wrapper only for runners and document it; (3) Tier 3 re-run. Never wrap commands containing heredocs, `&`, or `nohup`.
 
-**Stop hook contract.** Exit 0 with no output when clean (or manual mode). In auto mode with open claims: print `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"<nudge text>"}}` and exit 0. The nudge is built from templates. State lives in `~/.receipts/sessions/<id>.sqlite` (`passes`, open claim ids, nudge seq). Rules run synchronously; Tier 3 and Tier 4 run in a detached process and post a follow-up receipt via the extension or `receipts check`.
+**Stop hook contract.** Exit 0 with no output when clean (or manual mode). In auto mode with open claims: print `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"<nudge text>"}}` and exit 0. The nudge is built from templates. State lives in `~/.custos-code/sessions/<id>.sqlite` (`passes`, open claim ids, nudge seq). Rules run synchronously; Tier 3 and Tier 4 run in a detached process and post a follow-up receipt via the extension or `custos-code check`.
 
 ### Post-hoc (transcript)
 File: `~/.claude/projects/<escaped-cwd>/<session_id>.jsonl`. Keep only records with `type ∈ {assistant, user}` and a `message.content` list.
@@ -87,8 +87,8 @@ Sample claim to test the extractor on, from the real rollout on this machine: "V
 
 ## 4. The universal recorder (class M), so the floor exists
 
-`receipts record` installs, per shell:
-- **bash:** `PROMPT_COMMAND` captures the previous command's exit status and `history 1`; a `DEBUG` trap captures the command text and start time. Written to `~/.receipts/machine/<host>-<date>.jsonl` with `cwd`, `tty`, `pid`, `ppid` (the ppid chain is how we attribute a command to an agent process when one is running).
+`custos-code record` installs, per shell:
+- **bash:** `PROMPT_COMMAND` captures the previous command's exit status and `history 1`; a `DEBUG` trap captures the command text and start time. Written to `~/.custos-code/machine/<host>-<date>.jsonl` with `cwd`, `tty`, `pid`, `ppid` (the ppid chain is how we attribute a command to an agent process when one is running).
 - **zsh:** `preexec`/`precmd` hooks, same fields.
 - **non-interactive shells:** a `PATH`-first `bash` and `sh` wrapper that logs argv and exit status and `exec`s the real shell.
 - **filesystem:** `fswatch` on the workspace, events debounced and joined to the nearest shell event by time.
@@ -107,26 +107,26 @@ This is also the Devin cloud recorder (Path B in `docs/DEVIN.md`), installed by 
 
 ## 6. Build order
 
-1. Claude Code post-hoc adapter and golden tests (this machine has 779 transcripts). Enables `receipts check --last`.
+1. Claude Code post-hoc adapter and golden tests (this machine has 779 transcripts). Enables `custos-code check --last`.
 2. Codex post-hoc adapter and golden tests (this machine has rollouts). Enables the same for Codex Desktop users with no install.
 3. Claude Code live hooks and the Stop loop. Enables the demo and auto mode.
 4. Class M recorder. Enables exit codes for Claude Code and the "any agent" claim.
 5. Devin Path C, then A and B when access arrives.
 6. Codex hooks or resume-based loop after `VERIFY`.
 
-## 6a. Status (what exists in `src/receipts/adapters/`)
+## 6a. Status (what exists in `src/custos_code/adapters/`)
 
 | Adapter | Class | State | Tests |
 |---|---|---|---|
 | `claude_code.py` | H / F | shipped | `tests/golden/claude_code/` |
 | `codex.py` | F | shipped: rollout JSONL, turn boundaries, shell pairing, exact exit code, pipe and truncation flags, patch paths, aborted turns, compaction and rollback | `tests/golden/codex/` |
-| `machine.py` | M | shipped: bash/zsh snippets (`receipts record --install`), the PATH-first `bash`/`sh` wrapper for agent-spawned shells (`receipts record --wrapper`, A7), the `_record-line` wire writer, the JSONL parser. **Not shipped:** the `fswatch` watcher and the `reflog` poller of §4 (the parser reads `fs`/`git` rows, nothing emits them yet), and the class-H exit-code join of §4 — borrowing a status from an appendable, unattributed log into a chained harness ledger needs a per-row provenance marker and a re-chain first | `tests/unit/test_machine_recorder.py`, `tests/unit/test_machine_wrapper.py`, `tests/unit/test_cli_record.py` |
+| `machine.py` | M | shipped: bash/zsh snippets (`custos-code record --install`), the PATH-first `bash`/`sh` wrapper for agent-spawned shells (`custos-code record --wrapper`, A7), the `_record-line` wire writer, the JSONL parser. **Not shipped:** the `fswatch` watcher and the `reflog` poller of §4 (the parser reads `fs`/`git` rows, nothing emits them yet), and the class-H exit-code join of §4 — borrowing a status from an appendable, unattributed log into a chained harness ledger needs a per-row provenance marker and a re-chain first | `tests/unit/test_machine_recorder.py`, `tests/unit/test_machine_wrapper.py`, `tests/unit/test_cli_record.py` |
 | `devin.py` | R | shipped (Path C): bundle parse, `fetch_bundle` (GET `/v1/sessions/{id}`), `nudge` (POST `/v1/sessions/{id}/message`). Paths A and B wait on access | `tests/golden/devin/` |
 | `copilot.py` | R | shipped: PR body report, optional tool log, commits and checks. Log export format still A3 | `tests/golden/copilot/` |
 | `otel.py` | trace | shipped: OTLP JSON and JSONL, GenAI spans, `execute_tool` call/result pairing, status and `process.exit_code` mapping. Uncaptured tool results are flagged, never assumed | `tests/golden/otel/` |
 
 Every adapter is `parse(path) -> (Session, list[LedgerEvent], report | None)` and is registered in
-`adapters/__init__.py`; `receipts check <file>` sniffs the format, `--agent` overrides it.
+`adapters/__init__.py`; `custos-code check <file>` sniffs the format, `--agent` overrides it.
 
 Class R and any span with no captured result write a `no_tool_log` / `stderr_dropped` marker, and
 `verdicts.run` turns the affected `unwitnessed` verdicts into `unrecorded`: a record that admits its
@@ -134,10 +134,10 @@ own gap must not read as silence.
 
 ## 6b. The receipt on the PR (product sketch B)
 
-`.github/workflows/receipt.yml` runs `receipts pr-comment` on every PR event and keeps exactly one
-comment, found by the marker `<!-- receipts-bot: pr-receipt -->`. Evidence, first match wins: a
-`receipts-session` artifact from a **successful run of this repo's own session workflow** on the
-head SHA (`vars.RECEIPTS_SESSION_WORKFLOW`, default `ci`), else a class-R bundle built from the PR,
+`.github/workflows/receipt.yml` runs `custos-code pr-comment` on every PR event and keeps exactly one
+comment, found by the marker `<!-- custos-code-bot: pr-receipt -->`. Evidence, first match wins: a
+`custos-code-session` artifact from a **successful run of this repo's own session workflow** on the
+head SHA (`vars.CUSTOS_CODE_SESSION_WORKFLOW`, default `ci`), else a class-R bundle built from the PR,
 its commits, its files and its check runs by `.github/workflows/pr_bundle.jq` (tested in
 `tests/unit/test_pr_bundle_jq.py`).
 
@@ -149,11 +149,11 @@ evidence as such instead of scoring it like a harness-written ledger.
 It checks out the base ref under `pull_request_target`, never runs PR code, and passes every
 untrusted value (paths, URLs, PR text) through `env:` rather than `${{ }}` inside a shell line.
 The deterministic tiers are the default: the judge runs only where a repo sets
-`vars.RECEIPTS_JUDGE` and a key exists. Invariant 9 is intact: this is the repo's own CI on its own
+`vars.CUSTOS_CODE_JUDGE` and a key exists. Invariant 9 is intact: this is the repo's own CI on its own
 PRs.
 
 ## 7. VERIFY
 - Claude Code: is a `PreToolUse`-rewritten command visible to the model?
 - Codex: lifecycle hook shape and config; `codex exec` flags for JSON output, last-message file, and resume.
 - Cursor: hook payload fields and SpecStory file format.
-- Class M: `DEBUG` trap behaviour inside the shells Claude Code and Codex spawn (they run `bash -c`/`zsh -lc`; the wrapper approach covers this if traps do not). **Trap question resolved by experiment (2026-09-19, A7):** confirmed empirically that `bash -c`/`sh -c` is neither interactive nor login, so the trap/preexec hooks never attach; the PATH-first wrapper is shipped and covers it (`receipts record --wrapper`). **Left `open` in docs/OPEN_QUESTIONS.md, not `decided`:** the wrapper has no answer yet for a killed/signalled child (needs `exec`, incompatible with the post-hoc `end` row as written), and `RECEIPTS_MACHINE_LOG` being agent-writable needs an invariant-1 ADR before this is a settled design, not just a shipped one.
+- Class M: `DEBUG` trap behaviour inside the shells Claude Code and Codex spawn (they run `bash -c`/`zsh -lc`; the wrapper approach covers this if traps do not). **Trap question resolved by experiment (2026-09-19, A7):** confirmed empirically that `bash -c`/`sh -c` is neither interactive nor login, so the trap/preexec hooks never attach; the PATH-first wrapper is shipped and covers it (`custos-code record --wrapper`). **Left `open` in docs/OPEN_QUESTIONS.md, not `decided`:** the wrapper has no answer yet for a killed/signalled child (needs `exec`, incompatible with the post-hoc `end` row as written), and `CUSTOS_CODE_MACHINE_LOG` being agent-writable needs an invariant-1 ADR before this is a settled design, not just a shipped one.

@@ -2,10 +2,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from receipts.adapters import claude_code
-from receipts.claims import extract_regex
-from receipts.models import ClaimType, Verdict
-from receipts.verdicts import run
+from custos_code.adapters import claude_code
+from custos_code.claims import extract_regex
+from custos_code.models import ClaimType, Verdict
+from custos_code.verdicts import run
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "golden", "claude_code", "session.jsonl")
 
@@ -53,7 +53,7 @@ def test_fixture_receipt_without_repo_state(tmp_path: Path) -> None:
 def test_unpiped_failing_run_is_contradicted(tmp_path: Path) -> None:
     from datetime import datetime
 
-    from receipts.models import Claim, EventFlags, EventKind, LedgerEvent
+    from custos_code.models import Claim, EventFlags, EventKind, LedgerEvent
 
     ts = datetime(2026, 9, 19)
     ledger = [
@@ -70,7 +70,7 @@ def test_unpiped_failing_run_is_contradicted(tmp_path: Path) -> None:
 def test_count_mismatch_is_qualified() -> None:
     from datetime import datetime
 
-    from receipts.models import Claim, EventKind, LedgerEvent
+    from custos_code.models import Claim, EventKind, LedgerEvent
 
     ts = datetime(2026, 9, 19)
     ledger = [
@@ -86,8 +86,8 @@ def test_count_mismatch_is_qualified() -> None:
 def test_no_judge_contradiction_and_confirmed_needs_evidence() -> None:
     import pytest
 
-    from receipts.models import VerdictRecord
-    from receipts.verdicts import _enforce
+    from custos_code.models import VerdictRecord
+    from custos_code.verdicts import _enforce
 
     with pytest.raises(AssertionError):
         _enforce(VerdictRecord(claim_id="c", verdict=Verdict.CONTRADICTED, tier=4, method="judge", confidence=1.0))

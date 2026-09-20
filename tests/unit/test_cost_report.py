@@ -1,5 +1,5 @@
 """eval/cost_report.py is a standalone script, not part of the installed package (it does its own
-sys.path insert to reach `receipts`), so it's loaded here by file path rather than imported
+sys.path insert to reach `custos-code`), so it's loaded here by file path rather than imported
 normally. Only the pure, network-free helpers are covered: locating sessions/gold files and
 Cohen's kappa. The three arms themselves need a live judge backend and are exercised manually
 (module docstring), not in CI.

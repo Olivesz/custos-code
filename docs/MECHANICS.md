@@ -9,7 +9,7 @@ The questions that decide whether this ships: which chat is which, what gets log
 - **Codex.** One rollout file per session at `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<session_id>.jsonl`. First line is `session_meta` with `payload.id`, `payload.cwd`, `originator` (`Codex Desktop`, CLI), `cli_version`. Codex has no hooks; the adapter tails the file.
 - **Copilot coding agent / Devin.** Session is identified by the PR (Copilot links session logs from each commit; Devin lists `pull_requests` per session). Key on PR number plus the session link.
 
-**Receipts key:** `source:session_id`. The ledger is one SQLite file per key. Subagent work is a child ledger (below) linked to the parent.
+**Custos Code key:** `source:session_id`. The ledger is one SQLite file per key. Subagent work is a child ledger (below) linked to the parent.
 
 ### Turns and "the report"
 A receipt is per **turn**, not per session: the unit is one assistant final message. What counts as final:
@@ -55,7 +55,7 @@ Codex output is truncated by `max_output_tokens` on the call (default 2000 in th
 ### The exit-code problem (Claude Code) and the three ways to solve it
 1. **Infer from `is_error`.** Free, coarse, already there. Good enough for Tier 1 ("did a runner get invoked") and for obvious failures. Not enough for "all passing".
 2. **Parse the runner's own summary** from stdout (`12 passed`, `1 failed`, `collected 0 items`, `FAIL src/x.test.ts`). Deterministic, per-runner parsers, and it is what settles most test claims. Pipes that cut the summary make the claim `unrecorded`.
-3. **Wrap the command in `PreToolUse`.** `updatedInput.command = "(<cmd>); __rc=$?; echo \"__RECEIPTS_RC=$__rc\"; exit $__rc"` for commands that match a known runner or build tool only. The exit code then appears in `tool_response` and the transcript. `VERIFY`: whether the rewritten command is what the model sees in its own context (if so, restrict wrapping to a hidden trailer and strip it from what we show). Do not wrap arbitrary commands; semantics of `&&` chains, backgrounding, and heredocs make general rewriting unsafe. Preferred order: 2, then 3 for runners, then Tier 3 re-run when both fail. The same trailer also carries `__RECEIPTS_BIN=$(command -v <argv0>)` (E5), so the wrapper-shadowing rule sees the binary the shell actually resolved, not the string the agent typed; `parsers.wrap_command_for_resolution`/`strip_and_parse_trailer` implement the wrap and the strip. `VERIFY(E5)`: whether that `command -v` reflects the agent's actual `PATH` if it mutated it mid-session.
+3. **Wrap the command in `PreToolUse`.** `updatedInput.command = "(<cmd>); __rc=$?; echo \"__CUSTOS_CODE_RC=$__rc\"; exit $__rc"` for commands that match a known runner or build tool only. The exit code then appears in `tool_response` and the transcript. `VERIFY`: whether the rewritten command is what the model sees in its own context (if so, restrict wrapping to a hidden trailer and strip it from what we show). Do not wrap arbitrary commands; semantics of `&&` chains, backgrounding, and heredocs make general rewriting unsafe. Preferred order: 2, then 3 for runners, then Tier 3 re-run when both fail. The same trailer also carries `__CUSTOS_CODE_BIN=$(command -v <argv0>)` (E5), so the wrapper-shadowing rule sees the binary the shell actually resolved, not the string the agent typed; `parsers.wrap_command_for_resolution`/`strip_and_parse_trailer` implement the wrap and the strip. `VERIFY(E5)`: whether that `command -v` reflects the agent's actual `PATH` if it mutated it mid-session.
 
 ### E9 experiment result (2026-09-19): the wrapper is visible to the model
 
@@ -65,15 +65,15 @@ Run live in a Claude Code session with only the `PreToolUse` hook installed. The
 ```
 pytest 9.1.1
 
-__RECEIPTS_BIN=.venv/bin/pytest
-__RECEIPTS_RC=0
+__CUSTOS_CODE_BIN=.venv/bin/pytest
+__CUSTOS_CODE_RC=0
 ```
 
 Three consequences:
 
 1. **Context pollution.** Every runner command would carry two junk lines into the agent's
    context for the rest of the session.
-2. **Forgery vector, and it is the serious one.** An agent that has seen `__RECEIPTS_RC=0` in its
+2. **Forgery vector, and it is the serious one.** An agent that has seen `__CUSTOS_CODE_RC=0` in its
    own transcript knows the marker exists and can print it from a later `echo`, manufacturing
    evidence for a test it never ran. A verification mechanism the audited party can read is a
    mechanism it can imitate.
@@ -82,11 +82,11 @@ Three consequences:
    against the event's `cwd` before deciding whether a runner lives inside the repo tree.
 
 **Decision:** keep the PreToolUse wrap, move the trailer off stdout. The wrapper writes
-`__RECEIPTS_BIN`/`__RECEIPTS_RC` to a per-call file whose path is a random name under the
-receipts directory, exported into the command's environment; `PostToolUse` reads and deletes it.
+`__CUSTOS_CODE_BIN`/`__CUSTOS_CODE_RC` to a per-call file whose path is a random name under the
+custos-code directory, exported into the command's environment; `PostToolUse` reads and deletes it.
 The model then sees unmodified output, and cannot forge a marker whose filename it never saw.
 Tracked as issue #22, closed: `hooks.on_pre_tool_use` generates the random path and correlates it
-to `on_post_tool_use` via a `tool_use_id`-keyed pending map (`~/.receipts/rc_pending/`), since
+to `on_post_tool_use` via a `tool_use_id`-keyed pending map (`~/.custos-code/rc_pending/`), since
 whether `PostToolUse`'s `tool_input` reflects the rewritten or original command is undocumented
 and so cannot be relied on to re-derive the path. See E5 in docs/OPEN_QUESTIONS.md.
 
@@ -139,9 +139,9 @@ Rules that apply to the whole table:
 - The blocking message reaches Claude via the Stop hook's `reason`; `systemMessage` on most events is shown **to Claude as context, not to the user**, so the user-facing overlay is the extension or the terminal renderer, not `systemMessage`.
 
 ## 6. The extension: which chat is which, on screen
-- The extension watches `~/.receipts/sessions/`. Each ledger carries `source`, `session_id`, `cwd`, `git_branch`, `started`, and the last report text. The VS Code window's workspace folder selects candidate sessions by `cwd`; the newest `Stop` among them is "the chat on the right". With two agent panels open in one workspace, the view shows a session switcher listing `session_id` short hashes, agent name, and the first user message.
+- The extension watches `~/.custos-code/sessions/`. Each ledger carries `source`, `session_id`, `cwd`, `git_branch`, `started`, and the last report text. The VS Code window's workspace folder selects candidate sessions by `cwd`; the newest `Stop` among them is "the chat on the right". With two agent panels open in one workspace, the view shows a session switcher listing `session_id` short hashes, agent name, and the first user message.
 - The extension mirrors `last_assistant_message` with marks; it cannot decorate the agent extension's webview. Editor decorations key on resolved paths from `edit`/`create` claims.
-- Terminal users get the same via the Stop hook `reason` (auto mode) or `receipts check --last` (manual).
+- Terminal users get the same via the Stop hook `reason` (auto mode) or `custos-code check --last` (manual).
 
 ## 7. Known gaps, in priority order
 1. Claude Code exit codes (§2). Decide between summary parsing, PreToolUse wrapping for runners, and re-run. Default: all three in that order.
@@ -149,4 +149,4 @@ Rules that apply to the whole table:
 3. Codex: `exec_command_end` exit field name and `patch_apply_end` fields. `VERIFY` on three real rollouts.
 4. Subagent laundering: the rule in §1 is designed, not tested.
 5. `verify` decomposition: the extractor must propose the tool call that would have produced the check; when it cannot, the claim is `unwitnessed` and auto mode asks for a recorded check or a withdrawal.
-6. E4's async delivery: `rerun.spawn_async` launches the Tier 3 worker as a detached `receipts _hook rerun-worker` subprocess (`start_new_session=True`) so the Stop hook can return without waiting on it. `VERIFY`: whether that child survives Claude Code tearing down the hook script's process group; unconfirmed, since nothing today invokes `_hook stop` end to end (blocked on claims/rules, see gap 2).
+6. E4's async delivery: `rerun.spawn_async` launches the Tier 3 worker as a detached `custos-code _hook rerun-worker` subprocess (`start_new_session=True`) so the Stop hook can return without waiting on it. `VERIFY`: whether that child survives Claude Code tearing down the hook script's process group; unconfirmed, since nothing today invokes `_hook stop` end to end (blocked on claims/rules, see gap 2).

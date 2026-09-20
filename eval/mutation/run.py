@@ -106,7 +106,7 @@ def main() -> int:
 
     killed, survived, invalid = [], [], []
     for module, desc, pat, rep in mutants:
-        path = ROOT / "src" / "receipts" / module
+        path = ROOT / "src" / "custos-code" / module
         original = path.read_text()
         mutated, n = re.subn(pat, rep, original, count=1)
         if n == 0:

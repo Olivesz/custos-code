@@ -5,7 +5,7 @@ Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The bu
 ## Ownership
 
 ### Oliver — product, core engine, pitch
-- `src/receipts/ledger.py`, `adapters/claude_code.py`, `claims.py`, `rules.py` (Tier 1–2), `feedback.py`, `cli.py`, `judge.py` interface.
+- `src/custos_code/ledger.py`, `adapters/claude_code.py`, `claims.py`, `rules.py` (Tier 1–2), `feedback.py`, `cli.py`, `judge.py` interface.
 - The Stop-hook correction loop and the live demo.
 - `docs/DESIGN.md`, the pitch, the per-sponsor framing, judge Q&A.
 - Final say on verdict semantics and invariants.
@@ -64,7 +64,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [~] Recruitment: ask script and consent form exist in `eval/study/`; outreach and sessions still pending. Oliver (interim).
 - [x] Study metrics pre-registered in `docs/EVIDENCE_PLAN.md`.
 - [~] Gold set: local half chosen with seed 20260919 (`eval/gold/sessions.txt`), regex claims exported to `eval/gold/claims_to_label.csv`, and all three label files exist; SWE-chat half, reconciliation, and κ still pending.
-- [x] Claude Code post-hoc adapter + golden test (#5); claim extractor (#10); Tier 1–2 rules and `receipts check` verdicts (#11); hooks and auto-mode loop (#12).
+- [x] Claude Code post-hoc adapter + golden test (#5); claim extractor (#10); Tier 1–2 rules and `custos-code check` verdicts (#11); hooks and auto-mode loop (#12).
 - [x] Codex post-hoc adapter + golden tests from local rollout. Anush.
 - [~] Parsers, windowing, Tier 3 re-run, async worker, and PATH resolution merged; remaining gaps are wiring Tier 3 escalation from rules and using trusted-runner verdict data in `rules.py`. Anush.
 - [~] pytest, jest, vitest, go test, and cargo parsers plus pipe/truncation flagger are covered by unit tests; Hypothesis/property tests and gradle/xcodebuild remain. Anush.
@@ -72,9 +72,9 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 - [x] Decide E9 (exit-code strategy) by testing whether a PreToolUse-wrapped command is visible to the model. Oliver.
 - [ ] Devin: booth or email for access; VERIFY list in docs/DEVIN.md. Oliver asks; work paused until then.
 - [~] Token Company comparison arm: cost command can compare `review`, `ladder`, and `judge-all`; Token Company key and compressor wiring into judge prompt assembly remain. Anush/Oliver.
-- [x] PR-comment product sketch B implemented as `receipts pr-comment` plus `.github/workflows/receipt.yml`; deployment/use on a real PR still needs rehearsal.
+- [x] PR-comment product sketch B implemented as `custos-code pr-comment` plus `.github/workflows/receipt.yml`; deployment/use on a real PR still needs rehearsal.
 - [x] Docker bench execution environment added and smoke-tested in CI; benchmark orchestration is still not implemented.
-- [x] CLI demo exists: `receipts demo --scenario piped-runner` and `--scenario honest`; live staged demo still needs rehearsal in Warp and one real unrigged session.
+- [x] CLI demo exists: `custos-code demo --scenario piped-runner` and `--scenario honest`; live staged demo still needs rehearsal in Warp and one real unrigged session.
 
 ### Sponsor credits to claim (before the event)
 | Credit | Why we need it | Owner |
@@ -89,7 +89,7 @@ If the split turns out wrong, swap. The point is that every area has exactly one
 No Anthropic credits are offered; the Anthropic backend stays comparison-only unless someone has a key.
 
 ### Next five engineering tasks (as of 20 Sep)
-1. Fix local install reliability: `uv run receipts ...` must work from a fresh checkout without needing `uv pip install -e . --reinstall` or `PYTHONPATH=src`.
+1. Fix local install reliability: `uv run custos-code ...` must work from a fresh checkout without needing `uv pip install -e . --reinstall` or `PYTHONPATH=src`.
 2. Wire Tier 3 re-runs into `rules.py` and the Stop flow so async re-run results can settle test/build claims.
 3. Make trusted-runner/path-shadowing data affect verdicts; a repo-local fake `pytest` must not confirm a test claim.
 4. Turn the first bench traps into real fixture repos with oracles, starting with piped-runner and broken-runner.
@@ -98,9 +98,9 @@ No Anthropic credits are offered; the Anthropic backend stays comparison-only un
 ## Remaining work
 
 ### Reliable v0 developer tool bar
-If the items below are finished, Receipts is no longer just a demo; it is a credible local developer tool. It will not yet be a polished company-grade product, but it should be reliable enough to install, run on real agent sessions, block false final reports, and prove its behavior with repeatable fixtures.
+If the items below are finished, Custos Code is no longer just a demo; it is a credible local developer tool. It will not yet be a polished company-grade product, but it should be reliable enough to install, run on real agent sessions, block false final reports, and prove its behavior with repeatable fixtures.
 
-- **Fresh install reliability:** people can clone the repo, run the documented setup, and use `uv run receipts ...` without repairing the environment by hand.
+- **Fresh install reliability:** people can clone the repo, run the documented setup, and use `uv run custos-code ...` without repairing the environment by hand.
 - **Live hook flow:** hooks run in a real Claude Code session, record what happened, block bad final reports, and let honest reports stop normally.
 - **Tier 3 re-runs:** test/build claims that cannot be settled from the transcript escalate to a sandboxed re-run and get a real result.
 - **Trusted runner enforcement:** fake evidence such as `./pytest`, wrapper scripts, swallowed exit codes, or echoed output cannot confirm a test claim.
@@ -110,15 +110,15 @@ If the items below are finished, Receipts is no longer just a demo; it is a cred
 - **CI/eval coverage:** tests and labelled evals catch regressions in verdict behavior before they ship.
 
 ### Product-critical
-- **Packaging/install:** A clean `uv sync --locked --all-extras` followed by `uv run receipts --help`, `uv run receipts demo --scenario piped-runner`, and `make check` must pass on a fresh machine. The current local environment needed a reinstall to repair the console script import path.
-- **Hooked live path:** `receipts watch --install` must install Claude Code hooks, capture Bash/Edit/Write events, run Stop checks, block contradicted/unrecorded claims, and let honest reports through.
+- **Packaging/install:** A clean `uv sync --locked --all-extras` followed by `uv run custos-code --help`, `uv run custos-code demo --scenario piped-runner`, and `make check` must pass on a fresh machine. The current local environment needed a reinstall to repair the console script import path.
+- **Hooked live path:** `custos-code watch --install` must install Claude Code hooks, capture Bash/Edit/Write events, run Stop checks, block contradicted/unrecorded claims, and let honest reports through.
 - **Tier 3 integration:** `rerun.spawn_async`/`poll` exists, but no rule currently triggers it. Test/build claims need a deterministic escalation path from Tier 2 uncertainty to Tier 3 result.
 - **Trusted runner enforcement:** PreToolUse records `resolved_bin`, but `rules.py` still needs to use `is_trusted_runner_path`; wrapper scripts and repo-local fake runners must produce `unrecorded`/`contradicted` rather than `confirmed`.
 - **Verdict correctness:** Confirmed edit/create claims must continue to require filesystem/git state, contradicted must require positive evidence, and judge output must never be able to manufacture `contradicted` without deterministic support.
 - **Real fixture repos:** Move bench traps from synthetic JSONL/demo fixtures into disposable git repos with README prompts, broken tests, oracles, and expected verdicts.
-- **Bench runner:** Implement `receipts bench run`/`summarize` or equivalent orchestration: scenario × agent × model × n, with saved ledgers, oracle results, verdicts, and Wilson intervals.
+- **Bench runner:** Implement `custos-code bench run`/`summarize` or equivalent orchestration: scenario × agent × model × n, with saved ledgers, oracle results, verdicts, and Wilson intervals.
 - **PR receipt path:** Exercise `.github/workflows/receipt.yml` against a real PR and make sure class-R bundles for Devin/Copilot degrade shell claims to `unrecorded`, not false confirmations.
-- **Cost command:** Verify `receipts cost --path review|ladder|judge-all` on real sessions; wire compression only if it can run locally and fall back safely.
+- **Cost command:** Verify `custos-code cost --path review|ladder|judge-all` on real sessions; wire compression only if it can run locally and fall back safely.
 - **CI gate:** Add the eval gate once reconciled labels exist; keep `ruff`, `mypy --strict`, tests, package build, CLI smoke, and bench-image smoke green.
 
 ### Needed soon, but not required for the core product to work
@@ -138,19 +138,19 @@ If the items below are finished, Receipts is no longer just a demo; it is a cred
 
 | Track | Owner | Done when |
 |---|---|---|
-| Install and packaging | Ananya | Fresh checkout can run `uv sync`, `uv run receipts --help`, `uv run receipts demo`, and `make check` without manual repair |
+| Install and packaging | Ananya | Fresh checkout can run `uv sync`, `uv run custos-code --help`, `uv run custos-code demo`, and `make check` without manual repair |
 | Claude Code live loop | Oliver | Hooks record real sessions, Stop blocks bad claims, and honest sessions pass |
 | Rules and re-runs | Anush | Test/build claims use runner parsers, trusted binary checks, exit codes, and Tier 3 re-runs correctly |
-| Bench fixtures | Anush | At least piped-runner and broken-runner are real repos with oracles and saved expected receipts |
+| Bench fixtures | Anush | At least piped-runner and broken-runner are real repos with oracles and saved expected custos-code |
 | PR receipt | Ananya | The GitHub Action posts/updates one receipt comment from trusted evidence on a real PR |
 | Eval gate | All | Human-labelled gold set is reconciled and CI reports product metrics against it |
 
 ## Engineering Definition of Done
 
-- `uv run receipts demo --scenario piped-runner` uses the configured backend and blocks the false test claim.
-- `uv run receipts demo --scenario honest` confirms the honest claims and does not block.
-- `uv run receipts check --last` works on at least one real Claude Code session and one real Codex rollout.
-- `receipts watch --install` creates working hooks, and the Stop hook returns the correct block/allow decision.
+- `uv run custos-code demo --scenario piped-runner` uses the configured backend and blocks the false test claim.
+- `uv run custos-code demo --scenario honest` confirms the honest claims and does not block.
+- `uv run custos-code check --last` works on at least one real Claude Code session and one real Codex rollout.
+- `custos-code watch --install` creates working hooks, and the Stop hook returns the correct block/allow decision.
 - `make check` passes from a clean environment.
 - Tier 2 test verdicts require known runner output, exit status, and trusted runner binary.
 - Tier 3 re-run results can settle uncertain test/build claims without hanging the Stop hook.

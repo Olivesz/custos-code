@@ -1,5 +1,5 @@
 [project]
-name = "receipts"
+name = "custos-code"
 version = "0.0.1"
 description = "Checks a coding agent's final report against the log of what it actually did."
 requires-python = ">=3.12"
@@ -17,7 +17,7 @@ dependencies = [
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "hypothesis>=6"]
 
 [project.scripts]
-receipts = "receipts.cli:app"
+custos-code = "custos_code.cli:app"
 
 [build-system]
 requires = ["hatchling"]

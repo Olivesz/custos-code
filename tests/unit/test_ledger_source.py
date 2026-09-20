@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 import pathlib
 
-from receipts.hooks import _ledger_for, _paths
-from receipts.models import EventFlags, EventKind, LedgerEvent
+from custos_code.hooks import _ledger_for, _paths
+from custos_code.models import EventFlags, EventKind, LedgerEvent
 
 
 def _write_live(sid: str, n: int) -> str:
@@ -31,7 +31,7 @@ def _write_live(sid: str, n: int) -> str:
 
 
 def test_live_file_wins_over_transcript(tmp_path: pathlib.Path, monkeypatch) -> None:
-    import receipts.hooks as h
+    import custos_code.hooks as h
     monkeypatch.setattr(h, "HOME", str(tmp_path))
     sid = "sess-live-wins"
     _write_live(sid, 3)
@@ -55,7 +55,7 @@ def test_live_file_wins_over_transcript(tmp_path: pathlib.Path, monkeypatch) -> 
 
 
 def test_transcript_is_used_only_when_there_is_no_live_file(tmp_path: pathlib.Path, monkeypatch) -> None:
-    import receipts.hooks as h
+    import custos_code.hooks as h
     monkeypatch.setattr(h, "HOME", str(tmp_path))
     sid = "sess-no-live"
     t = tmp_path / "transcript.jsonl"
@@ -68,8 +68,8 @@ def test_transcript_is_used_only_when_there_is_no_live_file(tmp_path: pathlib.Pa
 
 
 def test_citations_match_the_file_a_reader_would_open(tmp_path: pathlib.Path, monkeypatch) -> None:
-    """Every seq the receipt can cite must exist at that seq in ~/.receipts/live/<id>.jsonl."""
-    import receipts.hooks as h
+    """Every seq the receipt can cite must exist at that seq in ~/.custos-code/live/<id>.jsonl."""
+    import custos_code.hooks as h
     monkeypatch.setattr(h, "HOME", str(tmp_path))
     sid = "sess-citation"
     live = _write_live(sid, 4)

@@ -7,8 +7,8 @@ second case (AGENTS.md, verdict vocabulary).
 
 import os
 
-from receipts import adapters, claims, verdicts
-from receipts.models import Claim, ClaimType, Verdict
+from custos_code import adapters, claims, verdicts
+from custos_code.models import Claim, ClaimType, Verdict
 
 GOLDEN = os.path.join(os.path.dirname(os.path.dirname(__file__)), "golden")
 

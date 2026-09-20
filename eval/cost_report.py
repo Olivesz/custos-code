@@ -62,15 +62,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from rich.console import Console  # noqa: E402
 from rich.table import Table  # noqa: E402
 
-from receipts import claims as claims_mod  # noqa: E402
-from receipts import compress as compress_mod  # noqa: E402
-from receipts import cost as cost_mod  # noqa: E402
-from receipts import judge as judge_mod  # noqa: E402
-from receipts import rules as rules_mod  # noqa: E402
-from receipts import verdicts as verdicts_mod  # noqa: E402
-from receipts.adapters import claude_code  # noqa: E402
-from receipts.models import Claim, LedgerEvent  # noqa: E402
-from receipts.verdicts import _escalates  # noqa: E402
+from custos_code import claims as claims_mod  # noqa: E402
+from custos_code import compress as compress_mod  # noqa: E402
+from custos_code import cost as cost_mod  # noqa: E402
+from custos_code import judge as judge_mod  # noqa: E402
+from custos_code import rules as rules_mod  # noqa: E402
+from custos_code import verdicts as verdicts_mod  # noqa: E402
+from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.models import Claim, LedgerEvent  # noqa: E402
+from custos_code.verdicts import _escalates  # noqa: E402
 
 console = Console()
 

@@ -5,9 +5,9 @@ import os
 
 import pytest
 
-from receipts.adapters import devin
-from receipts.ledger import verify_chain
-from receipts.models import EventKind
+from custos_code.adapters import devin
+from custos_code.ledger import verify_chain
+from custos_code.models import EventKind
 
 BUNDLE = os.path.join(os.path.dirname(__file__), "bundle.json")
 

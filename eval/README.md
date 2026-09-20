@@ -1,6 +1,6 @@
 # Eval
 
-`receipts eval` runs the gold set through the regex baseline and the full ladder, and prints
+`custos-code eval` runs the gold set through the regex baseline and the full ladder, and prints
 per-class precision/recall/F1, Cohen's kappa (each labeller vs majority; system vs majority), and
 the cost per session. CI gate: contradicted precision >= 0.90 (mocked judge in PR CI; live nightly).
 

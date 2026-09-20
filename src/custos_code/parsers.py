@@ -239,8 +239,8 @@ def is_known_runner_token(token: str) -> bool:
     return Path(token).name in KNOWN_RUNNERS
 
 
-BIN_MARKER = "__RECEIPTS_BIN="
-RC_MARKER = "__RECEIPTS_RC="
+BIN_MARKER = "__CUSTOS_CODE_BIN="
+RC_MARKER = "__CUSTOS_CODE_RC="
 
 
 def wrap_command_for_resolution(command: str, rc_path: str | None = None) -> str | None:
@@ -252,9 +252,9 @@ def wrap_command_for_resolution(command: str, rc_path: str | None = None) -> str
     (MECHANICS §2.3: "do not wrap arbitrary commands"). Returns None when nothing should change.
 
     `rc_path`, when given, is a random per-call path (the caller's job -- typically under
-    `~/.receipts/rc/` -- to generate and later read/unlink; see `read_rc_file`). The trailer is
+    `~/.custos-code/rc/` -- to generate and later read/unlink; see `read_rc_file`). The trailer is
     written to that file instead of stdout: the E9 experiment confirmed the stdout form is
-    visible in the model's own tool output, so a model that has seen `__RECEIPTS_RC=0` once can
+    visible in the model's own tool output, so a model that has seen `__CUSTOS_CODE_RC=0` once can
     later `echo` the same marker and manufacture evidence for a test it never ran (issue #22). A
     file whose name the model never sees can't be forged that way. `rc_path` is embedded via a
     quoted shell assignment, not printed, so it never appears in the command's own stdout/stderr.
@@ -270,10 +270,10 @@ def wrap_command_for_resolution(command: str, rc_path: str | None = None) -> str
     if "<<" in command or "\n" in command or " & " in command or command.rstrip().endswith("&"):
         return None
     if rc_path is not None:
-        prefix = f"RECEIPTS_RC_FILE={shlex.quote(rc_path)}; export RECEIPTS_RC_FILE; "
+        prefix = f"CUSTOS_CODE_RC_FILE={shlex.quote(rc_path)}; export CUSTOS_CODE_RC_FILE; "
         trailer = (
             f'; __rc=$?; printf "%s\\n%s\\n" "$(command -v {shlex.quote(token)} 2>/dev/null)" "$__rc" '
-            '> "$RECEIPTS_RC_FILE"; exit $__rc'
+            '> "$CUSTOS_CODE_RC_FILE"; exit $__rc'
         )
         return f"{prefix}({command}){trailer}"
     trailer = (

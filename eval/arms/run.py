@@ -17,9 +17,9 @@ import sys
 import openai
 
 sys.path.insert(0, "src")
-from receipts import parsers  # noqa: E402
-from receipts.adapters import claude_code  # noqa: E402
-from receipts.models import EventKind  # noqa: E402
+from custos_code import parsers  # noqa: E402
+from custos_code.adapters import claude_code  # noqa: E402
+from custos_code.models import EventKind  # noqa: E402
 
 HERE = pathlib.Path(__file__).parent
 TRUTH = json.loads((HERE / "truth.json").read_text())

@@ -20,14 +20,14 @@ import pathlib
 
 import pytest
 
-import receipts.hooks as h
-from receipts.models import EventKind, LedgerEvent
+import custos_code.hooks as h
+from custos_code.models import EventKind, LedgerEvent
 
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(h, "HOME", str(tmp_path))
-    monkeypatch.delenv("RECEIPTS_ONLY_IN", raising=False)
+    monkeypatch.delenv("CUSTOS_CODE_ONLY_IN", raising=False)
 
 
 ORIGINAL = "pytest -q tests/checks.py"
@@ -62,7 +62,7 @@ def test_the_ledger_records_the_agents_command_not_ours() -> None:
     call, _ = _round_trip(ORIGINAL)
     cmd = (call.input or {}).get("command")
     assert cmd == ORIGINAL, f"receipt would quote a command the agent never ran: {cmd!r}"
-    assert "RECEIPTS_RC_FILE" not in str(cmd)
+    assert "CUSTOS_CODE_RC_FILE" not in str(cmd)
 
 
 def test_our_wrapper_does_not_flag_the_call_as_filtered() -> None:

@@ -1,11 +1,11 @@
-"""`receipts check <path>` should not need --agent: the file's own shape names the adapter."""
+"""`custos-code check <path>` should not need --agent: the file's own shape names the adapter."""
 
 import json
 import os
 
 import pytest
 
-from receipts import adapters
+from custos_code import adapters
 
 GOLDEN = os.path.join(os.path.dirname(os.path.dirname(__file__)), "golden")
 
@@ -29,7 +29,7 @@ def test_detect_machine_log(tmp_path) -> None:
     path.write_text(
         json.dumps(
             {
-                "recorder": "receipts-machine",
+                "recorder": "custos-code-machine",
                 "v": 1,
                 "event": "end",
                 "ts": 1.0,

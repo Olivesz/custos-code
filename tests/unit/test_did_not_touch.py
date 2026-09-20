@@ -11,9 +11,9 @@ from __future__ import annotations
 import pathlib
 import subprocess
 
-from receipts.models import Claim, ClaimType, Verdict
-from receipts.rules import check
-from receipts.verdicts import run
+from custos_code.models import Claim, ClaimType, Verdict
+from custos_code.rules import check
+from custos_code.verdicts import run
 
 
 def _claim(text: str, objs: list[str]) -> Claim:

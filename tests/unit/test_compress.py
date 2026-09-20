@@ -3,8 +3,8 @@ from datetime import datetime
 
 import pytest
 
-from receipts import compress
-from receipts.models import EventKind, LedgerEvent
+from custos_code import compress
+from custos_code.models import EventKind, LedgerEvent
 
 
 def _ledger() -> list[LedgerEvent]:
@@ -21,19 +21,19 @@ def _ledger() -> list[LedgerEvent]:
 
 
 def test_disabled_without_config_flag_even_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_TTC_API_KEY", "ttc-fake")
+    monkeypatch.setenv("CUSTOS_CODE_TTC_API_KEY", "ttc-fake")
     assert compress.enabled({"enabled": False}) is False
     assert compress.make_compressor({"enabled": False}) is None
 
 
 def test_disabled_without_key_even_when_config_enables_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("RECEIPTS_TTC_API_KEY", raising=False)
+    monkeypatch.delenv("CUSTOS_CODE_TTC_API_KEY", raising=False)
     assert compress.enabled({"enabled": True}) is False
     assert compress.make_compressor({"enabled": True}) is None
 
 
 def test_enabled_only_when_both_config_and_key_are_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECEIPTS_TTC_API_KEY", "ttc-fake")
+    monkeypatch.setenv("CUSTOS_CODE_TTC_API_KEY", "ttc-fake")
     assert compress.enabled({"enabled": True}) is True
     c = compress.make_compressor({"enabled": True, "model": "bear-2"})
     assert c is not None

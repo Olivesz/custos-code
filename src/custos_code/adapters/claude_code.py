@@ -193,7 +193,7 @@ def parse(path: str) -> tuple[Session, list[LedgerEvent], str | None]:
 
 
 def find_last_session(projects_dir: str | None = None) -> str:
-    """Most recently modified transcript under ~/.claude/projects (for `receipts check --last`)."""
+    """Most recently modified transcript under ~/.claude/projects (for `custos-code check --last`)."""
     root = projects_dir or os.path.expanduser("~/.claude/projects")
     files = glob.glob(os.path.join(root, "*", "*.jsonl"))
     if not files:
@@ -202,7 +202,7 @@ def find_last_session(projects_dir: str | None = None) -> str:
 
 
 def find_sessions(projects_dir: str | None = None, limit: int | None = None) -> list[str]:
-    """Local transcripts, newest first. Powers `receipts scan`.
+    """Local transcripts, newest first. Powers `custos-code scan`.
 
     The point of scanning real history rather than a fixture: a staged trap is only caught when the
     agent takes the bait, and a careful agent simply does not. Real sessions contain the failures

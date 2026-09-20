@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from receipts.ledger import chain, verify_chain
-from receipts.models import EventKind, LedgerEvent
+from custos_code.ledger import chain, verify_chain
+from custos_code.models import EventKind, LedgerEvent
 
 
 def test_chain_roundtrip() -> None:

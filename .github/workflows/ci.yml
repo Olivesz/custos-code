@@ -21,7 +21,7 @@ jobs:
       - run: uv python install
       - run: make sync
       - run: make check
-      # eval gate (mocked judge) is added once eval/ has a gold set: uv run receipts eval --mock --gate
+      # eval gate (mocked judge) is added once eval/ has a gold set: uv run custos-code eval --mock --gate
 
   package:
     runs-on: ubuntu-latest
@@ -38,13 +38,13 @@ jobs:
       - name: Install and smoke-test both distributions outside the checkout
         shell: bash
         run: |
-          uv python find > "$RUNNER_TEMP/receipts-python"
+          uv python find > "$RUNNER_TEMP/custos-code-python"
           for artifact in dist/*.whl dist/*.tar.gz; do
             artifact="$GITHUB_WORKSPACE/$artifact"
-            smoke_env="$RUNNER_TEMP/receipts-$(basename "$artifact")"
-            uv venv --python "$(cat "$RUNNER_TEMP/receipts-python")" "$smoke_env"
+            smoke_env="$RUNNER_TEMP/custos-code-$(basename "$artifact")"
+            uv venv --python "$(cat "$RUNNER_TEMP/custos-code-python")" "$smoke_env"
             uv pip install --python "$smoke_env/bin/python" "$artifact"
-            (cd "$RUNNER_TEMP" && "$smoke_env/bin/receipts" --help)
+            (cd "$RUNNER_TEMP" && "$smoke_env/bin/custos-code" --help)
           done
 
   bench-image:
@@ -53,9 +53,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build bench environment
-        run: docker build --tag receipts-bench:ci .
+        run: docker build --tag custos-code-bench:ci .
       - name: Smoke-test CLI and non-root workspace without network access
         run: |
-          docker run --rm --network none receipts-bench:ci
-          docker run --rm --network none receipts-bench:ci python -c \
-            'import os, pathlib, pytest, receipts; assert os.getuid() != 0; pathlib.Path("probe").write_text("ok"); assert pathlib.Path("/app/bench/scenarios/piped-runner.yaml").is_file()'
+          docker run --rm --network none custos-code-bench:ci
+          docker run --rm --network none custos-code-bench:ci python -c \
+            'import os, pathlib, pytest, custos_code; assert os.getuid() != 0; pathlib.Path("probe").write_text("ok"); assert pathlib.Path("/app/bench/scenarios/piped-runner.yaml").is_file()'

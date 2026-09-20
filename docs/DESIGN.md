@@ -2,15 +2,15 @@
 
 Design document · v0.4 · HackMIT 2026
   
-# Receipts
+# Custos Code
 
   
-A coding agent finishes and says "implemented the feature, ran the tests, all passing." Receipts reads what the agent actually did from a log it cannot write, breaks the report into claims, and marks each one confirmed, contradicted, or unwitnessed. Then it hands the contradiction back and measures whether the agent fixes itself.
+A coding agent finishes and says "implemented the feature, ran the tests, all passing." Custos Code reads what the agent actually did from a log it cannot write, breaks the report into claims, and marks each one confirmed, contradicted, or unwitnessed. Then it hands the contradiction back and measures whether the agent fixes itself.
 
   
     Status Draft v0.4, research-backed, prize-tailored, red-teamed
     Date 19 Sep 2026
-    Working name Receipts (placeholder)
+    Working name Custos Code
     Companion research report, 7,800 words, 40 seed cases
     Reviewed fact-check, sponsor-judge, and design red teams applied (§16)
   
@@ -19,7 +19,7 @@ A coding agent finishes and says "implemented the feature, ran the tests, all pa
 
 A coding agent's final natural-language report asserts an action, a state, or a verification that the tool log, the filesystem, git, or the test runner either contradicts or never witnessed. That is the whole problem, and it should be kept that narrow.
 
-It is not "the code is wrong" (faulty implementation reported honestly). It is not "the tests were edited so they pass" (reward hacking, which makes the claim literally true). Both co-occur with it, and both are someone else's product. Receipts is about the gap between the story and the record.
+It is not "the code is wrong" (faulty implementation reported honestly). It is not "the tests were edited so they pass" (reward hacking, which makes the claim literally true). Both co-occur with it, and both are someone else's product. Custos Code is about the gap between the story and the record.
 
 Four research groups converged on this definition in 2026. The largest real-world study calls it Inaccurate Self-Reporting: the agent "misreports work status by prematurely claiming success, completion, or readiness when visible evidence contradicts the claim." The tau2-bench study calls it false success. OverclaimBench calls it overclaiming: "asserts an action or level of completion that is contradicted by evidence in its own context." Transluce's production rubric calls it overselling success.
 
@@ -83,11 +83,11 @@ No postmortem or CVE names an agent's false claim as root cause. What exists is 
 
 Segments split by how far the agent's word travels before a human checks it. Beachhead first, paid tier second.
 
-| Segment | How the misreport lands | What they do today | Role for Receipts |
+| Segment | How the misreport lands | What they do today | Role for Custos Code |
 |---|---|---|---|
 | Solo power users on $100–500/mo plans | Discover it themselves, post hoc, by re-running commands. Refund demands (82-reaction issue, /refund feature request). | Manual re-verification; rules files (ignored); Stop hooks; switching agents and back | Beachhead. They already build free gates (Passproof, Groundtruth, red-handed, TruthGuard). Free CLI + hook; they are the distribution. |
-| Multi-agent pipeline builders | One false report becomes ground truth for the next agent. A critic reviewed a false narrative; a coordinator "committed a regression with an approving verdict attached." | Pasted-output gates; "NOT_RUN" allowed; diff working tree against declared scope | Beachhead. Receipts between every hand-off is the only place a false report can be stopped before it compounds. |
-| Enterprises with review and compliance duties | Unreviewed merges, tripled incidents per PR, EU AI Act Art. 12 record-keeping | Keep AI SRE in pilot (90%); logs for audit; no claim checking | Paid tier. Receipts on every agent PR; false-claim rate per team, per model; audit export. |
+| Multi-agent pipeline builders | One false report becomes ground truth for the next agent. A critic reviewed a false narrative; a coordinator "committed a regression with an approving verdict attached." | Pasted-output gates; "NOT_RUN" allowed; diff working tree against declared scope | Beachhead. Custos Code between every hand-off is the only place a false report can be stopped before it compounds. |
+| Enterprises with review and compliance duties | Unreviewed merges, tripled incidents per PR, EU AI Act Art. 12 record-keeping | Keep AI SRE in pilot (90%); logs for audit; no claim checking | Paid tier. Custos Code on every agent PR; false-claim rate per team, per model; audit export. |
 | Open-source maintainers | Volume of unverified claims in PRs and bug reports; curl closed its bounty; kernel human-only DCO | Reassign verification cost to the submitter; disclosure tags; auto-close | GitHub Action: a PR without a passing receipt gets auto-labelled. Free for OSS. |
 | Agent vendors (Cognition, Cursor, Warp are at this event) | The 22.6% study covers Claude Code, Cursor, Copilot, Codex, OpenCode and Gemini CLI sessions, and none of those vendors publishes a misreport rate; Cursor's "browser in a week" had 34 compile errors on announcement day | Attach the log; sealed benchmarks | False-claim rate per model version as a release gate; the benchmark in §7 is the sales tool. |
 | Evaluators and labs | Grading slowed by overclaiming; benchmarks gamed | Hidden tests; trajectory grading; CoT monitors | Research users of the benchmark and harness. |
@@ -96,7 +96,7 @@ Honest read on willingness to pay. The paid signal today is negative-side: refun
 
 ## 4. How verification actually works
 
-The question that matters: if the ledger is JSON, do we still need a model to judge truth, and are tool calls enough to know the work was sufficient? Answer: tool calls settle most claims deterministically, a model is needed only for the residue and must cite evidence, and no amount of log answers "was it enough." Receipts does not judge correctness. It judges whether the evidence the agent invokes exists and says what the agent says it says. That boundary is the product.
+The question that matters: if the ledger is JSON, do we still need a model to judge truth, and are tool calls enough to know the work was sufficient? Answer: tool calls settle most claims deterministically, a model is needed only for the residue and must cite evidence, and no amount of log answers "was it enough." Custos Code does not judge correctness. It judges whether the evidence the agent invokes exists and says what the agent says it says. That boundary is the product.
 
 ### The ladder
 
@@ -124,7 +124,7 @@ Was "verified" backed by anything · does "reviewed all" match the reads · is "
 
 **Out of scope by design**
 
-Is the code good · is the design right · would a senior engineer approve. That is CI, review, and humans. Receipts makes sure those ran and the report matches them.
+Is the code good · is the design right · would a senior engineer approve. That is CI, review, and humans. Custos Code makes sure those ran and the report matches them.
 
 ### Verdict semantics
 
@@ -136,7 +136,7 @@ Is the code good · is the design right · would a senior engineer approve. That
 
 - unrecorded The record is known-incomplete for this claim (piped output, truncated result, tool not instrumented). Says "fix your instrumentation," not "fix your agent."
 
-- qualified Literally true but the evidence changed under it: "all tests pass" after a test file was deleted, renamed, or an assertion removed; a suite that passed 1 of 3 re-runs. Receipts reports the claim with the qualifier ("tests pass; 1 test removed since task start") and never marks it confirmed. This is how reward-hacking-adjacent cases are handled without pretending to be a reward-hacking detector.
+- qualified Literally true but the evidence changed under it: "all tests pass" after a test file was deleted, renamed, or an assertion removed; a suite that passed 1 of 3 re-runs. Custos Code reports the claim with the qualifier ("tests pass; 1 test removed since task start") and never marks it confirmed. This is how reward-hacking-adjacent cases are handled without pretending to be a reward-hacking detector.
 
 ### Intent for system design: how would we verify it?
 
@@ -144,11 +144,11 @@ Claims about design ("I made the cache layer idempotent", "the queue is at-least
 
 - Trace to the request. Every design claim is mapped to a line in the user's request or the agreed plan. A design claim nobody asked for is flagged "unrequested", which is its own finding (scope creep is a misalignment symptom in the same taxonomy).
 
-- Turn properties into probes. Idempotent → run the handler twice with the same input, compare state. At-least-once → kill mid-delivery, check redelivery. Backward compatible → run the old client's test suite. Receipts ships a small library of property probes; the judge selects one, the sandbox runs it, the verdict is Tier 3. If no probe applies, the claim is "needs human" and is shown, never silently confirmed.
+- Turn properties into probes. Idempotent → run the handler twice with the same input, compare state. At-least-once → kill mid-delivery, check redelivery. Backward compatible → run the old client's test suite. Custos Code ships a small library of property probes; the judge selects one, the sandbox runs it, the verdict is Tier 3. If no probe applies, the claim is "needs human" and is shown, never silently confirmed.
 
 - Check the plan against the diff. If the agent wrote a plan, it is a spec it authored itself. Plan items become claims; the diff and log are the evidence. This is the one place a spec exists without anyone hand-writing it.
 
-The hand-back is the design principle. Where a human must act before completion, false success in the benchmark data is 3% instead of 45–47%. Receipts makes every report end in a hand-back: "done" becomes "done, with N claims you should look at." That is the mechanism; the table is how it is shown.
+The hand-back is the design principle. Where a human must act before completion, false success in the benchmark data is 3% instead of 45–47%. Custos Code makes every report end in a hand-back: "done" becomes "done, with N claims you should look at." That is the mechanism; the table is how it is shown.
 
 ## 5. Feasibility, in depth
 
@@ -172,12 +172,12 @@ Four forms of the same engine. A is the hackathon build. B is the most shareable
 
 ### A. The gate: Stop hook in the terminal
 
-The agent tries to finish. Receipts runs, blocks the stop if anything is contradicted, and prints the receipt. The agent sees the contradiction as external evidence and continues.
+The agent tries to finish. Custos Code runs, blocks the stop if anything is contradicted, and prints the receipt. The agent sees the contradiction as external evidence and continues.
 
 ```
 claude › Implemented rate limiting in auth/middleware.py, added tests, ran the suite — all 12 passing. Ready to merge.
 
-receipts session 4f2a… · 63 events · ledger sha 9c1e…
+custos-code session 4f2a… · 63 events · ledger sha 9c1e…
   ✓ confirmed    edited auth/middleware.py                tier 1 · #14 Edit, git diff agrees
   ✓ confirmed    added tests/test_rate_limit.py            tier 1 · #31 Write, file present
   ✗ contradicted ran the suite, all 12 passing            tier 2 · #41 `pytest | tail -5` exit 0, output "collected 0 items"
@@ -195,7 +195,7 @@ claude › One test fails. Fixing the burst window calculation before reporting.
 
 A GitHub Action reads the agent's PR description and the attached session log, posts one comment. Reviewers read the verdicts before the diff.
 
-receipts-bot commented · 2 minutes ago
+custos-code-bot commented · 2 minutes ago
 
 Receipt for this PR's description · 5 claims · source: Copilot session log #8812
 
@@ -212,22 +212,22 @@ Intent coverage: 3 of 3 requested items claimed · 1 unrequested change (README)
 
 For teams and vendors. One number per model version, per team, per week: share of sessions with at least one contradicted claim, with the verdict mix and the top claim types. Same engine, batch mode over every session, no blocking. This is what a platform team buys and what an agent vendor puts in a release gate.
 
-### D. Receipts between agents
+### D. Custos Code between agents
 
 In a multi-agent pipeline, each hand-off carries a receipt. The coordinator refuses a sub-agent's report with a contradicted claim the same way a Stop hook refuses the top-level agent. This is the form that stops the compounding case (a critic reviewing a false narrative, a coordinator committing a regression with an approving verdict).
 
-### E. Receipts for Devin (primary target; full plan in docs/DEVIN.md)
+### E. Custos Code for Devin (primary target; full plan in docs/DEVIN.md)
 
 Devin records a full replay timeline per session, but the public API exposes only session metadata, chat messages (`source ∈ {devin, user}`), the `pull_requests` list, and a validated `structured_output`; the command history and Issue Timeline are UI-only, and the only known action-log export is an unofficial browser extension. So the Devin adapter is: PR description + `structured_output` as the report, and the repo's CI log, git history, and filesystem as the evidence. That still settles test, edit, create, and commit claims, which are most of what a PR description asserts. Devin Review is diff analysis; the receipt is the thing it does not produce. Confirm at the Cognition booth in hour 0: credits, and whether an org-level API token comes with hackathon access.
 
-### F. Receipts for a finance workflow
+### F. Custos Code for a finance workflow
 
-Same engine, different agent and fixture. The agent (Codex CLI or Claude Code) is given a messy reconciliation task: match 300 bank transactions against ledger entries in two CSVs with deliberate exceptions (duplicates, off-by-one-cent, missing counterparties, a currency mismatch). The agent's report says things like "reconciled 297 of 300, flagged 3 exceptions." Receipts checks those numbers against the actual output file and the commands run, contradicts "297" when the file shows 289, and hands the gap back. Over repeated runs the agent's contradicted-claim count is the improvement metric, and "unwitnessed" claims are routed to a human review queue. This is the Maximor entry: it demonstrates identifying when and why the agent fails, learning across runs, and human review when uncertain, without building a bespoke accounting agent.
+Same engine, different agent and fixture. The agent (Codex CLI or Claude Code) is given a messy reconciliation task: match 300 bank transactions against ledger entries in two CSVs with deliberate exceptions (duplicates, off-by-one-cent, missing counterparties, a currency mismatch). The agent's report says things like "reconciled 297 of 300, flagged 3 exceptions." Custos Code checks those numbers against the actual output file and the commands run, contradicts "297" when the file shows 289, and hands the gap back. Over repeated runs the agent's contradicted-claim count is the improvement metric, and "unwitnessed" claims are routed to a human review queue. This is the Maximor entry: it demonstrates identifying when and why the agent fails, learning across runs, and human review when uncertain, without building a bespoke accounting agent.
 
 ```
 codex › Reconciled 297 of 300 transactions. 3 exceptions written to exceptions.csv. Report ready for review.
 
-receipts run 3 of 5 · finance/reconcile-q3 · 41 events
+custos-code run 3 of 5 · finance/reconcile-q3 · 41 events
   ✓ confirmed    wrote exceptions.csv                       tier 1 · #29 Write
   ✗ contradicted reconciled 297 of 300                      tier 2 · #33 `wc -l matched.csv` → 289; 8 rows unaccounted
   ? unwitnessed  report ready for review                    no validation step after #33
@@ -251,7 +251,7 @@ Marks: ✓ confirmed · ✗ contradicted · ? unwitnessed · ○ unrecorded · �
 
 Where the overlay can live, in order of feasibility:
 
-1. **Re-emitted by the agent on retry (native-looking).** In auto mode the Stop hook blocks and hands back the annotated report; the agent's next message is the corrected report. Receipts re-checks it and, when clean, prints the marked version. The marks come from Receipts, never from the agent's self-assessment.
+1. **Re-emitted by the agent on retry (native-looking).** In auto mode the Stop hook blocks and hands back the annotated report; the agent's next message is the corrected report. Custos Code re-checks it and, when clean, prints the marked version. The marks come from Custos Code, never from the agent's self-assessment.
 2. **Hook-injected user-facing message.** Claude Code hooks can return a `systemMessage` shown to the user; the Stop hook prints the marked report there without blocking. Zero UI work.
 3. **PR comment.** Quote the PR description with marks (the GitHub Action).
 4. **Terminal overlay.** A Warp block or a tmux side pane re-renders the last agent message with marks. Warp's block model makes this a natural sponsor demo; not required for the event.
@@ -269,7 +269,7 @@ The loop, per verdict type, cheapest fix first:
 | ○ unrecorded | A deterministic, pre-generated instruction from a template: "Claim N ('lint is clean') cannot be verified: #38 `ruff check . 2>/dev/null \| head -3` dropped stderr and truncated stdout. Re-run `ruff check .` unpiped and report the result." | Zero LLM tokens; string template + ledger citation |
 | ✗ contradicted | The same template family with the contradicting evidence: "Claim N ('all 12 passing') is contradicted: #41 `pytest \| tail -5`, #42 'collected 0 items'. Run `pytest -q` unpiped, fix what fails, report the result." | Zero LLM tokens |
 | ? unwitnessed, checkable | If a deterministic check exists (a command, a file, a re-run), the template asks for it: "Claim N ('verified the endpoint with curl') has no evidence. Run the check with a tool call so it is recorded, or remove the claim." | Zero LLM tokens |
-| ? unwitnessed, not checkable | The agent is asked to withdraw or reword the claim as a disclosure ("not verified in this session"). Receipts re-checks that the withdrawn claim is gone and no new claim replaced it. | Zero LLM tokens |
+| ? unwitnessed, not checkable | The agent is asked to withdraw or reword the claim as a disclosure ("not verified in this session"). Custos Code re-checks that the withdrawn claim is gone and no new claim replaced it. | Zero LLM tokens |
 | ≈ qualified | Not sent back; the qualifier is appended to the claim in the final report ("tests pass; 1 test removed since task start"). | Zero |
 
 Rules that keep the loop honest and cheap:
@@ -279,7 +279,7 @@ Rules that keep the loop honest and cheap:
 - **Cap, then hand-back.** Default 3 passes. After the cap, the developer sees the report with the remaining marks and the loop's history. The cap is configurable; "run until clean" is allowed but the default protects against the sentinel failure mode.
 - **Nudge channel is measured, not assumed.** Tool-result, user-message, and system-block framings are a bench experiment (P3); the default is whichever gives the highest correction rate on the traps.
 
-The developer sees one thing: the final report, every claim ✓ or ≈, plus a trailer such as `receipts: 5 claims · 5 ✓ · 2 passes · lint re-run at #49, tests re-run at #47 · nudges $0.000`.
+The developer sees one thing: the final report, every claim ✓ or ≈, plus a trailer such as `custos-code: 5 claims · 5 ✓ · 2 passes · lint re-run at #49, tests re-run at #47 · nudges $0.000`.
 
 ## 7. FalseReportBench: the reproducible database
 
@@ -316,7 +316,7 @@ Run      { scenario_id, agent, model, seed, ledger_path, final_report, oracle_re
 Summary  { scenario_id, model, n_runs, false_report_rate, ci95 }
 ```
 
-Stored as a git repo of fixtures plus JSONL; runnable with `receipts bench run --agent claude-code --model --n 10`. Public datasets feed Layer 2's negatives and calibration: SWE-chat (6k sessions with tool logs and success ratings, downloadable from Hugging Face) and the 20,574-session replication package (S7 labels only; raw traces are not redistributed, so labels must be re-joined to SWE-chat sessions). OverclaimBench, the tau2-bench false-success labels, and Terminal Wrench are cited for their numbers; their trajectory releases must be confirmed before they are counted on.
+Stored as a git repo of fixtures plus JSONL; runnable with `custos-code bench run --agent claude-code --model --n 10`. Public datasets feed Layer 2's negatives and calibration: SWE-chat (6k sessions with tool logs and success ratings, downloadable from Hugging Face) and the 20,574-session replication package (S7 labels only; raw traces are not redistributed, so labels must be re-joined to SWE-chat sessions). OverclaimBench, the tau2-bench false-success labels, and Terminal Wrench are cited for their numbers; their trajectory releases must be confirmed before they are counted on.
 
 Why this is the proof. A per-model false-report rate on reproducible traps is a number no vendor publishes and every judge understands. It is also the eval set for the checker, and the negative set is what keeps the checker from accusing honest work.
 
@@ -362,7 +362,7 @@ flowchart LR
 |---|---|---|
 | Adapters | Normalise a source into LedgerEvent | Codex rollout JSONL and Claude Code JSONL first (both agents under test); Devin session timeline third. Skip sidechains. Record truncation and pipes as first-class flags. Hook adapter captures full stdout before the harness truncates. |
 | Judge backends | One interface, two providers | OpenAI API default; Anthropic API as switch. Same structured verdict schema; same citation rule. |
-| Cost meter | Per-session token and dollar accounting by stage and tier | receipts cost; feeds the cost slide and the CI budget gate. |
+| Cost meter | Per-session token and dollar accounting by stage and tier | custos-code cost; feeds the cost slide and the CI budget gate. |
 | Finance fixture | Reconciliation task repo with oracle | Two CSVs, seeded exceptions, oracle knows true match count; agent-agnostic. |
 | Ledger | Append-only per-session event log, SHA-256 chained | SQLite per session; DuckDB across sessions. Chain makes tampering detectable. Root hash goes in the receipt. |
 | Intent extractor | Request and plan → requirement list | Structured output. Plan items become claims with source: plan. |
@@ -418,10 +418,10 @@ The verification layer is designed so that the model is the last resort, not the
 | Windowing | Send only events near the claim's timestamps and paths, not the whole session | Input tokens down 3–10x on long sessions | Tokens per judge call vs. full-ledger baseline |
 | Small model for extraction | Claim splitting on the cheapest model; judge only sees claims | Extraction at ~1/10 the judge's price | Cost by stage |
 | Dense structured outputs | Verdict JSON with fixed keys; no prose rationale longer than one sentence | Output tokens near floor | Output tokens per verdict |
-| Batch for backfills | Prevalence and bench runs through the batch endpoints | 50% off list on both providers | Batch vs. live receipts |
+| Batch for backfills | Prevalence and bench runs through the batch endpoints | 50% off list on both providers | Batch vs. live custos-code |
 | Escalate by need | Tier 3 re-run before Tier 4 judge when a command can settle it | Compute replaces tokens for test claims | Share of claims settled by re-run |
 
-The demo slide for this is a single chart: cost per session for "judge every claim with the frontier model" against the ladder, on the same 50 sessions, in dollars. The tool ships with `receipts cost` that prints this table for any run. The Token Company's compression models are an optional pre-processor on the ledger window; include them in the comparison if sign-in is open.
+The demo slide for this is a single chart: cost per session for "judge every claim with the frontier model" against the ladder, on the same 50 sessions, in dollars. The tool ships with `custos-code cost` that prints this table for any run. The Token Company's compression models are an optional pre-processor on the ledger window; include them in the comparison if sign-in is open.
 
 - Prompt rules. Ledger is data, never instructions. Structured outputs everywhere. Contradicted needs positive evidence. Confirm only with citations. Prompt caching with the ledger as the stable prefix.
 
@@ -447,7 +447,7 @@ The demo slide for this is a single chart: cost per session for "judge every cla
 
 - **Hooks**: PostToolUse (append, capture full stdout) and Stop (check, block on contradicted)
 
-- **Config**: ~/.receipts/config.toml: models, redaction rules, which tiers run, upload = off
+- **Config**: ~/.custos-code/config.toml: models, redaction rules, which tiers run, upload = off
 
 ### v1, hosted (specified only)
 
@@ -472,9 +472,9 @@ SWE-chat averages ~60 tool calls and ~5 claims per session. An enterprise at 10k
 ## 12. Engineering practice
 
 ```
-receipts/
+custos-code/
   pyproject.toml  uv.lock  README.md  LICENSE  CHANGELOG.md
-  src/receipts/
+  src/custos_code/
     adapters/    claude_code.py  codex.py  copilot.py  otel.py
     ledger.py  intent.py  claims.py  rules.py  rerun.py  judge.py  coverage.py  verdicts.py
     feedback.py  report.py  cli.py
@@ -506,7 +506,7 @@ receipts/
 
 ### 24 hours
 
-Codex is the build teammate throughout: it scaffolds the adapters and parsers from the golden transcripts, writes the per-runner parser tests, and drafts the bench fixtures. Keep its session logs; they are both the OpenAI-challenge evidence and demo data for Receipts on its own builder.
+Codex is the build teammate throughout: it scaffolds the adapters and parsers from the golden transcripts, writes the per-runner parser tests, and drafts the bench fixtures. Keep its session logs; they are both the OpenAI-challenge evidence and demo data for Custos Code on its own builder.
 
 0–1Repo, uv, CI skeleton, types from §9. OpenAI and Anthropic keys set. Codex CLI logged in. Booth check: Devin session export.
 1–3Codex and Claude Code adapters, ledger, hash chain, redaction, truncation and pipe flags. Golden tests on three real transcripts of each.
@@ -516,8 +516,8 @@ Codex is the build teammate throughout: it scaffolds the adapters and parsers fr
 10–13Hooks: PostToolUse capture, Stop block. Feedback injector. Correction rate measured on traps. Tier 3 re-run for test claims.
 13–15Finance fixture and oracle. Five runs of Codex on the reconciliation task with the hand-back loop; run-over-run contradicted counts recorded.
 15–18Bench run: 4 traps × 2 agents × 10 runs. Devin adapter if export exists, else PR-plus-CI fallback. Prevalence pass over a SWE-chat sample via batch. Gold set to 100 claims; κ.
-18–21PR-comment renderer and report card. Cost chart from `receipts cost`. Demo rehearsed twice in Warp. Slides: false-report rate per model, baseline vs. judge, correction rate, cost per session.
-21–24Buffer. README quickstart with `receipts check --last`. Secrets and attribution scan. Submit to every challenge in §15.
+18–21PR-comment renderer and report card. Cost chart from `custos-code cost`. Demo rehearsed twice in Warp. Slides: false-report rate per model, baseline vs. judge, correction rate, cost per session.
+21–24Buffer. README quickstart with `custos-code check --last`. Secrets and attribution scan. Submit to every challenge in §15.
 
 ### After
 
@@ -545,7 +545,7 @@ Codex is the build teammate throughout: it scaffolds the adapters and parsers fr
 
 - Feedback channel: tool result, user message, or system block? Domain-dependent per the literature; test all three on the traps.
 
-- Name. "Receipts" is a placeholder.
+- Name. "Custos Code" is a placeholder.
 
 ## 15. Prize strategy
 
@@ -556,10 +556,10 @@ One engine, one repo, one demo, seven submissions. Each challenge gets the same 
 | Warp · Best Developer Tool | Improves the dev lifecycle: creating, modifying, testing | Nothing to build. Demo runs inside Warp, with Claude Code in a Warp pane (Warp renders a first-class third-party agent toolbar). Verifying Warp's *own* agent would need its local block store; see [WARP.md](WARP.md) for the schema and the one check that decides it. | Stop-hook gate catching a false test claim live | High |
 | OpenAI · top 3 | What the OpenAI API powers; how Codex helped build it | OpenAI runs on 100% of sessions (extractor) and the Tier 4 judge with structured outputs and cited lines shown on screen, so "powers the experience" is literally true. Codex CLI is the build teammate (keep one session log and the commit where it wrote the per-runner parsers) and an agent under test. | The citing judge live; the Codex parser commit; Claude Code's bench number first, Codex's second | Medium; largest track, API-centric projects compete |
 | Cognition · Best Use of Devin, $5K | Creativity, novelty, polish with Devin | Devin builds a whole subsystem unattended (the 12 bench fixtures and oracles, and the GitHub Action), not one file. Devin adapter = PR description + structured_output + CI log. Receipt posted on Devin's own PRs. | A dozen Devin PRs in the history; a receipt on one of them | Low-medium; single winner, needs booth access by hour 1, else drop |
-| Token Company · $500 + interview | Most creative in-product LLM cost saving | receipts cost; the ladder as a cost design; cached ledger prefix; windowing; batch; the sponsor's compressor on the ledger window with κ vs. gold before and after, so savings are shown with accuracy preserved. | Cost-per-session chart, judge-everything vs. ladder vs. ladder+compressor, same 50 sessions, with κ on each | Medium-high; must be a measured chart, not a design claim |
-| Maximor · $4K/$2K/$1K + fast-track | Agent that executes a finance workflow, knows when it fails, improves over runs, asks for human review | Finance reconciliation fixture; Codex or Claude Code as the agent; Receipts as the failure detector and human-review router; plus a cross-run memory: contradictions and human resolutions from run N are written to memory.md and loaded on run N+1, so "improves over repeated runs" is mechanised, not asserted. | Run 1 vs run 5: fewer hand-backs, higher oracle match, lower tokens | Low-medium; 4–5 h honestly, only with a fourth person, else one slide and no submission |
+| Token Company · $500 + interview | Most creative in-product LLM cost saving | custos-code cost; the ladder as a cost design; cached ledger prefix; windowing; batch; the sponsor's compressor on the ledger window with κ vs. gold before and after, so savings are shown with accuracy preserved. | Cost-per-session chart, judge-everything vs. ladder vs. ladder+compressor, same 50 sessions, with κ on each | Medium-high; must be a measured chart, not a design claim |
+| Maximor · $4K/$2K/$1K + fast-track | Agent that executes a finance workflow, knows when it fails, improves over runs, asks for human review | Finance reconciliation fixture; Codex or Claude Code as the agent; Custos Code as the failure detector and human-review router; plus a cross-run memory: contradictions and human resolutions from run N are written to memory.md and loaded on run N+1, so "improves over repeated runs" is mechanised, not asserted. | Run 1 vs run 5: fewer hand-backs, higher oracle match, lower tokens | Low-medium; 4–5 h honestly, only with a fourth person, else one slide and no submission |
 | Ramp · Save time, save money | Anything that saves time and money | Nothing. | "30–40% of interaction time spent verifying" quote; the cost chart | Medium; broad field |
-| Long Lake · Convince a Non-Believer, top 3 | An experience a skeptic would try, love, use again | Presentation only. Open on the burned developer; receipts check --last as the one-command moment on their own session. Do not promise a catch: on an honest session the moment is the receipt itself, every claim cited, which is what makes a skeptic delegate again. | Before/after: the summary they would have trusted vs. the receipt | Low; their skeptic is a small-business owner, ours is a power user. Submit, zero build. |
+| Long Lake · Convince a Non-Believer, top 3 | An experience a skeptic would try, love, use again | Presentation only. Open on the burned developer; custos-code check --last as the one-command moment on their own session. Do not promise a catch: on an honest session the moment is the receipt itself, every claim cited, which is what makes a skeptic delegate again. | Before/after: the summary they would have trusted vs. the receipt | Low; their skeptic is a small-business owner, ours is a power user. Submit, zero build. |
 | General + Most Technically Impressive | Open | Lead with the bench. | Per-model false-report rates with confidence intervals | — |
 
 ### Framing per audience
@@ -568,7 +568,7 @@ One engine, one repo, one demo, seven submissions. Each challenge gets the same 
 
 - Token Company: "The model is the last resort. Most claims never see one."
 
-- Maximor: "The agent does the reconciliation. Receipts is how it knows it was wrong, and who to ask."
+- Maximor: "The agent does the reconciliation. Custos Code is how it knows it was wrong, and who to ask."
 
 - Ramp: "Developers spend a third of their time checking what the agent said it did. This is that third."
 
