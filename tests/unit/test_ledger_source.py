@@ -74,7 +74,9 @@ def test_citations_match_the_file_a_reader_would_open(tmp_path: pathlib.Path, mo
     sid = "sess-citation"
     live = _write_live(sid, 4)
     _, ledger = _ledger_for({"session_id": sid, "transcript_path": "", "cwd": "/x"})
-    on_disk = {json.loads(l)["seq"]: json.loads(l) for l in open(live) if l.strip()}
+    with open(live, encoding="utf-8") as fh:
+        rows = [json.loads(line) for line in fh if line.strip()]
+    on_disk = {r["seq"]: r for r in rows}
     for e in ledger:
         assert e.seq in on_disk, f"receipt could cite #{e.seq}, absent from the ledger on disk"
         assert on_disk[e.seq]["kind"] == e.kind.value
