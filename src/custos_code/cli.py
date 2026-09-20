@@ -119,6 +119,10 @@ def check(
         claims = reviewed.claims
         recs = verdicts_mod.apply_reruns(claims, reviewed.verdicts, ledger)
         tail = f"one call · {reviewed.input_tokens} in / {reviewed.output_tokens} out"
+        usage = {"input_tokens": reviewed.input_tokens,
+                 "cached_input_tokens": reviewed.cached_input_tokens,
+                 "output_tokens": reviewed.output_tokens,
+                 "requests": reviewed.requests}
     else:
         if backend is None and not rules_only:
             console.print(
@@ -126,6 +130,12 @@ def check(
             )
         claims = claims_mod.extract(report, sess.id)
         recs = verdicts_mod.run(claims, ledger, repo or sess.cwd, backend)
+        # Zero here is the honest answer, not missing data: the deterministic path bills nothing.
+        u = getattr(backend, "usage", None)
+        usage = {"input_tokens": getattr(u, "input_tokens", 0),
+                 "cached_input_tokens": getattr(u, "cached_input_tokens", 0),
+                 "output_tokens": getattr(u, "output_tokens", 0),
+                 "requests": getattr(u, "requests", 0)}
         tail = (
             "rules only"
             if backend is None
@@ -145,7 +155,9 @@ def check(
         text = report_mod.markdown(claims, recs, source=f"{sess.source} session {sess.id[:8]}")
     elif fmt == "html":
         text = report_mod.html_card(
-            claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}"
+            claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}",
+            usage=usage, model=getattr(backend, "judge_model", "") if backend else "",
+            chain_root=sess.ledger_root_hash or "",
         )
     else:
         report_mod.terminal(claims, recs, ledger, console, show_evidence=evidence)
@@ -157,7 +169,9 @@ def check(
             text
             if text is not None
             else report_mod.html_card(
-                claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}"
+                claims, recs, ledger, report=report, title=f"Receipt · {sess.id[:8]}",
+                usage=usage, model=getattr(backend, "judge_model", "") if backend else "",
+                chain_root=sess.ledger_root_hash or "",
             )
         )
         pathlib.Path(out_path).write_text(body, encoding="utf-8")

@@ -131,52 +131,216 @@ def html_card(
     *,
     report: str = "",
     title: str = "Receipt",
+    usage: dict[str, int] | None = None,
+    model: str = "",
+    chain_root: str = "",
 ) -> str:
-    """A self-contained page: the agent's report with marks, each opening to its evidence."""
+    """A self-contained page with four levels of detail, coarsest first.
+
+    A receipt has to serve two readers at once: someone deciding in three seconds whether to trust
+    "done", and someone who needs the exact ledger line behind one sentence. The terminal render
+    can only pick one, so it prints everything and the important part scrolls away.
+
+    Here the levels nest. The tally is one line. The report is the agent's own prose with a mark on
+    each claim, so an unmarked sentence stays visibly unmarked -- marking everything would train
+    people to ignore marks. Claims open to tier, method and rationale. The ledger is what the
+    harness recorded. Cost says what the verdicts actually cost, separated by how they were
+    settled, because "free" and "billed" is the distinction that decides whether this runs on every
+    turn.
+
+    Clicking a claim jumps to the ledger with its cited events highlighted: a verdict without a
+    citation does not exist in this product, so the citation has to be one click away.
+
+    Everything rendered is real. `usage` and `chain_root` are optional because the deterministic
+    path produces no usage at all -- and a zero there is the honest answer, not missing data.
+    """
     by = {c.id: c for c in claims}
-    rows = []
+    use = usage or {}
+
+    def esc(t: str) -> str:
+        return html.escape(t)
+
+    # --- the report, with a mark on each claim and nothing on anything else -----------------
+    marked = esc(report)
+    # Find each claim's span in the ORIGINAL text first, then insert anchors in one pass, right to
+    # left. Mutating `marked` claim-by-claim (the previous approach) let a later claim's needle
+    # match *inside* an earlier claim's already-inserted text -- a claim whose text is a substring
+    # of another's landed its mark mid-sentence, splitting the clause it was quoting. Two claims
+    # with identical text produced the same corruption. Skipping an overlapping match instead of
+    # inserting into it costs one unmarked claim, never a broken sentence.
+    spans: list[tuple[int, int, VerdictRecord]] = []
+    claimed: list[tuple[int, int]] = []
+    for rec in verdicts:
+        claim = by.get(rec.claim_id)
+        if claim is None or not claim.text.strip():
+            continue
+        needle = esc(claim.text.strip())
+        start = marked.find(needle)
+        if start < 0:
+            continue
+        end = start + len(needle)
+        if any(start < c_end and end > c_start for c_start, c_end in claimed):
+            continue
+        claimed.append((start, end))
+        spans.append((start, end, rec))
+    for _start, end, rec in sorted(spans, key=lambda s: s[0], reverse=True):
+        mark, _ = MARK[rec.verdict]
+        colour = _HEX[rec.verdict]
+        anchor = (f"<a class='mk' style='color:{colour}' href='#claim-{esc(rec.claim_id)}' "
+                  f"title='{esc(rec.verdict.value)} · tier {rec.tier} · {esc(rec.method)}'>{mark}</a>")
+        marked = marked[:end] + anchor + marked[end:]
+
+    # --- claims ------------------------------------------------------------------------------
+    crows = []
     for rec in verdicts:
         claim = by.get(rec.claim_id)
         if claim is None:
             continue
         mark, _ = MARK[rec.verdict]
         colour = _HEX[rec.verdict]
-        ev = "".join(
-            f"<div class='ev'><span class='seq'>#{e.seq}</span> <span class='tool'>{html.escape(e.tool or '')}</span> "
-            f"{html.escape((e.output or str((e.input or {}).get('command', '')))[:300])}</div>"
-            for e in _evidence_for(rec, ledger)
-        )
-        rows.append(
-            f"<details><summary><span class='mark' style='color:{colour}'>{mark}</span>"
+        links = " ".join(f"<a href='#seq-{n}'>#{n}</a>" for n in rec.evidence) \
+            or "<span class='dim'>no citation</span>"
+        crows.append(
+            f"<div class='claim' id='claim-{esc(rec.claim_id)}'>"
+            f"<span class='m' style='color:{colour}'>{mark}</span>"
+            f"<span><span class='t'>{esc(claim.text.strip()[:240])}</span>"
             f"<span class='v' style='color:{colour}'>{rec.verdict.value}</span>"
-            f"<span class='claim'>{html.escape(claim.text.strip()[:200])}</span></summary>"
-            f"<div class='why'>tier {rec.tier} · {rec.method} · {html.escape(rec.rationale[:300])}</div>"
-            f"{ev or '<div class=\"ev dim\">no ledger evidence</div>'}</details>"
+            f"<span class='why'>{esc(rec.rationale[:320])}</span>"
+            f"<span class='cites'>{links}</span></span>"
+            f"<span class='tier'>tier {rec.tier} · {esc(rec.method)}</span></div>"
         )
-    return f"""<!doctype html><meta charset="utf-8"><title>{html.escape(title)}</title>
+
+    # --- ledger -------------------------------------------------------------------------------
+    lrows = []
+    for e in ledger:
+        flags = [k for k, v in e.flags.model_dump().items() if v]
+        body = e.output or str((e.input or {}).get("command", "")) or ""
+        rc = ("" if e.exit_code is None
+              else f"<span class='rc{' bad' if e.exit_code else ''}'>exit {e.exit_code}</span>")
+        lrows.append(
+            f"<div class='led' id='seq-{e.seq}'><span class='s'>#{e.seq}</span>"
+            f"<span class='k'>{esc(e.kind.value)}</span>"
+            f"<span class='tool'>{esc(e.tool or '')}</span>"
+            f"<span class='o'>{esc(' '.join(body.split())[:200])} {rc}"
+            + "".join(f"<span class='flag'>⚑ {esc(f)}</span>" for f in flags)
+            + "</span></div>"
+        )
+
+    # --- cost ---------------------------------------------------------------------------------
+    free = sum(1 for r in verdicts if r.tier < 4)
+    billed = len(verdicts) - free
+    tok_in, tok_cached = use.get("input_tokens", 0), use.get("cached_input_tokens", 0)
+    tok_out, reqs = use.get("output_tokens", 0), use.get("requests", 0)
+    cost_cards = [
+        (str(len(verdicts)), "claims"),
+        (str(free), "settled deterministically · $0"),
+        (str(billed), "needed a model"),
+        (str(reqs), "model request" + ("" if reqs == 1 else "s")),
+        (f"{tok_in:,}", f"input tokens ({tok_cached:,} cached)"),
+        (f"{tok_out:,}", "output tokens"),
+    ]
+    ccards = "".join(f"<div class='c'><div class='n'>{n}</div><div class='l'>{esc(lab)}</div></div>"
+                     for n, lab in cost_cards)
+    # Deliberately no dollar figure: config.example.toml prices the frontier models at 0.00, so
+    # any total computed from it would read $0.00 and be a lie of precision. Tokens are observed.
+    cnote = ("<p class='note'>Token counts are measured. No dollar total is shown because the "
+             "price table ships with placeholder zeros -- a computed $0.00 would be a lie of "
+             "precision, not a cheap session.</p>")
+
+    head = (f"{len(verdicts)} claims · {tally(verdicts)} · {len(ledger)} logged events"
+            + (f" · {esc(model)}" if model else "")
+            + (f" · chain {esc(chain_root[:8])}" if chain_root else ""))
+
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{esc(title)}</title>
 <style>
-:root{{color-scheme:light dark}}
-body{{font:15px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif;max-width:860px;margin:2rem auto;
-padding:0 1rem;background:Canvas;color:CanvasText}}
-h1{{font-size:1.3rem;margin:0 0 .2rem}} .sub{{color:#6b7280;font-size:13px;margin-bottom:1.2rem}}
-.report{{border-left:3px solid #d1d5db;padding:.6rem 1rem;margin:1rem 0;white-space:pre-wrap;
-font-size:14px;color:#4b5563}}
-details{{border:1px solid #d9dee6;border-radius:6px;margin:.45rem 0;padding:.5rem .7rem}}
-summary{{cursor:pointer;display:flex;gap:.6rem;align-items:baseline;list-style:none}}
-summary::-webkit-details-marker{{display:none}}
-.mark{{font-weight:700;font-family:ui-monospace,monospace}}
-.v{{font-size:12px;text-transform:uppercase;letter-spacing:.06em;min-width:6.5rem}}
-.claim{{flex:1}}
-.why{{color:#6b7280;font-size:13px;margin:.5rem 0 .4rem}}
-.ev{{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;background:#f3f4f6;
-border-radius:4px;padding:.35rem .5rem;margin:.25rem 0;white-space:pre-wrap;color:#111827}}
-.ev.dim{{color:#9ca3af;background:none}} .seq{{color:#6b7280}} .tool{{color:#b45309}}
-@media(prefers-color-scheme:dark){{.ev{{background:#1f2937;color:#e5e7eb}} .report{{color:#9ca3af}}}}
-</style>
-<h1>{html.escape(title)}</h1>
-<div class="sub">{len(verdicts)} claims · {tally(verdicts)} · evidence from {len(ledger)} logged events</div>
-{f'<div class="report">{html.escape(report[:2000])}</div>' if report else ''}
-{''.join(rows)}
+:root{{--paper:#F7F7F5;--ink:#16181D;--muted:#5C6672;--rule:#DCE0E6;--accent:#2457C5;
+--panel:#FFFFFF;--code:#F1F3F6;color-scheme:light dark}}
+@media(prefers-color-scheme:dark){{:root:not([data-theme="light"]){{--paper:#0F1218;--ink:#E6EAF0;
+--muted:#96A0B0;--rule:#28303C;--accent:#7FA6F5;--panel:#151A22;--code:#1B212B}}}}
+:root[data-theme="dark"]{{--paper:#0F1218;--ink:#E6EAF0;--muted:#96A0B0;--rule:#28303C;
+--accent:#7FA6F5;--panel:#151A22;--code:#1B212B}}
+*{{box-sizing:border-box}}
+body{{margin:0;background:var(--paper);color:var(--ink);padding:24px 16px 72px;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}
+.wrap{{max-width:1080px;margin:0 auto}}
+h1{{font-size:1.35rem;margin:0 0 4px;letter-spacing:-.01em}}
+.sub{{color:var(--muted);font-size:13px;margin:0 0 18px;font-variant-numeric:tabular-nums}}
+.tabs{{display:flex;gap:4px;border-bottom:1px solid var(--rule);margin-bottom:0;overflow-x:auto}}
+.pane{{background:var(--panel);border:1px solid var(--rule);border-top:0;border-radius:0 0 8px 8px;
+padding:16px 18px}}
+.tabin{{position:absolute;left:-9999px}}
+.pane{{display:none}}
+#t-report:checked~#p-report,#t-claims:checked~#p-claims,
+#t-ledger:checked~#p-ledger,#t-cost:checked~#p-cost{{display:block}}
+.tabs label{{font-size:13.5px;padding:8px 14px;color:var(--muted);cursor:pointer;
+border-bottom:2px solid transparent;white-space:nowrap}}
+#t-report:checked~.tabs label[for="t-report"],#t-claims:checked~.tabs label[for="t-claims"],
+#t-ledger:checked~.tabs label[for="t-ledger"],#t-cost:checked~.tabs label[for="t-cost"]{{
+color:var(--ink);border-bottom-color:var(--accent);font-weight:500}}
+.tabs label:focus-visible{{outline:2px solid var(--accent);outline-offset:-2px}}
+/* A cited row highlights when linked to. `:target` is how a claim's citation reaches its
+   evidence without a line of JavaScript, so the card still works where scripts are stripped. */
+.led:target{{background:color-mix(in srgb,#D29922 26%,transparent);
+outline:1px solid #D29922;outline-offset:-1px;scroll-margin-block:40vh}}
+.report{{white-space:pre-wrap;font-size:14.5px;line-height:1.7}}
+.mk{{font-family:ui-monospace,SFMono-Regular,monospace;font-weight:700;margin-left:3px;
+text-decoration:none}}
+.mk:hover{{text-decoration:underline}}
+.cites a{{color:var(--accent);text-decoration:none;margin-right:6px}}
+.cites a:hover{{text-decoration:underline}} .dim{{color:var(--muted)}}
+.claim:target{{background:color-mix(in srgb,var(--accent) 12%,transparent);scroll-margin-block:30vh}}
+.claim{{display:grid;grid-template-columns:22px 1fr auto;gap:10px;padding:10px 4px;
+border-bottom:1px solid var(--rule);cursor:pointer;align-items:start}}
+.claim:last-child{{border-bottom:0}}
+.claim .m{{font-family:ui-monospace,monospace;font-weight:700;text-align:center}}
+.claim .t{{display:block}}
+.claim .v{{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-top:3px;font-weight:600}}
+.claim .why{{display:block;color:var(--muted);font-size:13px;margin-top:3px}}
+.claim .cites{{display:block;color:var(--muted);font-size:12px;margin-top:3px;
+font-family:ui-monospace,monospace}}
+.claim .tier{{color:var(--muted);font-size:12px;white-space:nowrap}}
+.led{{display:grid;grid-template-columns:52px 62px 74px minmax(0,1fr);gap:10px;padding:4px 4px;
+border-bottom:1px solid var(--rule);font-family:ui-monospace,SFMono-Regular,monospace;
+font-size:12px;align-items:baseline}}
+.led .s{{color:var(--muted)}} .led .k{{color:var(--accent)}} .led .tool{{color:#B45309}}
+.led .o{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.rc{{color:#2E7D32}} .rc.bad{{color:#C62828}}
+.flag{{color:#B26A00;font-size:11px;margin-left:8px;font-family:ui-sans-serif,system-ui,sans-serif}}
+.cost{{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}}
+.cost .c{{border:1px solid var(--rule);border-radius:6px;padding:10px 12px}}
+.cost .n{{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}}
+.cost .l{{font-size:12px;color:var(--muted);margin-top:2px}}
+.note{{color:var(--muted);font-size:13px;margin:14px 0 0;max-width:72ch}}
+.legend{{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);margin:10px 0 0}}
+.legend b{{font-family:ui-monospace,monospace;margin-right:3px}}
+</style></head><body><div class="wrap">
+<h1>{esc(title)}</h1>
+<p class="sub">{head}</p>
+<input type="radio" name="tab" id="t-report" class="tabin" checked>
+<input type="radio" name="tab" id="t-claims" class="tabin">
+<input type="radio" name="tab" id="t-ledger" class="tabin">
+<input type="radio" name="tab" id="t-cost" class="tabin">
+<div class="tabs">
+  <label for="t-report" tabindex="0">Report</label>
+  <label for="t-claims" tabindex="0">Claims <span class="cnt">{len(verdicts)}</span></label>
+  <label for="t-ledger" tabindex="0">Ledger <span class="cnt">{len(ledger)}</span></label>
+  <label for="t-cost" tabindex="0">Cost</label>
+</div>
+<div class="pane" id="p-report"><div class="report">{marked or '<span class="note">no report text</span>'}</div>
+<div class="legend"><span><b style="color:{_HEX[Verdict.CONFIRMED]}">✓</b>confirmed</span>
+<span><b style="color:{_HEX[Verdict.CONTRADICTED]}">✗</b>contradicted</span>
+<span><b style="color:{_HEX[Verdict.UNWITNESSED]}">?</b>unwitnessed</span>
+<span><b style="color:{_HEX[Verdict.UNRECORDED]}">○</b>unrecorded</span>
+<span><b style="color:{_HEX[Verdict.QUALIFIED]}">≈</b>qualified</span></div>
+<p class="note">An unmarked sentence is unmarked on purpose. Opinions, plans and questions are not
+claims about work done, and marking them would train you to ignore the marks.</p></div>
+<div class="pane" id="p-claims">{''.join(crows) or '<p class="note">no claims</p>'}</div>
+<div class="pane" id="p-ledger">{''.join(lrows) or '<p class="note">no events</p>'}</div>
+<div class="pane" id="p-cost"><div class="cost">{ccards}</div>{cnote}</div>
+</div>
+</body></html>
 """
 
 

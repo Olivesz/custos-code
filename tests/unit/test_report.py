@@ -64,3 +64,25 @@ def test_html_card_escapes_markup_in_a_claim() -> None:
     card = html_card(claims, recs, ledger)
     assert "<script>alert(1)</script>" not in card
     assert "&lt;script&gt;" in card
+
+
+def test_a_claim_whose_text_is_a_substring_of_another_does_not_split_the_sentence() -> None:
+    """One claim's mark must never land inside another claim's quoted text.
+
+    Marking used to mutate the report string claim-by-claim with `str.replace`, so a shorter
+    claim's needle could still match *inside* a longer claim's text that had just been marked --
+    "I fixed the bug in auth.py" and "fixed the bug" produced a mark stuck mid-sentence, between
+    "bug" and "in auth.py". The fix marks non-overlapping spans in one pass and skips an
+    overlapping match instead of corrupting the sentence it's part of.
+    """
+    ledger: list[LedgerEvent] = []
+    claims = [Claim(id="a", session_id="s", text="I fixed the bug in auth.py", type=ClaimType.EDIT),
+              Claim(id="b", session_id="s", text="fixed the bug", type=ClaimType.EDIT)]
+    recs = [VerdictRecord(claim_id="a", verdict=Verdict.CONFIRMED, tier=1, method="rule", confidence=0.9),
+            VerdictRecord(claim_id="b", verdict=Verdict.CONFIRMED, tier=1, method="rule", confidence=0.9)]
+    report = "I fixed the bug in auth.py and ran the tests."
+
+    card = html_card(claims, recs, ledger, report=report)
+
+    assert "bug<a class='mk'" not in card              # no mark split out of the middle of a claim
+    assert "in auth.py<a class='mk'" in card           # the longer, whole claim is marked cleanly
