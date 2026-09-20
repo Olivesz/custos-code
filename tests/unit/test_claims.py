@@ -43,6 +43,27 @@ def test_real_positive_phrasings() -> None:
         assert classify(text) == want, text
 
 
+def test_absolute_paths_are_captured_whole_not_truncated() -> None:
+    """The 2026-09-19 bug, named in _PATH_RE's own comment: `/Users/me/.claude/x/SKILL.md` once
+    matched as the truncated `claude/x/SKILL.md`, which does not exist, which became a false
+    `contradicted`. Mutation testing (docs/GAPS.md G2) found this had no regression test at all
+    -- the mutant that reintroduces the truncation survived silently."""
+    claims = extract_regex("Fixed the bug in /Users/me/.claude/x/SKILL.md and verified it.", "s1")
+    edit = next(c for c in claims if c.type == ClaimType.EDIT)
+    assert edit.objects == ["/Users/me/.claude/x/SKILL.md"]
+
+
+def test_did_not_touch_claims_get_did_not_polarity() -> None:
+    """Mutation testing (docs/GAPS.md G2) found this untested: a claim's `type` was checked
+    everywhere, but nothing checked that `polarity` actually flips for a negative claim, so a
+    mutant that always set polarity="did" survived. `verdicts.py`/`rules.py` read polarity to
+    decide contradiction, so an inverted polarity silently flips every did-not-touch verdict."""
+    claims = extract_regex("I did not modify the tests.", "s1")
+    assert len(claims) == 1
+    assert claims[0].type == ClaimType.DID_NOT_TOUCH
+    assert claims[0].polarity == "did_not"
+
+
 def test_real_negative_phrasings_are_not_claims() -> None:
     non_claims = [
         "I'll run the Life OS session sync via the skill.",
