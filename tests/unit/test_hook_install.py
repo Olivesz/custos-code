@@ -79,12 +79,17 @@ def test_hook_never_exits_two_on_garbage_input(event: str) -> None:
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.skipif(not (HOOKS.parent / ".venv" / "bin").is_dir(),
+                    reason="no repo venv (git worktree or bare clone); nothing to resolve to")
 def test_runner_resolution_prefers_the_repo_venv() -> None:
     r = subprocess.run(
         [BASH, "-c", f'source "{HOOKS}/_run.sh" && receipts_cmd'],
         capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip(), "resolved to nothing in a checkout that has a venv"
+    # This asserted a property of the *environment*, not the code, and so failed in every git
+    # worktree -- which is how PRs get reviewed here. Two reviewers reported it as a real failure
+    # on 2026-09-19. A test that cannot hold in a worktree must skip there, not fail.
 
 
 # --- the direct-binary path -------------------------------------------------------------
