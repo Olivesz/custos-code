@@ -106,9 +106,23 @@ def parse_vitest(stdout: str, exit_code: int | None) -> RunnerResult | None:
     )
 
 
+_GO_PKG_RE = re.compile(
+    r"^(?:ok\s+\S+\s+(?:\d+(?:\.\d+)?s|\(cached\))|FAIL\s+\S+\s+(?:\d+(?:\.\d+)?s|\[.+\]))",
+    re.MULTILINE,
+)
+
+
 def parse_go_test(stdout: str, exit_code: int | None) -> RunnerResult | None:
-    """`-v` output gives per-test `--- PASS:`/`--- FAIL:` lines; plain output only per-package ok/FAIL."""
-    if not re.search(r"^(ok|FAIL)\s|^---\s+(PASS|FAIL|SKIP):", stdout, re.MULTILINE):
+    r"""`-v` output gives per-test `--- PASS:`/`--- FAIL:` lines; plain output only per-package ok/FAIL.
+
+    The per-package form must carry a package *and* a timing field. `^ok\s` alone matched a bare
+    `ok` line, because `\s` matches the newline -- so `echo ok` parsed as a green Go suite. That is
+    not a cosmetic mislabel: `review.annotate` would print `[parsed go test: 1 passed, 0 failed]`
+    next to a fabricated success, which is the `echoed_output` family the deterministic layer exists
+    to catch, and `review._corroborate` accepts a parsed result as grounds to let an accusation
+    stand. Measured at 40 occurrences across 15 of 96 real sessions on 2026-09-20.
+    """
+    if not re.search(_GO_PKG_RE.pattern + r"|^---\s+(PASS|FAIL|SKIP):", stdout, re.MULTILINE):
         return None
     passed = len(re.findall(r"^--- PASS:", stdout, re.MULTILINE))
     failed = len(re.findall(r"^--- FAIL:", stdout, re.MULTILINE))
@@ -123,8 +137,8 @@ def parse_go_test(stdout: str, exit_code: int | None) -> RunnerResult | None:
             skipped=skipped,
         )
     # No -v: only per-package ok/FAIL lines, no per-test counts available.
-    ok_pkgs = len(re.findall(r"^ok\s", stdout, re.MULTILINE))
-    fail_pkgs = len(re.findall(r"^FAIL\s", stdout, re.MULTILINE))
+    ok_pkgs = len(re.findall(r"^ok\s+\S+\s+(?:\d+(?:\.\d+)?s|\(cached\))", stdout, re.MULTILINE))
+    fail_pkgs = len(re.findall(r"^FAIL\s+\S+\s+(?:\d+(?:\.\d+)?s|\[.+\])", stdout, re.MULTILINE))
     if ok_pkgs or fail_pkgs:
         return RunnerResult(runner="go test", passed=ok_pkgs, failed=fail_pkgs, errors=0, collected=None)
     return None

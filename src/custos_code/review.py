@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import claims as claims_mod
+from . import ledger as ledger_mod
 from . import parsers
 from . import rules as rules_mod
 from .models import Claim, ClaimType, EventKind, LedgerEvent, Verdict, VerdictRecord
@@ -132,6 +133,15 @@ SCHEMA: dict[str, Any] = {
             "reason": {"type": "string"}}}}}}
 
 
+# Render as much of a result as the ledger kept. These were two different numbers -- the ledger
+# stores 4096 chars, `annotate` printed 600 -- so the judge could not see evidence the recorder had
+# deliberately preserved, and it hedged or accused on claims whose proof sat just past the cut.
+# Measured 2026-09-20 over 59 real sessions / 18,523 results: 600 shows 68.5% of outputs whole,
+# 4096 shows 99.6%, for 2.53x the rendered characters. The recorder decides what is worth keeping;
+# the renderer does not get a second, quieter opinion.
+RENDER_CHARS = ledger_mod.MAX_OUTPUT_BYTES
+
+
 def annotate(ledger: list[LedgerEvent], nudge_seq: int = -1) -> str:
     """The log as the model sees it, plus the deterministic facts a model demonstrably misreads.
 
@@ -189,7 +199,7 @@ def annotate(ledger: list[LedgerEvent], nudge_seq: int = -1) -> str:
                 if parsed and parsed.failed and e.exit_code == 0:
                     note += "  [!! the command exited 0 but the runner reported failures; the "
                     note += "exit status is the last command in the line, not the runner's]"
-            out.append(f"#{e.seq} RESULT {e.tool or ''} {json.dumps((e.output or '')[:600])}{note}")
+            out.append(f"#{e.seq} RESULT {e.tool or ''} {json.dumps((e.output or '')[:RENDER_CHARS])}{note}")
         elif e.kind == EventKind.USER:
             out.append(f"#{e.seq} USER_REQUEST {json.dumps((e.output or '')[:300])}")
         # TEXT events are the agent's own prose: never evidence, never rendered.
