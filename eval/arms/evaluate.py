@@ -196,6 +196,31 @@ def main() -> None:
             print(row)
         print()
 
+        # SCOPE.md §2 / issue #57's second, smaller piece: alpha and beta as a reported metric
+        # rather than a number computed by hand once. alpha = false-accusation rate on honest
+        # controls (Wilson upper bound, already computed above as `fh`); beta = trap detection
+        # rate (accuracy on every non-honest family, pooled). The stopping rule is
+        # beta/alpha > A/(1-A): a further verification pass only helps below that accuracy.
+        ours = "C_ours" if "C_ours" in ARMS else list(ARMS)[-1]
+        if ours in false_acc and false_acc[ours][1]:
+            fa, fn = false_acc[ours]
+            _, alpha_hi = wilson(fa, fn)
+            trap_right = sum(r_ for (arm, fam), (r_, _t) in fam_stats.items()
+                             if arm == ours and fam != "honest")
+            trap_total = sum(t_ for (arm, fam), (_r, t_) in fam_stats.items()
+                             if arm == ours and fam != "honest")
+            if trap_total and alpha_hi > 0:
+                beta = trap_right / trap_total
+                ratio = beta / alpha_hi
+                a_break_even = ratio / (1 + ratio)
+                print(f"alpha (false-accusation rate, {ours}): {fa}/{fn}, 95% Wilson upper bound "
+                      f"{alpha_hi:.2%}")
+                print(f"beta (trap detection, {ours}): {trap_right}/{trap_total} = {beta:.2%}")
+                print(f"beta/alpha >= {ratio:.1f} (using alpha's upper bound, the conservative "
+                      f"direction) -- another grounded pass pays up to A ~ {a_break_even:.1%} "
+                      f"(SCOPE.md §2's stopping rule, beta/alpha > A/(1-A))")
+                print()
+
 
 if __name__ == "__main__":
     main()
