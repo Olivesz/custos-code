@@ -442,6 +442,40 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     else:
         claims = claims_mod.extract(report, sid)
         recs = verdicts_mod.run(claims, ledger, repo)
+    # Tier 3: launch a re-execution for any claim a re-run could actually settle. This is the
+    # second GROUNDED source the architecture argues for -- not another opinion, but the command
+    # run again and looked at. Coverage is worth 4-74x more than a second verifier at any
+    # plausible likelihood ratio, and this is what moves coverage.
+    #
+    # `spawn_async` detaches, so the Stop hook still returns in the ~10s it wants. The result is
+    # picked up by a later pass, by the extension, or by `receipts check` -- there is no path back
+    # into this call, which has already returned. `verdicts.should_rerun` is deliberately narrow:
+    # open verdict, runnable claim type, a real repo, a committed runner config, within budget,
+    # and not already tried on this exact tree.
+    spent: set[str] = set(state.get("reruns", []))
+    if repo:
+        for c, r in zip(claims, recs, strict=False):
+            if not verdicts_mod.should_rerun(c, r, repo, already=spent):
+                continue
+            key = verdicts_mod.rerun_key(c, repo)
+            try:
+                # report_seq anchors the RERUN event after the evidence it re-checks
+                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq)
+            except Exception as e:  # noqa: BLE001 - a failed launch must not fail the turn
+                print(f"receipts: rerun launch failed ({type(e).__name__}); skipping.", file=sys.stderr)
+                continue
+            if key:
+                spent.add(key)
+        if spent != set(state.get("reruns", [])):
+            # Written now, not with the auto-mode state below: the budget has to survive turns
+            # that do not block, or a session with auto mode off re-runs on every single turn.
+            state["reruns"] = sorted(spent)
+            try:
+                with open(state_p, "w", encoding="utf-8") as fh:
+                    json.dump(state, fh)
+            except OSError:
+                pass
+
     with open(receipt_p, "w", encoding="utf-8") as fh:
         fh.write(_render(claims, recs) + "\n")
 
@@ -473,7 +507,10 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None  # cap hit: hand back to the human with the receipt file
     nudge_seq = max((e.seq for e in ledger), default=-1)
     with open(state_p, "w", encoding="utf-8") as fh:
-        json.dump({"passes": passes, "nudge_seq": nudge_seq, "open": [c.text for c, _ in open_pairs]}, fh)
+        json.dump({"passes": passes, "nudge_seq": nudge_seq,
+                   "open": [c.text for c, _ in open_pairs],
+                   "reruns": state.get("reruns", []),          # do not drop the Tier 3 budget
+                   "scope_approved": state.get("scope_approved", [])}, fh)
     reason = feedback.build_block_reason(open_pairs, ledger, passes, max_passes)
     return {"decision": "block", "reason": reason}
 
