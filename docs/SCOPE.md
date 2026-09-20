@@ -317,6 +317,93 @@ estimates.
 with 100% RED detection on the synthetic set. If GREEN fires on the `cart-service` session, the rule
 is too tight and widens.
 
+### 7a. What the first run actually said (2026-09-20)
+
+404 sessions, 23,805 tool calls. **Both criteria failed, and not narrowly:**
+
+| | first run | after hardening | criterion |
+|---|---|---|---|
+| YELLOW | **48.4%** | 18.0% | ≤1% |
+| RED | 1.23% | 1.43% | 0 |
+
+At 48% the gate halts half of all legitimate work. The `cart-service` session — the acceptance test
+this document names by hand in §1 — fired **2 RED**.
+
+Two defects produced most of it, and neither was a threshold:
+
+- **A Bash line's *mentions* were treated as its *writes*.** `cd ~/other && python3 x.py` was banded
+  a write to `~/other`. ~40% of all calls on its own. Write targets now come from the command's verb
+  or a redirect.
+- **`recoverable()` asked whether the *grant root* was a git tree, not the target.** A session rooted
+  at `~/Projects` — twenty repositories, itself not one — marked every write into every one of them
+  unrevertible. 9,016 fires.
+
+**This is why the gate ships off (§5) and why calibration is the critical path (§8), not the code.**
+Had it shipped on the numbers it was written with, it would have interrupted one call in two.
+
+### 7b. The criterion was measuring the wrong thing
+
+"% of calls" is not what anyone experiences. What a user feels is **how many times a session
+interrupts them**, and the ratchet is meant to collapse repeats. Measured over the same corpus:
+
+```
+PROMPTS per session (ratcheted)   median 0   mean 6.4   p90 11   max 220
+sessions with 0 prompts           243/297 = 82%
+sessions with ≤2 prompts                    86%
+```
+
+82% of sessions would never be interrupted at all. The 18% is a long tail, not a broad tax.
+
+**Revised criterion, replacing "≤1% of calls":**
+
+- **median 0 prompts per session, p90 ≤ 2, and 0 RED** on the accepted corpus
+- 100% RED detection on the synthetic set
+
+The old figure stays reported because it is comparable across runs, but it does not gate the
+decision. A rule that fires 400 times in one unusual session and never again is a different problem
+from one that fires twice in every session, and the percentage cannot tell them apart.
+
+### 7c. A limit of the method, stated plainly
+
+2,008 of ~2,500 remaining `unrecoverable-write` fires target paths whose **parent directory no longer
+exists** — git worktrees since deleted. Those directories existed when the work happened; the walk
+that looks for an enclosing repo finds nothing today. So the measured rate is an **upper bound**, and
+the true rate is lower by an unknown amount.
+
+This is the price of judging historical sessions against today's filesystem, and it cannot be fixed
+by tuning. It can be fixed by recording the band live (`RECEIPTS_SCOPE=warn`) and calibrating on that
+instead — which is worth doing before anyone quotes a number publicly.
+
+### 7d. Hardening: how this fails in production
+
+An adversarial pass on the first implementation found ~15 ways to get a destructive command banded
+GREEN. All are closed and each has a named regression test, but the **pattern** matters more than the
+list:
+
+> **Every widening is a potential bypass.** Both HIGH-severity bypasses found so far were introduced
+> by a fix for false positives. Stripping heredoc bodies killed 38 bogus REDs and made
+> `bash <<'EOF' / rm -rf ~ / EOF` completely invisible. Tidying the scan text afterwards dropped the
+> shell *after* the delimiter, so `cat <<'EOF' > ~/.zshrc` reduced to `cat  ` and writing anywhere
+> was free.
+
+Consequently: **no change to a rule ships without re-running both directions** — the synthetic RED
+set and the accepted corpus. Optimising one and spot-checking the other is how both of those landed.
+
+The classes to keep testing, because they recur:
+
+| Class | Example that was GREEN |
+|---|---|
+| Prefix laundering | `echo hi && rm -rf ~` — the allowlist read only the first token |
+| Option soup | `git -c k=v push --force` — the flagship RED rule, defeated by a flag |
+| Alternate spelling | `rm -r -f`, `--recursive --force`, `git push origin +main` |
+| Allowlisted binary that writes | `find -delete`, `sed -i`, `python -c`, `git config --global` |
+| Content executed from elsewhere | `curl … \| sh`, `eval "$X"`, an interpreter heredoc |
+| Our own state as scratch | `~/.receipts/live/*.jsonl` — a **model write path to the ledger** |
+
+That last one is the one to remember. The checker had declared the append-only hash-chained evidence
+disposable, so an agent could rewrite the record, its own permission grants, or the config that turns
+the gate off — invariant 1, defeated by the component meant to enforce it.
+
 ## 8. Task split
 
 | Who | What | Paths |
@@ -334,6 +421,8 @@ no scope gate.
 | ID | Question | Owner | Status |
 |---|---|---|---|
 | S1 | `max_files_changed` / `max_lines`: is magnitude a usable YELLOW signal at all, or noise? §7 answers it. | Anush | open |
+| S6 | §7b replaced "≤1% of calls" with prompts-per-session. Does p90 ≤ 2 hold once the ratchet is actually implemented? It is currently modelled in the harness, not in the product (`scope_approved` has a reader and no writer). | Oliver | open |
+| S7 | Calibrate on bands recorded LIVE (`RECEIPTS_SCOPE=warn`) rather than replayed against today's filesystem — §7c says the replayed number is an upper bound only. | Anush | open |
 | S2 | Does a YELLOW pause mid-turn confuse the agent into working around the gate rather than asking? | Oliver | open |
 | S3 | Ratcheted grants: session-scoped only, or persisted per repo? Persisted is friendlier and strictly weaker. | Oliver | open |
 | S4 | Is "the agent's stated plan" reliably extractable outside Claude Code's `TodoWrite`? | Ananya | open |
