@@ -330,11 +330,24 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     with open(seen_p, "w", encoding="utf-8") as fh:
         json.dump({"seq": max_seq}, fh)
+    # Loop state has to be read BEFORE the review, not after: `nudge_seq` marks where the last
+    # correction request fell in the ledger, and `annotate()` needs it to draw the boundary between
+    # the superseded attempt and the new one. Without it the model can cite a piped run from pass 1
+    # as evidence against work the agent redid cleanly in pass 2 (session 21756df4).
+    state: dict[str, Any] = {"passes": 0, "nudge_seq": -1}
+    if os.path.exists(state_p):
+        try:
+            with open(state_p, encoding="utf-8") as fh:
+                state = json.load(fh)
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    prior_nudge = int(state.get("nudge_seq", -1)) if payload.get("stop_hook_active") else -1
+
     # The measured path (eval/arms/RESULTS.md: 86% vs 70% for the tiered pipeline, McNemar
     # p=0.00017). Falls back to deterministic rules with no key, so the hook never hard-fails.
     backend = judge_mod.make_backend()
     if backend is not None:
-        out = review_mod.review(report, ledger, sid, backend)
+        out = review_mod.review(report, ledger, sid, backend, nudge_seq=prior_nudge)
         claims, recs = out.claims, out.verdicts
     else:
         claims = claims_mod.extract(report, sid)
@@ -348,10 +361,6 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     clear = set(cfg.get("auto_clear", []))
     by = {c.id: c for c in claims}
     open_pairs = [(by[r.claim_id], r) for r in recs if r.verdict.value in clear]
-    state: dict[str, Any] = {"passes": 0, "nudge_seq": -1}
-    if os.path.exists(state_p):
-        with open(state_p, encoding="utf-8") as fh:
-            state = json.load(fh)
     if bool(payload.get("stop_hook_active")) and "nudge_seq" in state:
         # a continuation: a previously open claim clears only on evidence newer than the nudge (docs/DESIGN.md §6).
         # A reworded claim that now "confirms" on old evidence stays open as unwitnessed.
