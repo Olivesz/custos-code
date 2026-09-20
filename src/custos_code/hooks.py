@@ -275,6 +275,31 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 # ---------- PostToolUse ----------
+def _response_text(resp: Any) -> str:
+    """The tool's own output, the way the replay adapter records it.
+
+    This used to be `json.dumps(resp)`, which wrapped a Bash result in `{"stdout": "...\\n..."}`
+    with its newlines escaped. Every parser downstream then read one long line: anything anchored
+    to the start of a line could not match, so `pytest -q` -- which prints no session banner, only
+    a tail like `86 passed in 1.2s` -- parsed as "not a test runner at all" on the LIVE path while
+    parsing correctly on replay.
+
+    That divergence matters more than the one case. Every accuracy number this project quotes was
+    produced by replaying transcripts through `adapters.claude_code`, which extracts stdout
+    properly. The hook people actually install stored something else. Measurements taken on the
+    replay path were never evidence about the live path.
+    """
+    if isinstance(resp, str):
+        return resp
+    if isinstance(resp, dict):
+        parts = [str(resp[k]) for k in ("stdout", "stderr") if isinstance(resp.get(k), str) and resp[k]]
+        if parts:
+            return "\n".join(parts)
+        if isinstance(resp.get("content"), str):
+            return str(resp["content"])
+    return json.dumps(resp) if resp is not None else ""
+
+
 def on_post_tool_use(payload: dict[str, Any]) -> None:
     if _out_of_scope(payload):
         return
@@ -284,7 +309,7 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
     raw_inp = payload.get("tool_input")
     inp: dict[str, Any] = dict(raw_inp) if isinstance(raw_inp, dict) else {}
     resp = payload.get("tool_response")
-    text = resp if isinstance(resp, str) else json.dumps(resp) if resp is not None else ""
+    text = _response_text(resp)
     # Issue #22: `on_pre_tool_use` (when it wrapped this call) writes the resolved binary path and
     # exit code to a per-call file instead of stdout, so there is no trailer in `text` to strip
     # here -- look the file up via the tool_use_id pending map instead.
@@ -316,7 +341,7 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
                        paths=claude_code._paths_from_input(tool, dict(inp), cwd), cwd=cwd, flags=EventFlags(sidechain=side))
     flags = EventFlags(sidechain=side)
     cmd = inp.get("command")
-    if tool == "Bash" and isinstance(cmd, str) and claude_code._PIPE_RE.search(cmd):
+    if tool == "Bash" and isinstance(cmd, str) and parsers.is_piped(cmd):
         flags.piped = True
     if len(text.encode()) > MAX_OUTPUT_BYTES:
         flags.truncated = True

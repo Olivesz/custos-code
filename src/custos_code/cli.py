@@ -725,7 +725,14 @@ def scan(
             r = review_mod.review(rep, ledger, sess.id, backend)
         except Exception:
             return None
-        proj = pathlib.Path(path).parent.name.replace("-Users-oliverzhang-", "")
+        # Claude Code names a project directory after its absolute path with separators replaced
+        # by dashes: `-Users-alice-Projects-thing`. Strip the home prefix generically -- this was
+        # one developer's literal home directory hardcoded in shipped source, which is personal
+        # data on its way to PyPI and a silent no-op on everyone else's machine.
+        proj = pathlib.Path(path).parent.name
+        home = str(pathlib.Path.home()).replace("/", "-")
+        if proj.startswith(home + "-"):
+            proj = proj[len(home) + 1:]
         return _Scanned(path, pathlib.Path(path).stem[:8], proj,
                         [_Mark(c.text, v.verdict.value, v.rationale, list(v.evidence))
                          for c, v in zip(r.claims, r.verdicts, strict=False)])

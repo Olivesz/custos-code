@@ -8,8 +8,26 @@ permissions:
   contents: read
 
 jobs:
-  publish:
+  # A PyPI version number is permanent -- it cannot be reused even after a yank, so there is no
+  # undo for shipping a broken build. The suite runs first and `publish` depends on it.
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: "0.12.17"
+      - run: uv python install
+      - run: uv sync --extra dev
+      - run: uv run ruff check src tests
+      - run: uv run mypy src
+      - run: uv run pytest -q
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    # Trusted publishing is scoped to this environment, and it is also where a required reviewer
+    # goes if you want a human to approve before anything leaves the machine.
     environment: pypi
     permissions:
       id-token: write

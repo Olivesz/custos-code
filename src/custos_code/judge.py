@@ -250,8 +250,18 @@ def load_env_file() -> None:
     Existing environment variables always win, so an explicit export or CI secret overrides it.
     Format is KEY=VALUE per line; `#` comments, a leading `export`, and quotes are tolerated.
     """
-    p = os.environ.get("CUSTOS_CODE_ENV_FILE") or os.path.join(os.path.expanduser("~/.custos-code"), "env")
-    if not os.path.exists(p):
+    # The pre-rename path is still read. `receipts` -> `custos_code` moved this file's expected
+    # location, which silently orphaned every existing key: `make_backend()` returned None, the
+    # hooks fell back to the deterministic ladder without saying so, and `scan` refused outright.
+    # Nothing errored, so the product just quietly stopped using the model it was measured with.
+    # A key is not ours to move; read where it already is.
+    explicit = os.environ.get("CUSTOS_CODE_ENV_FILE")
+    candidates = [explicit] if explicit else [
+        os.path.join(os.path.expanduser("~/.custos-code"), "env"),
+        os.path.join(os.path.expanduser("~/.receipts"), "env"),
+    ]
+    p = next((c for c in candidates if c and os.path.exists(c)), None)
+    if p is None:
         return
     try:
         with open(p, encoding="utf-8") as fh:

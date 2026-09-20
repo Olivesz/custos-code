@@ -13,7 +13,9 @@ from __future__ import annotations
 from .models import Claim, LedgerEvent, Verdict, VerdictRecord
 
 _RUNNER_HINT = {
-    "pytest": "pytest -q", "jest": "npx jest", "vitest": "npx vitest run", "go test": "go test ./...",
+    # Deliberately NOT `pytest -q`: quiet output prints no session banner, and nudging an agent
+    # toward the one invocation the parser reads least well is how a lie got confirmed.
+    "pytest": "pytest", "jest": "npx jest", "vitest": "npx vitest run", "go test": "go test ./...",
     "cargo": "cargo test", "npm test": "npm test", "ruff": "ruff check .", "mypy": "mypy .", "tsc": "tsc --noEmit",
     "eslint": "npx eslint .",
 }

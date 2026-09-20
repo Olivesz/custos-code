@@ -102,7 +102,11 @@ def test_stop_auto_mode_blocks_with_deterministic_nudges(tmp_path: Path, monkeyp
     out = hooks.on_stop(payload)
     assert out is not None and out["decision"] == "block"
     reason = out["reason"]
-    assert "pass 1 of 2" in reason and "`pytest -q`" in reason and "ruff check ." in reason and "withdraw" in reason
+    assert "pass 1 of 2" in reason and "`pytest`" in reason and "ruff check ." in reason and "withdraw" in reason
+    # Never `-q`. Quiet output prints no session banner, so the parser reads it least well, and
+    # an agent that obeyed this nudge re-ran the suite into a blind spot -- which flipped the same
+    # false claim from contradicted to confirmed. The nudge must not steer into that.
+    assert "pytest -q" not in reason
     # second pass with the same report: still blocked (nothing new in the ledger); third: cap hit, hand back
     payload["stop_hook_active"] = True
     assert hooks.on_stop(payload) is not None
