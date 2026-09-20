@@ -34,12 +34,25 @@ HOME = os.path.expanduser("~/.receipts")
 
 
 def _config() -> dict[str, Any]:
+    """Auto-mode settings, from ~/.receipts/config.toml with a per-invocation env override.
+
+    `auto` blocks the agent's turn, so it must be opt-in and it must be possible to opt in for one
+    project without arming every session on the machine. config.toml is global; the hook command in
+    a project's own .claude/settings.json can set RECEIPTS_AUTO=1 instead, which scopes blocking to
+    that project. RECEIPTS_AUTO=0 force-disables even when the global config enables it, so a repo
+    can opt out of a machine-wide default.
+    """
     cfg: dict[str, Any] = {"auto": False, "auto_max_passes": 3, "auto_clear": ["contradicted", "unrecorded", "unwitnessed"]}
     p = os.path.join(HOME, "config.toml")
     if os.path.exists(p):
         with open(p, "rb") as fh:
             data = tomllib.load(fh)
         cfg.update(data.get("tiers", {}))
+    env = os.environ.get("RECEIPTS_AUTO")
+    if env is not None:
+        cfg["auto"] = env.strip().lower() in ("1", "true", "yes", "on")
+    if (mp := os.environ.get("RECEIPTS_AUTO_MAX_PASSES")) and mp.isdigit():
+        cfg["auto_max_passes"] = int(mp)
     return cfg
 
 
@@ -253,7 +266,38 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     return {"decision": "block", "reason": reason}
 
 
+def _load_env_file() -> None:
+    """Load ~/.receipts/env into the environment for keys the hook shell does not inherit.
+
+    Claude Code runs hooks in a non-login, non-interactive shell, so exports from .zshrc or a
+    profile are not present. Without a key, `judge.make_backend()` returns None and the Stop hook
+    silently falls back to the deterministic rules -- a quieter, measurably worse receipt (70% vs
+    92%) with no indication that it happened. This is the difference between a working install and
+    one that looks like it works.
+
+    Deliberately NOT a repo-level .env: the file lives under ~/.receipts so it cannot be committed
+    by accident. Existing environment variables always win, so CI and explicit exports override it.
+    Format is KEY=VALUE, one per line, `#` comments and surrounding quotes allowed.
+    """
+    p = os.path.join(HOME, "env")
+    if not os.path.exists(p):
+        return
+    try:
+        with open(p, encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k = k.strip().removeprefix("export ").strip()
+                if k and k not in os.environ:
+                    os.environ[k] = v.strip().strip("'\"")
+    except OSError:
+        return  # unreadable key file is not a reason to fail a hook
+
+
 def main(event: str, session_id: str | None = None, claim_id: str | None = None) -> int:
+    _load_env_file()
     if event == "rerun-worker":
         # E4: a detached subprocess `rerun.spawn_async` launched directly -- no hook payload,
         # no stdin to read; its identity is these two args.
@@ -261,18 +305,36 @@ def main(event: str, session_id: str | None = None, claim_id: str | None = None)
             return 2
         rerun.run_worker(session_id, claim_id)
         return 0
-    payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
-    if event == "pre":
-        out = on_pre_tool_use(payload)
-        if out is not None:
-            print(json.dumps(out))
+    # Everything below fails OPEN. `hooks/*.sh` append `|| true`, but the command that
+    # `receipts watch --install` writes into settings.json invokes this binary directly, with no
+    # wrapper to swallow anything -- so an unhandled exception here surfaces as a traceback and a
+    # non-zero exit from a Claude Code hook. For Stop that reads as "block", which would be a
+    # contradiction backed by no evidence at all; for PostToolUse it means the ledger write is
+    # skipped, and a missing ledger silently degrades every later verdict to `unwitnessed`.
+    # A checker that cannot run is not evidence about the agent. Say so on stderr, exit 0.
+    try:
+        payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+        print(f"receipts: unreadable hook payload ({type(e).__name__}); not blocking.", file=sys.stderr)
         return 0
-    if event == "post-tool-use":
-        on_post_tool_use(payload)
+    if not isinstance(payload, dict):
+        print("receipts: hook payload was not a JSON object; not blocking.", file=sys.stderr)
         return 0
-    if event == "stop":
-        out = on_stop(payload)
-        if out is not None:
-            print(json.dumps(out))
+    try:
+        if event == "pre":
+            out = on_pre_tool_use(payload)
+            if out is not None:
+                print(json.dumps(out))
+            return 0
+        if event == "post-tool-use":
+            on_post_tool_use(payload)
+            return 0
+        if event == "stop":
+            out = on_stop(payload)
+            if out is not None:
+                print(json.dumps(out))
+            return 0
+    except Exception as e:  # noqa: BLE001 - a hook must not take the turn down with it
+        print(f"receipts: {event} hook failed ({type(e).__name__}: {e}); not blocking.", file=sys.stderr)
         return 0
     return 2
