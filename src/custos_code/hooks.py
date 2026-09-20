@@ -25,6 +25,7 @@ from . import claims as claims_mod
 from . import feedback, parsers, rerun
 from . import judge as judge_mod
 from . import review as review_mod
+from . import scope as scope_mod
 from . import verdicts as verdicts_mod
 from .adapters import claude_code
 from .ledger import MAX_OUTPUT_BYTES, chain, redact
@@ -81,6 +82,91 @@ def _config() -> dict[str, Any]:
     if (mp := os.environ.get("CUSTOS_CODE_AUTO_MAX_PASSES")) and mp.isdigit():
         cfg["auto_max_passes"] = int(mp)
     return cfg
+
+
+def _scope_mode() -> str:
+    """`off` | `warn` | `on`, from CUSTOS_CODE_SCOPE or config.toml. Default OFF, deliberately.
+
+    Every threshold in scope.py is a default I wrote, not a measurement. Issue #57 calibrates them
+    against ~400 sessions of accepted work, and until that reports, a scope gate that interrupts
+    good work is strictly worse than no scope gate -- see the Stop-hook latency that made the
+    terminal unusable on 2026-09-19. So this ships inert and is switched on by a number, not by
+    confidence.
+
+    `warn` bands and records without ever denying: that is the mode #57's harness runs in.
+    """
+    v = (os.environ.get("CUSTOS_CODE_SCOPE") or _config().get("scope") or "off")
+    v = str(v).strip().lower()
+    return v if v in ("off", "warn", "on") else "off"
+
+
+def _scope_grant(payload: dict[str, Any]) -> scope_mod.Grant:
+    cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else ""
+    sid = str(payload.get("session_id", "unknown"))
+    approved: tuple[str, ...] = ()
+    _, state_p, _ = _paths(sid)
+    if os.path.exists(state_p):
+        try:
+            with open(state_p, encoding="utf-8") as fh:
+                got = json.load(fh).get("scope_approved")
+            if isinstance(got, list):
+                approved = tuple(str(x) for x in got)
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    return scope_mod.Grant.for_session(cwd or os.getcwd(), approved=approved)
+
+
+def _scope_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Band this call and, if the mode allows, stop it before it happens.
+
+    docs/SCOPE.md §5: scope is checked at PreToolUse, BEFORE the action -- "ask before doing
+    something irreversible" is what every permission system does, not halting on an opinion. And
+    the cost asymmetry inverts against integrity: a scope false positive costs one pause, a scope
+    false negative costs a force-push.
+
+    The mode decides the response, because a flag is a message to a human and an unattended run has
+    nobody reading it:
+
+                GREEN     YELLOW    RED
+      attended  pass      ask       deny
+      unattended pass     deny      deny
+
+    Fails OPEN on any error. A checker that cannot run is not evidence about the agent.
+    """
+    mode = _scope_mode()
+    if mode == "off":
+        return None
+    try:
+        raw = payload.get("tool_input")
+        inp: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+        f = scope_mod.classify(str(payload.get("tool_name", "")), inp, _scope_grant(payload))
+    except Exception as e:  # noqa: BLE001 - never take the turn down over a scope check
+        print(f"receipts: scope check failed ({type(e).__name__}); allowing.", file=sys.stderr)
+        return None
+    if not f.gates or mode == "warn":
+        return None
+    unattended = bool(_config().get("auto"))
+    decision = "deny" if (f.band is scope_mod.Band.RED or unattended) else "ask"
+    return {"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": decision,
+        "permissionDecisionReason": _scope_reason(f, decision),
+    }}
+
+
+def _scope_reason(f: scope_mod.Finding, decision: str) -> str:
+    """Say why, in terms of the actual finding. A generic reason trains people to click through."""
+    if f.band is scope_mod.Band.RED:
+        why = "this cannot be undone"
+    elif f.rule == "write-outside-cwd":
+        why = "this writes outside the directory this session was started in"
+    elif f.rule == "unrecoverable-write":
+        why = "there is no git work tree here, so this cannot be reverted"
+    else:
+        why = "this reaches outside the workspace"
+    tail = ("" if decision == "deny"
+            else " Approve it and it will not be asked again this session.")
+    return f"receipts/scope [{f.band.value}] {f.rule} — {why}: {f.detail}.{tail}"
 
 
 def _paths(session_id: str) -> tuple[str, str, str]:
@@ -150,6 +236,10 @@ def on_pre_tool_use(payload: dict[str, Any]) -> dict[str, Any] | None:
     """
     if _out_of_scope(payload):
         return None
+    # Scope first: a RED action must never get wrapped and run. The E5 rewrite below only makes a
+    # command observable; it does not make it safe.
+    if (gate := _scope_gate(payload)) is not None:
+        return gate
     if payload.get("tool_name") != "Bash":
         return None
     inp = payload.get("tool_input")
@@ -233,6 +323,56 @@ def on_post_tool_use(payload: dict[str, Any]) -> None:
 
 
 # ---------- ledger assembly for Stop ----------
+def _collect_reruns(session_id: str, ledger: list[LedgerEvent], live_path: str) -> list[LedgerEvent]:
+    """Fold any finished Tier 3 results into the ledger, once.
+
+    `spawn_async` detaches and writes a RERUN event to a result file; Claude Code hooks are
+    one-shot, so the Stop call that launched it has already returned. Something has to pick the
+    result up on a LATER turn or the re-run is theatre -- the subprocess runs, the evidence lands
+    on disk, and the checker never looks. Nothing did: `load_result` had no callers outside its
+    own module, which an adversarial pass caught before this shipped.
+
+    Appending to the live ledger file (not just the in-memory list) is what makes it persist, so
+    the evidence stays available to `receipts check` and to every later pass rather than being
+    consumed by whichever turn happened to notice it.
+
+    Resolves the seq placeholder `rerun.run_worker` left as NEEDS-DECISION(oliver): the event is
+    numbered when it is folded in, because only here is the ledger's length known.
+    """
+    # Ask rerun where it writes rather than rebuilding the path: two copies of the same layout
+    # drift, and a reader looking in the wrong directory silently finds nothing forever -- which
+    # is indistinguishable from "no re-runs happened".
+    d = str(rerun._rerun_dir(session_id))
+    if not os.path.isdir(d):
+        return ledger
+    next_seq = max((e.seq for e in ledger), default=-1) + 1
+    for name in sorted(os.listdir(d)):
+        if not name.endswith(".result.json"):
+            continue
+        claim_id = name[: -len(".result.json")]
+        try:
+            ev = rerun.load_result(session_id, claim_id)
+        except (OSError, ValueError):
+            ev = None
+        if ev is None:
+            continue
+        ev.seq = next_seq
+        next_seq += 1
+        ledger.append(ev)
+        # Only persist when a live ledger already exists. If this session's ledger came from the
+        # transcript (hooks installed mid-flight), creating a live file containing nothing but
+        # RERUN events would make the NEXT turn prefer it and lose the transcript entirely --
+        # `_ledger_for` takes the live file whenever it has any events at all.
+        if os.path.exists(live_path):
+            try:
+                with open(live_path, "a", encoding="utf-8") as fh:
+                    fh.write(ev.model_dump_json() + "\n")
+                os.remove(os.path.join(d, name))   # consumed exactly once
+            except OSError:
+                pass
+    return ledger
+
+
 def _ledger_for(payload: dict[str, Any]) -> tuple[Session, list[LedgerEvent]]:
     """The ledger for this session: the live hook file first, the transcript only as a fallback.
 
@@ -301,6 +441,8 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     _, state_p, receipt_p = _paths(sid)
     sess, ledger = _ledger_for(payload)
+    live_p, _, _ = _paths(sid)
+    ledger = _collect_reruns(sid, ledger, live_p)   # evidence from earlier turns' Tier 3 jobs
     repo = payload.get("cwd") if isinstance(payload.get("cwd"), str) else sess.cwd
 
     # Cheap gate before the model call. A Stop hook fires on EVERY turn, so a turn that ran one
@@ -330,15 +472,62 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     with open(seen_p, "w", encoding="utf-8") as fh:
         json.dump({"seq": max_seq}, fh)
+    # Loop state has to be read BEFORE the review, not after: `nudge_seq` marks where the last
+    # correction request fell in the ledger, and `annotate()` needs it to draw the boundary between
+    # the superseded attempt and the new one. Without it the model can cite a piped run from pass 1
+    # as evidence against work the agent redid cleanly in pass 2 (session 21756df4).
+    state: dict[str, Any] = {"passes": 0, "nudge_seq": -1}
+    if os.path.exists(state_p):
+        try:
+            with open(state_p, encoding="utf-8") as fh:
+                state = json.load(fh)
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    prior_nudge = int(state.get("nudge_seq", -1)) if payload.get("stop_hook_active") else -1
+
     # The measured path (eval/arms/RESULTS.md: 86% vs 70% for the tiered pipeline, McNemar
     # p=0.00017). Falls back to deterministic rules with no key, so the hook never hard-fails.
     backend = judge_mod.make_backend()
     if backend is not None:
-        out = review_mod.review(report, ledger, sid, backend)
+        out = review_mod.review(report, ledger, sid, backend, nudge_seq=prior_nudge)
         claims, recs = out.claims, out.verdicts
     else:
         claims = claims_mod.extract(report, sid)
         recs = verdicts_mod.run(claims, ledger, repo)
+    # Tier 3: launch a re-execution for any claim a re-run could actually settle. This is the
+    # second GROUNDED source the architecture argues for -- not another opinion, but the command
+    # run again and looked at. Coverage is worth 4-74x more than a second verifier at any
+    # plausible likelihood ratio, and this is what moves coverage.
+    #
+    # `spawn_async` detaches, so the Stop hook still returns in the ~10s it wants. The result is
+    # picked up by a later pass, by the extension, or by `receipts check` -- there is no path back
+    # into this call, which has already returned. `verdicts.should_rerun` is deliberately narrow:
+    # open verdict, runnable claim type, a real repo, a committed runner config, within budget,
+    # and not already tried on this exact tree.
+    spent: set[str] = set(state.get("reruns", []))
+    if repo:
+        for c, r in zip(claims, recs, strict=False):
+            if not verdicts_mod.should_rerun(c, r, repo, already=spent):
+                continue
+            key = verdicts_mod.rerun_key(c, repo)
+            try:
+                # report_seq anchors the RERUN event after the evidence it re-checks
+                rerun.spawn_async(sid, c.id, repo, report_seq=max_seq)
+            except Exception as e:  # noqa: BLE001 - a failed launch must not fail the turn
+                print(f"receipts: rerun launch failed ({type(e).__name__}); skipping.", file=sys.stderr)
+                continue
+            if key:
+                spent.add(key)
+        if spent != set(state.get("reruns", [])):
+            # Written now, not with the auto-mode state below: the budget has to survive turns
+            # that do not block, or a session with auto mode off re-runs on every single turn.
+            state["reruns"] = sorted(spent)
+            try:
+                with open(state_p, "w", encoding="utf-8") as fh:
+                    json.dump(state, fh)
+            except OSError:
+                pass
+
     with open(receipt_p, "w", encoding="utf-8") as fh:
         fh.write(_render(claims, recs) + "\n")
 
@@ -348,10 +537,6 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
     clear = set(cfg.get("auto_clear", []))
     by = {c.id: c for c in claims}
     open_pairs = [(by[r.claim_id], r) for r in recs if r.verdict.value in clear]
-    state: dict[str, Any] = {"passes": 0, "nudge_seq": -1}
-    if os.path.exists(state_p):
-        with open(state_p, encoding="utf-8") as fh:
-            state = json.load(fh)
     if bool(payload.get("stop_hook_active")) and "nudge_seq" in state:
         # a continuation: a previously open claim clears only on evidence newer than the nudge (docs/DESIGN.md §6).
         # A reworded claim that now "confirms" on old evidence stays open as unwitnessed.
@@ -374,7 +559,10 @@ def on_stop(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None  # cap hit: hand back to the human with the receipt file
     nudge_seq = max((e.seq for e in ledger), default=-1)
     with open(state_p, "w", encoding="utf-8") as fh:
-        json.dump({"passes": passes, "nudge_seq": nudge_seq, "open": [c.text for c, _ in open_pairs]}, fh)
+        json.dump({"passes": passes, "nudge_seq": nudge_seq,
+                   "open": [c.text for c, _ in open_pairs],
+                   "reruns": state.get("reruns", []),          # do not drop the Tier 3 budget
+                   "scope_approved": state.get("scope_approved", [])}, fh)
     reason = feedback.build_block_reason(open_pairs, ledger, passes, max_passes)
     return {"decision": "block", "reason": reason}
 
