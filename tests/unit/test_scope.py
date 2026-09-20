@@ -371,3 +371,23 @@ def test_a_data_heredoc_does_not_fire_on_its_contents(name: str, cmd: str,
 def test_a_real_disk_command_is_still_red(repo: pathlib.Path) -> None:
     f = classify("Bash", {"command": "diskutil eraseDisk JHFS+ X disk2"}, _g(repo), RepoState(str(repo)))
     assert f.band is Band.RED and f.rule == "system-level"
+
+
+def test_the_heredoc_header_tail_is_never_dropped(repo: pathlib.Path) -> None:
+    """`cat <<'EOF' > ~/.zshrc` -- the redirect lives AFTER the delimiter, on the same line.
+
+    Dropping it with the body reduced the whole command to `cat  `, so writing to any path was
+    GREEN. Second bypass found in this one function by automated review; the body may be stripped,
+    the shell that follows the delimiter never may be.
+    """
+    for cmd in ("cat <<'EOF' > /Users/someone/.zshrc\nexport EVIL=1\nEOF",
+                "cat <<'EOF' | tee /Users/someone/.zshrc\nx\nEOF"):
+        f = classify("Bash", {"command": cmd}, _g(repo), RepoState(str(repo)))
+        assert f.gates, f"header tail dropped, write hidden: {cmd!r} -> {f.band.value}"
+
+
+def test_a_data_heredoc_writing_inside_the_repo_is_free(repo: pathlib.Path) -> None:
+    """The other side of the same fix: keeping the tail must not gate ordinary in-repo writes."""
+    f = classify("Bash", {"command": "cat <<'EOF' > ./notes.md\nhello\nEOF"},
+                 _g(repo), RepoState(str(repo)))
+    assert f.band is Band.GREEN, f.rule

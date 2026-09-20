@@ -355,7 +355,8 @@ def _plausible_path(x: str) -> bool:
 # complete bypass of every RED rule -- introduced by the fix for the 38 false `system-level` REDs
 # and caught by the automated security review the same hour.
 _INTERPRETER_HEAD = re.compile(
-    r"\b(sh|bash|zsh|ksh|dash|python3?|perl|ruby|node|php|osascript|eval|sudo|env|ssh)\b")
+    r"\b(sh|bash|zsh|ksh|dash|python3?|perl|ruby|node|php|osascript|eval|sudo|env|ssh|tee)\b"
+    r"|[|>]")   # a pipe or redirect after the delimiter is shell that keeps running
 _HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?([^\n]*)\n(.*?)^\s*\1\s*$", re.S | re.M)
 
 
@@ -375,8 +376,13 @@ def _strip_heredocs(cmd: str) -> str:
     for m in _HEREDOC.finditer(cmd):
         prefix = cmd[pos:m.start()]
         out.append(prefix)
-        header = prefix.rsplit("\n", 1)[-1] + m.group(2)
-        out.append("\n" + m.group(3) + "\n" if _INTERPRETER_HEAD.search(header) else " ")
+        # The header tail is the shell that follows the delimiter on the same line -- the
+        # `> ~/.zshrc` in `cat <<'EOF' > ~/.zshrc`. Dropping it with the body erased the redirect
+        # and made writing anywhere GREEN. It is ALWAYS kept; only the body is ever removed.
+        tail = m.group(2)
+        header = prefix.rsplit("\n", 1)[-1] + tail
+        body = "\n" + m.group(3) + "\n" if _INTERPRETER_HEAD.search(header) else "\n"
+        out.append(tail + body)
         pos = m.end()
     out.append(cmd[pos:])
     return "".join(out)
