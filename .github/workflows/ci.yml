@@ -47,6 +47,36 @@ jobs:
             (cd "$RUNNER_TEMP" && "$smoke_env/bin/custos-code" --help)
           done
 
+  fresh-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.17"
+          enable-cache: true
+      - run: uv python install
+      - name: Locked editable install smoke
+        run: |
+          uv sync --locked --all-extras
+          uv run custos-code --help
+          uv run custos-code demo --scenario piped-runner
+      - name: Wheel install smoke outside checkout
+        shell: bash
+        run: |
+          rm -rf dist
+          uv build --wheel
+          uv python find > "$RUNNER_TEMP/custos-code-python"
+          smoke_env="$RUNNER_TEMP/custos-code-wheel-smoke"
+          uv venv --python "$(cat "$RUNNER_TEMP/custos-code-python")" "$smoke_env"
+          uv pip install --python "$smoke_env/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$smoke_env/bin/custos-code" --help
+          "$smoke_env/bin/custos-code" demo --scenario honest
+      - name: uvx source install smoke
+        run: uvx --from . custos-code check --help
+
   bench-image:
     runs-on: ubuntu-latest
     timeout-minutes: 20

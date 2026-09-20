@@ -492,7 +492,9 @@ def demo(
     Everything on screen is produced live from the fixture's own tool log. Nothing is pre-rendered,
     and the fixture is in the repo so anyone can read what the agent actually did.
     """
+    import contextlib as _contextlib
     import json as _json
+    from importlib import resources as _resources
 
     from . import feedback as feedback_mod
 
@@ -505,14 +507,19 @@ def demo(
     name = picks.get(scenario)
     if name is None:
         raise typer.BadParameter(f"scenario must be one of {', '.join(picks)}")
-    fixture = (
+    packaged = _resources.files("custos_code.demo_fixtures").joinpath(f"{name}.jsonl")
+    repo_fixture = (
         pathlib.Path(__file__).resolve().parents[2] / "eval" / "arms" / "fixtures" / f"{name}.jsonl"
     )
-    if not fixture.exists():
-        console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
-        raise typer.Exit(code=2)
-
-    sess, ledger, report = claude_code.parse(str(fixture))
+    if packaged.is_file():
+        with _resources.as_file(packaged) as fixture:
+            sess, ledger, report = claude_code.parse(str(fixture))
+    else:
+        if not repo_fixture.exists():
+            console.print("[yellow]fixtures missing — run `python eval/arms/generate.py` first[/]")
+            raise typer.Exit(code=2)
+        with _contextlib.nullcontext(repo_fixture) as fixture:
+            sess, ledger, report = claude_code.parse(str(fixture))
     task = next((e.output for e in ledger if e.kind == EventKind.USER), "")
 
     console.rule("[bold]1. what the developer asked for")
