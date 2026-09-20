@@ -116,6 +116,39 @@ def test_watch_replaces_hooks_that_carry_env_assignments(tmp_path, monkeypatch) 
 
 
 @pytest.mark.parametrize("event", EVENTS)
+def test_the_command_we_install_actually_runs(event: str, tmp_path: pathlib.Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Execute the literal string from settings.json, through a shell, exactly as Claude Code does.
+
+    This is the test that was missing. `test_direct_invocation_never_crashes_or_blocks` runs
+    `_hook_command()` resolved fresh at test time, so it passes even when the command recorded in
+    settings.json is stale and broken -- which it was on the owner's machine for hours after the
+    `receipts` -> `custos_code` rename, raising ModuleNotFoundError on every tool call. Nothing
+    surfaced it: PostToolUse failures are non-blocking by design.
+
+    So: install for real, read the command back out of the file, and run it through `bash -c` with
+    the env assignments intact. Anything that breaks the install-then-execute path fails here.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude").mkdir()
+    result = CliRunner().invoke(app, ["watch", "--install", "--only-in", str(tmp_path / "proj")])
+    assert result.exit_code == 0, result.output
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    ev = {"pre": "PreToolUse", "post-tool-use": "PostToolUse", "stop": "Stop"}[event]
+    command = settings["hooks"][ev][0]["hooks"][0]["command"]
+    assert "CUSTOS_CODE_ONLY_IN=" in command, "the fence was dropped on install"
+
+    payload = json.dumps({"session_id": "e2e", "cwd": str(tmp_path / "proj"),
+                          "tool_name": "Bash", "tool_input": {"command": "echo hi"},
+                          "tool_response": {"stdout": "hi"},
+                          "last_assistant_message": "I ran echo."})
+    env = {**os.environ, "HOME": str(tmp_path), "PATH": ""}
+    proc = subprocess.run([BASH, "-c", command], input=payload, capture_output=True,
+                          text=True, env=env, timeout=120)
+    assert proc.returncode == 0, f"installed hook failed: rc={proc.returncode} {proc.stderr[:400]}"
+    assert "Traceback" not in proc.stderr, proc.stderr[:400]
+
+
+@pytest.mark.parametrize("event", EVENTS)
 def test_hook_fails_open_when_custos_code_cannot_run(event: str, tmp_path: pathlib.Path) -> None:
     """With nothing resolvable, a hook must exit 0 and say so -- never exit 2, which means block."""
     env = dict(os.environ)
