@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import pathlib
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -93,6 +94,25 @@ class Architecture:
         return best[1] if best else None
 
 
+def _iter_edges(line: str) -> Iterator[re.Match[str]]:
+    """`_EDGE_RE` matches one at a time. `finditer` resumes after the whole match, so on a chained
+    line like `A --> B --> C` it consumes "B" as the first edge's target and never gets to reuse it
+    as the second edge's source -- `A --> B` is found, `B --> C` silently is not. Mermaid's chained
+    arrow syntax is common enough (this repo's own docs/DESIGN.md uses it nowhere today, but a
+    future edit easily could) that losing every edge but the first in a chain is a real gap: a
+    declared connection that the parser drops looks, to `crossings()`, exactly like an undeclared
+    one. Resuming from the START of the matched target instead of the end lets it be reused as the
+    next source.
+    """
+    pos = 0
+    while True:
+        m = _EDGE_RE.search(line, pos)
+        if not m:
+            return
+        yield m
+        pos = m.start("b")
+
+
 def parse_mermaid(text: str) -> tuple[dict[str, str], set[tuple[str, str]]]:
     """Labels by node id, and the edges between them, from one Mermaid block.
 
@@ -108,7 +128,7 @@ def parse_mermaid(text: str) -> tuple[dict[str, str], set[tuple[str, str]]]:
             continue
         if line.startswith(("subgraph", "end", "classDef", "class ", "style", "click", "linkStyle")):
             continue
-        for m in _EDGE_RE.finditer(line):
+        for m in _iter_edges(line):
             a, b = m.group("a"), m.group("b")
             if a != b:
                 edges.add((a, b))

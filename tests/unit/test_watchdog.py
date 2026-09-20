@@ -70,6 +70,26 @@ def test_a_documented_crossing_asks_and_never_denies(
     assert out is not None
     got = out["hookSpecificOutput"]["permissionDecision"]
     assert got == "ask", f"architecture evidence cannot support a refusal (got {got})"
+
+
+def test_a_crossing_is_detected_from_the_real_post_tool_use_path(
+        repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_seed` writes prior paths as relative strings by hand. A real Claude Code session never
+    does that -- `tool_input.file_path` for Write/Edit is always absolute, and `on_post_tool_use`
+    records it as given. Left un-normalised against `cwd`, an absolute prior path could never
+    resolve to a component (`Architecture.component_for` only matches repo-relative paths), so
+    `crossings()` never saw more than the current write and could never find a pair -- every real
+    crossing was silently missed outside a test that fed it relative paths by hand.
+    """
+    monkeypatch.setenv("CUSTOS_CODE_SCOPE", "on")
+    first = _write(repo, "src/adapters/__init__.py")
+    first["tool_response"] = {"filePath": first["tool_input"]["file_path"]}
+    hooks.on_post_tool_use(first)  # the real write path: records the absolute file_path as-is
+
+    out = hooks._watchdog_gate(_write(repo, "src/billing/__init__.py"))
+
+    assert out is not None, "a real prior absolute-path write must still be seen as a crossing"
+    assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
     assert "Billing" in out["hookSpecificOutput"]["permissionDecisionReason"]
 
 

@@ -195,21 +195,6 @@ def _watchdog_gate(payload: dict[str, Any]) -> dict[str, Any] | None:
     }}
 
 
-def _scope_reason(f: scope_mod.Finding, decision: str) -> str:
-    """Say why, in terms of the actual finding. A generic reason trains people to click through."""
-    if f.band is scope_mod.Band.RED:
-        why = "this cannot be undone"
-    elif f.rule == "write-outside-cwd":
-        why = "this writes outside the directory this session was started in"
-    elif f.rule == "unrecoverable-write":
-        why = "there is no git work tree here, so this cannot be reverted"
-    else:
-        why = "this reaches outside the workspace"
-    tail = ("" if decision == "deny"
-            else " Approve it and it will not be asked again this session.")
-    return f"receipts/scope [{f.band.value}] {f.rule} — {why}: {f.detail}.{tail}"
-
-
 def _paths(session_id: str) -> tuple[str, str, str]:
     os.makedirs(os.path.join(HOME, "live"), exist_ok=True)
     os.makedirs(os.path.join(HOME, "state"), exist_ok=True)

@@ -108,3 +108,12 @@ def test_non_flowchart_diagrams_are_ignored(tmp_path: pathlib.Path) -> None:
 def test_an_unreadable_docs_tree_is_not_an_error(tmp_path: pathlib.Path) -> None:
     """`load` is called from a hook. No architecture is a valid answer; an exception is not."""
     assert not arch.load(str(tmp_path / "does-not-exist"))
+
+
+def test_a_chained_arrow_line_keeps_every_edge_not_just_the_first() -> None:
+    """`A --> B --> C` used to yield only (A, B): `finditer` resumes after the whole match, so
+    "B" was consumed as the first edge's target and could never be reused as the second edge's
+    source. A declared edge the parser drops looks, to `crossings()`, exactly like an undeclared
+    one -- the false positive this module exists to avoid."""
+    labels, edges = arch.parse_mermaid("flowchart LR\n  A --> B --> C --> D\n")
+    assert edges == {("A", "B"), ("B", "C"), ("C", "D")}

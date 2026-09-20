@@ -62,6 +62,18 @@ class Verdict:
     observations: tuple[Observation, ...] = ()
 
 
+def _scope_why(f: scope_mod.Finding) -> str:
+    """One clause naming the actual hazard. `f.detail` alone is just the path or command; a
+    generic reason trains people to click through, so say why this band applies."""
+    if f.band is scope_mod.Band.RED:
+        return "this cannot be undone"
+    if f.rule == "write-outside-cwd":
+        return "this writes outside the directory this session was started in"
+    if f.rule == "unrecoverable-write":
+        return "there is no git work tree here, so this cannot be reverted"
+    return "this reaches outside the workspace"
+
+
 def _scope_observation(payload: dict[str, Any], grant: scope_mod.Grant,
                        policy: scope_mod.Policy) -> Observation | None:
     """Blast radius: where the write lands, and whether anything can undo it.
@@ -74,7 +86,21 @@ def _scope_observation(payload: dict[str, Any], grant: scope_mod.Grant,
     if not f.gates:
         return None
     sev: Decision = "deny" if f.band is scope_mod.Band.RED else "ask"
-    return Observation(detector="scope", severity=sev, rule=f.rule, detail=f.detail)
+    return Observation(detector="scope", severity=sev, rule=f.rule,
+                       detail=f"{_scope_why(f)}: {f.detail}")
+
+
+def _relpath_in_repo(path: str, cwd: str) -> str | None:
+    """`path` relative to `cwd`, or None when it falls outside -- the one normalisation every
+    caller into `arch.Architecture` needs, since components are declared as repo-relative paths.
+
+    A path already relative is taken as relative to `cwd`, not re-resolved against this process's
+    own working directory: `os.path.relpath` does the latter for a relative first argument, which
+    is never what a caller here means by a session's recorded path.
+    """
+    rel = (path if not os.path.isabs(path) else os.path.relpath(path, cwd)).replace(os.sep, "/")
+    rel = rel.lstrip("./")
+    return None if rel == ".." or rel.startswith("../") else rel
 
 
 def _arch_observation(payload: dict[str, Any], written: list[str]) -> Observation | None:
@@ -94,10 +120,18 @@ def _arch_observation(payload: dict[str, Any], written: list[str]) -> Observatio
     architecture = arch_mod.load(cwd)
     if not architecture:
         return None
-    rel = os.path.relpath(target, cwd).replace(os.sep, "/")
-    if rel.startswith(".."):
+    rel = _relpath_in_repo(target, cwd)
+    if rel is None:
         return None  # outside the repo is the scope detector's question, not this one
-    new = [c for c in arch_mod.crossings(architecture, [*written, rel])
+    # `written` is read back from the live ledger, which stores whatever `tool_input.file_path`
+    # the harness sent -- always an absolute path for Write/Edit in real Claude Code sessions, not
+    # the repo-relative form `Architecture.component_for` matches against. Left un-normalised, a
+    # crossing between two files written earlier in the session and the one written now could
+    # never be detected outside a test fixture that hands `written` relative paths by hand: the
+    # only path `crossings()` could ever resolve to a component was the current one, so at most
+    # one component was ever "touched" and the pairwise check had nothing to compare.
+    prior = [p for p in (_relpath_in_repo(w, cwd) for w in written) if p is not None]
+    new = [c for c in arch_mod.crossings(architecture, [*prior, rel])
            if rel in c.paths_a or rel in c.paths_b]
     if not new:
         return None
