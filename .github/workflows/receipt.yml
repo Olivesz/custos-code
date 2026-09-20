@@ -4,13 +4,19 @@ name: receipt
 # reads before the diff. The comment is edited in place (marker in the body), never stacked.
 #
 # The session log is whichever of these the agent left behind, first match wins:
-#   1. a workflow artifact named `receipts-session` on the head SHA (agents that run in Actions),
-#   2. a file committed at `.receipts/session.jsonl` on the PR branch,
-#   3. for a remote agent (Devin, Copilot), a class-R bundle built here from the PR, its commits
+#   1. a `receipts-session` artifact from a successful run, of this repo's own session workflow,
+#      on the head SHA -- a fork cannot define the workflow that produces it,
+#   2. for a remote agent (Devin, Copilot), a class-R bundle built here from the PR, its commits
 #      and its check runs -- no tool log, so shell claims come out `unrecorded`, not confirmed.
 #
+# A log committed to the PR branch is deliberately NOT a source. It carries no provenance, so an
+# agent could author a ledger that confirms its own claims -- invariant 1, the one failure this
+# tool exists to catch. Until harness signatures exist, the only accepted tool log is one this
+# repo's own workflow uploaded.
+#
 # Invariant 9 (local by default) is untouched: this runs only in the repo's own CI, on its own PRs.
-# Invariant 1 holds too: nothing the agent wrote in the PR body reaches the ledger.
+# Untrusted values (file paths, PR title/body, URLs) are passed through `env:` and never
+# interpolated into a shell line.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, ready_for_review]
@@ -50,24 +56,29 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          # the only workflow whose `receipts-session` artifact is trusted; it must live in this
+          # repo, so a fork PR cannot define a run that uploads a ledger of its own choosing
+          SESSION_WORKFLOW: ${{ vars.RECEIPTS_SESSION_WORKFLOW || 'ci' }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/evidence"
-          run_id=$(gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
-            --jq '[.workflow_runs[] | select(.id != ${{ github.run_id }})] | .[0].id // empty')
+          gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+            > "$RUNNER_TEMP/runs.json"
+          run_id=$(jq -r \
+            --arg workflow "$SESSION_WORKFLOW" --arg repo "$REPO" --arg self "$RUN_ID" \
+            '[.workflow_runs[]
+              | select((.id | tostring) != $self)
+              | select(.name == $workflow)
+              | select(.conclusion == "success")
+              | select(.head_repository.full_name == $repo)]
+             | .[0].id // "" | tostring' "$RUNNER_TEMP/runs.json")
           if [ -n "$run_id" ] && gh run download "$run_id" --repo "$REPO" --name receipts-session \
                --dir "$RUNNER_TEMP/evidence" 2>/dev/null; then
             file=$(find "$RUNNER_TEMP/evidence" -type f \( -name '*.jsonl' -o -name '*.json' \) | head -1)
           else
             file=""
-          fi
-          if [ -z "$file" ]; then
-            # the agent may have committed its own log; take it from the API, not from a checkout
-            if gh api "repos/$REPO/contents/.receipts/session.jsonl?ref=$HEAD_SHA" \
-                 --jq '.content' 2>/dev/null | base64 -d > "$RUNNER_TEMP/evidence/session.jsonl"; then
-              file="$RUNNER_TEMP/evidence/session.jsonl"
-            fi
           fi
           if [ -z "$file" ] || [ ! -s "$file" ]; then
             # class-R fallback: report from the PR body, evidence from commits and checks only
@@ -94,17 +105,21 @@ jobs:
 
       - name: Render the receipt
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # invariant 9: the deterministic tiers are the default. The judge sends the PR body to a
+          # third party, so it is opt-in per repo (vars.RECEIPTS_JUDGE) and still needs the key.
+          OPENAI_API_KEY: ${{ vars.RECEIPTS_JUDGE == 'true' && secrets.OPENAI_API_KEY || '' }}
+          JUDGE: ${{ vars.RECEIPTS_JUDGE }}
           AGENT: ${{ steps.evidence.outputs.agent }}
+          FILE: ${{ steps.evidence.outputs.file }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         shell: bash
         run: |
           set -euo pipefail
           args=()
           if [ -n "${AGENT:-}" ]; then args+=(--agent "$AGENT"); fi
-          # no key, no judge: the deterministic tiers still produce a receipt, just a quieter one
-          if [ -z "${OPENAI_API_KEY:-}" ]; then args+=(--rules-only); fi
-          uv run receipts pr-comment "${{ steps.evidence.outputs.file }}" "${args[@]}" \
-            --pr-url "${{ github.event.pull_request.html_url }}" \
+          if [ "${JUDGE:-}" != "true" ] || [ -z "${OPENAI_API_KEY:-}" ]; then args+=(--rules-only); fi
+          uv run receipts pr-comment "$FILE" "${args[@]}" \
+            --pr-url "$PR_URL" \
             --out "$RUNNER_TEMP/receipt.md"
 
       - name: Post or update the one receipt comment
