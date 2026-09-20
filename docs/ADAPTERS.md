@@ -138,7 +138,7 @@ own gap must not read as silence.
 comment, found by the marker `<!-- receipts-bot: pr-receipt -->`. Evidence, first match wins: a
 `receipts-session` artifact from a **successful run of this repo's own session workflow** on the
 head SHA (`vars.RECEIPTS_SESSION_WORKFLOW`, default `ci`), else a class-R bundle built from the PR,
-its commits, its files and its check runs by `.github/pr_bundle.jq` (tested in
+its commits, its files and its check runs by `.github/workflows/pr_bundle.jq` (tested in
 `tests/unit/test_pr_bundle_jq.py`).
 
 A log committed to the PR branch is **not** a source. It has no provenance, so an agent could
