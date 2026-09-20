@@ -86,6 +86,68 @@ def test_watch_replaces_old_hooks_and_preserves_unrelated_settings(
     assert json.loads(settings.read_text()) == installed
 
 
+def test_watch_replaces_hooks_that_carry_env_assignments(tmp_path, monkeypatch) -> None:
+    """The literal commands found in ~/.claude/settings.json on 2026-09-20, verbatim.
+
+    Every hook this project has ever installed on a real machine carries `VAR=value` prefixes, so
+    this is the only shape that has ever mattered -- and it was the one shape the replace logic did
+    not recognise. `shlex.split` puts the assignment in args[0], the binary check reads args[0],
+    and the match fails. The consequence was not cosmetic: these three commands point at a
+    pre-rename console script that raises ModuleNotFoundError on every tool call, and the migration
+    written to retire them skipped straight past.
+
+    Asserts the count as well as the content, because the failure mode is a stacked duplicate --
+    the stale hook keeps erroring and a working one is appended beside it.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir()
+    stale = "RECEIPTS_ONLY_IN=/Users/oliverzhang/cart-service RECEIPTS_AUTO=1 /Users/oliverzhang/Projects/receipts/.venv/bin/receipts _hook {}"
+    settings.write_text(json.dumps({"hooks": {
+        event: [{"matcher": "", "hooks": [{"type": "command", "command": stale.format(action)}]}]
+        for event, action in zip(("PreToolUse", "PostToolUse", "Stop"), EVENTS, strict=True)
+    }}))
+    assert CliRunner().invoke(app, ["watch", "--install"]).exit_code == 0
+    installed = json.loads(settings.read_text())["hooks"]
+    for event, entries in hooks_snippet()["hooks"].items():
+        assert installed[event] == list(entries), f"{event} was not replaced"
+    assert not any("receipts _hook" in json.dumps(v) for v in installed.values()), \
+        "a pre-rename hook survived the migration and will keep erroring on every tool call"
+
+
+@pytest.mark.parametrize("event", EVENTS)
+def test_the_command_we_install_actually_runs(event: str, tmp_path: pathlib.Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Execute the literal string from settings.json, through a shell, exactly as Claude Code does.
+
+    This is the test that was missing. `test_direct_invocation_never_crashes_or_blocks` runs
+    `_hook_command()` resolved fresh at test time, so it passes even when the command recorded in
+    settings.json is stale and broken -- which it was on the owner's machine for hours after the
+    `receipts` -> `custos_code` rename, raising ModuleNotFoundError on every tool call. Nothing
+    surfaced it: PostToolUse failures are non-blocking by design.
+
+    So: install for real, read the command back out of the file, and run it through `bash -c` with
+    the env assignments intact. Anything that breaks the install-then-execute path fails here.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude").mkdir()
+    result = CliRunner().invoke(app, ["watch", "--install", "--only-in", str(tmp_path / "proj")])
+    assert result.exit_code == 0, result.output
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    ev = {"pre": "PreToolUse", "post-tool-use": "PostToolUse", "stop": "Stop"}[event]
+    command = settings["hooks"][ev][0]["hooks"][0]["command"]
+    assert "CUSTOS_CODE_ONLY_IN=" in command, "the fence was dropped on install"
+
+    payload = json.dumps({"session_id": "e2e", "cwd": str(tmp_path / "proj"),
+                          "tool_name": "Bash", "tool_input": {"command": "echo hi"},
+                          "tool_response": {"stdout": "hi"},
+                          "last_assistant_message": "I ran echo."})
+    env = {**os.environ, "HOME": str(tmp_path), "PATH": ""}
+    proc = subprocess.run([BASH, "-c", command], input=payload, capture_output=True,
+                          text=True, env=env, timeout=120)
+    assert proc.returncode == 0, f"installed hook failed: rc={proc.returncode} {proc.stderr[:400]}"
+    assert "Traceback" not in proc.stderr, proc.stderr[:400]
+
+
 @pytest.mark.parametrize("event", EVENTS)
 def test_hook_fails_open_when_custos_code_cannot_run(event: str, tmp_path: pathlib.Path) -> None:
     """With nothing resolvable, a hook must exit 0 and say so -- never exit 2, which means block."""

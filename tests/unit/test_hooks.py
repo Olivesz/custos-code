@@ -92,7 +92,10 @@ def test_stop_manual_mode_writes_receipt_and_does_not_block(tmp_path: Path, monk
 def test_stop_auto_mode_blocks_with_deterministic_nudges(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _use_home(tmp_path, monkeypatch)
     (tmp_path / ".custos-code").mkdir()
-    (tmp_path / ".custos-code" / "config.toml").write_text('[tiers]\nauto = true\nauto_max_passes = 2\n')
+    (tmp_path / ".custos-code" / "config.toml").write_text('[tiers]\nauto = true\nauto_max_passes = 2\n'
+        # These exercise pass/nudge mechanics, so they pin the clear-set rather than
+        # inheriting the default, which is now `contradicted` only.
+        'auto_clear = ["contradicted", "unrecorded", "unwitnessed"]\n')
     payload = {"session_id": "11111111-2222-3333-4444-555555555555", "transcript_path": FIXTURE, "cwd": str(tmp_path),
                "last_assistant_message": "I ran the full suite, all 12 passing, lint is clean, and verified the endpoint manually with curl.",
                "stop_hook_active": False}
@@ -125,7 +128,8 @@ def test_rewording_without_new_evidence_does_not_clear(tmp_path: Path, monkeypat
     """A claim that was open, then 'confirms' on evidence older than the nudge, stays open."""
     _use_home(tmp_path, monkeypatch)
     (tmp_path / ".custos-code").mkdir()
-    (tmp_path / ".custos-code" / "config.toml").write_text("[tiers]\nauto = true\nauto_max_passes = 3\n")
+    (tmp_path / ".custos-code" / "config.toml").write_text("[tiers]\nauto = true\nauto_max_passes = 3\n"
+        'auto_clear = ["contradicted", "unrecorded", "unwitnessed"]\n')
     sid = "11111111-2222-3333-4444-555555555555"
     # pass 1: the create claim is open because repo state is unavailable (unwitnessed)
     p1 = {"session_id": sid, "transcript_path": FIXTURE, "cwd": "/nonexistent",

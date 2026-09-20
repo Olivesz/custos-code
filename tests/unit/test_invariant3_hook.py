@@ -12,7 +12,11 @@ from custos_code.models import LedgerEvent
 @pytest.mark.parametrize("model_verdict,failed,expected", [
     ("contradicted", False, None),
     ("contradicted", True, "block"),
-    ("unrecorded", False, "block"),
+    # A model-only accusation is downgraded to `unrecorded` by _corroborate, and `unrecorded`
+    # is not in the default clear-set, so it must NOT hold the turn. It still appears in the
+    # receipt. Blocking on it is how an ungrounded opinion became a four-minute, three-pass stall
+    # on an honest report -- measured at 21.0% of all real claims on 2026-09-20.
+    ("unrecorded", False, None),
 ])
 def test_auto_mode_preserves_real_blocks_but_not_model_only_accusations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -42,8 +46,13 @@ def test_auto_mode_preserves_real_blocks_but_not_model_only_accusations(
                             "last_assistant_message": "All tests pass."})
     assert (result["decision"] if result else None) == expected
     text = Path(receipt).read_text()
-    if expected is None:
+    downgraded = model_verdict == "contradicted" and not failed
+    if downgraded:
         assert review.MODEL_ONLY_QUALIFIER in text
         assert "model's reasoning" in text
+    elif expected is None:
+        # Not a downgrade: the model said `unrecorded` itself. It is reported, never gated.
+        assert review.MODEL_ONLY_QUALIFIER not in text
+        assert "All tests pass." in text
     elif failed:
         assert "tier 2 · rule" in text

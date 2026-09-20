@@ -70,7 +70,13 @@ def _config() -> dict[str, Any]:
     that project. CUSTOS_CODE_AUTO=0 force-disables even when the global config enables it, so a repo
     can opt out of a machine-wide default.
     """
-    cfg: dict[str, Any] = {"auto": False, "auto_max_passes": 3, "auto_clear": ["contradicted", "unrecorded", "unwitnessed"]}
+    # Only an accusation holds the turn. `unrecorded` and `unwitnessed` are the checker reporting
+    # the limits of its own evidence -- "the output was piped", "nothing in the log either way" --
+    # and gating on them made the agent responsible for facts about the recorder. Measured over 648
+    # real claims on 2026-09-20 they are 21.0% and 28.9%, so half of every report held the turn
+    # open, and `unwitnessed` on a heading or a piece of advice cannot be cleared by any amount of
+    # further work. That is the three-pass spin, and it fired on honest reports.
+    cfg: dict[str, Any] = {"auto": False, "auto_max_passes": 3, "auto_clear": ["contradicted"]}
     p = os.path.join(HOME, "config.toml")
     if os.path.exists(p):
         with open(p, "rb") as fh:
