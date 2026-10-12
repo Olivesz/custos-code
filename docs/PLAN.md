@@ -1,6 +1,6 @@
 # Plan: team, split, and what runs in parallel
 
-Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The build is mostly agent-written, so the split is by *ownership and judgement*, not by typing speed. Each area has one owner who is accountable for its decisions, its tests, and its slide.
+Team: Oliver, Anush, Ananya. Three people, one engine, seven submissions. The split is by *ownership and judgement*, not by typing speed. Each area has one owner who is accountable for its decisions, its tests, and its slide.
 
 ## Ownership
 

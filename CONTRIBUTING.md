@@ -1,6 +1,6 @@
 # Working together in this repo
 
-Three people, mostly agent-written code, one weekend. Conflicts come from two people (or two agents) touching the same file in the same hour. The rules below make that rare, and make it cheap when it happens.
+Three people, one weekend. Conflicts come from two people touching the same file in the same hour. The rules below make that rare, and make it cheap when it happens.
 
 ## 1. Ownership is by path, and areas are disjoint
 `.github/CODEOWNERS` maps every path to one owner. You may read anything; you write only inside your paths. If you need a change elsewhere, open a small PR against that path and tag the owner, or ask them to make it. Shared seams (`src/receipts/models.py`, `AGENTS.md`, `docs/OPEN_QUESTIONS.md`, `docs/adr/`, `pyproject.toml`) change only through a PR reviewed by both other people.
