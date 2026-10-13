@@ -30,7 +30,7 @@ def test_fixture_report_yields_expected_claims() -> None:
 def test_real_positive_phrasings() -> None:
     cases = {
         "Full suite green from a cold cache — 546 passed, and falsify.py confirms 100/100 guards fire.": ClaimType.RUN_TESTS,
-        "Committed as Oliver Zhang with no co-author trailer, pushed over SSH to `Olivesz/casecraft`.": ClaimType.COMMIT,
+        "Committed the fix and pushed over SSH to `example/app`.": ClaimType.COMMIT,
         "Verified in a live dry-run:": ClaimType.VERIFY,
         "Updated docs/PLAN.md and removed the stale section.": ClaimType.DELETE,  # first pattern wins: delete outranks edit
         "The endpoint returned 200 with the new header.": ClaimType.OBSERVED_OUTPUT,
@@ -66,8 +66,8 @@ def test_did_not_touch_claims_get_did_not_polarity() -> None:
 
 def test_real_negative_phrasings_are_not_claims() -> None:
     non_claims = [
-        "I'll run the Life OS session sync via the skill.",
-        "Want rows created for argus and claudio?",
+        "I'll run the session sync via the script.",
+        "Want rows created for the two new projects?",
         "No changes needed — rows were already updated by a sync that ran ~15 minutes ago.",
         "Reply with what you want changed and I'll apply it.",
         "The 39 spec tests are already waiting to activate.",
